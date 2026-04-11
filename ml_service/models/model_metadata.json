@@ -1,0 +1,29 @@
+{
+    "features": [
+        "total_distance_to_target_m",
+        "stops_between_bus_and_target",
+        "avg_segment_distance_m",
+        "route_encoded",
+        "road_type_encoded",
+        "hour_sin",
+        "hour_cos",
+        "is_peak_hour",
+        "is_raining",
+        "is_public_holiday",
+        "current_speed_kmh",
+        "dwell_at_last_stop_s",
+        "driver_id_enc",
+        "is_full_skip",
+        "dist_per_stop",
+        "peak_traffic_index"
+    ],
+    "model_version": "4.0",
+    "training_date": "2026-04-08",
+    "urban_routes": [
+        "138",
+        "177",
+        "187",
+        "240"
+    ],
+    "formula": "eta_seconds = (exp(prediction) - 1) * distance_km"
+}

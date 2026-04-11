@@ -1,0 +1,15 @@
+flask==3.0.3
+gunicorn==21.2.0
+numpy==1.26.4
+pandas==2.2.2
+scikit-learn==1.3.2
+lightgbm==4.3.0
+xgboost==2.0.3
+scipy==1.12.0
+joblib==1.3.2
+sentence-transformers==2.7.0
+nltk==3.8.1
+emoji==2.12.1
+langdetect==1.0.9
+deep-translator==1.11.4
+openpyxl==3.1.2

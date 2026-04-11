@@ -1,0 +1,656 @@
+/* ===== CSS CUSTOM PROPERTY FOR NEON ANIMATION ===== */
+@property --neon-angle {
+  syntax: '<angle>';
+  initial-value: 0deg;
+  inherits: false;
+}
+
+@property --input-neon-angle {
+  syntax: '<angle>';
+  initial-value: 0deg;
+  inherits: false;
+}
+
+/* ===== LOGIN PAGE ===== */
+.login-page {
+  min-height: 100vh;
+  display: flex;
+  background: #050d1a;
+  overflow: hidden;
+}
+
+/* ===== LEFT SIDE ===== */
+.login-left {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  background: radial-gradient(ellipse at center, #0a1e3d 0%, #050d1a 70%);
+}
+
+.login-logo-section {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  position: relative;
+}
+
+/* ===== ORBITAL RINGS ===== */
+.orbital-container {
+  position: absolute;
+  width: 400px;
+  height: 400px;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -60%);
+  pointer-events: none;
+}
+
+.orbital-ring {
+  position: absolute;
+  border-radius: 50%;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+}
+
+.orbital-ring-1 {
+  width: 300px;
+  height: 300px;
+  border: 1px solid rgba(30, 80, 180, 0.3);
+}
+
+.orbital-ring-2 {
+  width: 360px;
+  height: 360px;
+  border: 1px solid rgba(30, 80, 180, 0.15);
+  border-style: dashed;
+}
+
+.orbital-ring-3 {
+  width: 420px;
+  height: 420px;
+  border: 1px solid rgba(30, 80, 180, 0.08);
+}
+
+/* Orbiting dots */
+.orbital-dot {
+  position: absolute;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #1a6cf0;
+  box-shadow: 0 0 12px #1a6cf0, 0 0 24px rgba(26, 108, 240, 0.4);
+  top: 50%;
+  left: 50%;
+}
+
+.orbital-dot-1 {
+  animation: orbit1 8s linear infinite;
+}
+.orbital-dot-2 {
+  animation: orbit2 12s linear infinite;
+  background: #3a8aef;
+  box-shadow: 0 0 12px #3a8aef;
+}
+.orbital-dot-3 {
+  animation: orbit3 16s linear infinite reverse;
+  width: 4px;
+  height: 4px;
+  background: #6ab4ff;
+  box-shadow: 0 0 10px #6ab4ff;
+}
+
+@keyframes orbit1 {
+  from { transform: translate(-50%, -50%) rotate(0deg) translateX(150px) rotate(0deg); }
+  to   { transform: translate(-50%, -50%) rotate(360deg) translateX(150px) rotate(-360deg); }
+}
+@keyframes orbit2 {
+  from { transform: translate(-50%, -50%) rotate(0deg) translateX(180px) rotate(0deg); }
+  to   { transform: translate(-50%, -50%) rotate(360deg) translateX(180px) rotate(-360deg); }
+}
+@keyframes orbit3 {
+  from { transform: translate(-50%, -50%) rotate(0deg) translateX(210px) rotate(0deg); }
+  to   { transform: translate(-50%, -50%) rotate(360deg) translateX(210px) rotate(-360deg); }
+}
+
+/* ===== ROTATING LOGO ===== */
+.logo-wrapper {
+  position: relative;
+  width: 180px;
+  height: 180px;
+  z-index: 2;
+}
+
+.logo-glow {
+  position: absolute;
+  inset: -30px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(26, 108, 240, 0.35) 0%, rgba(10, 30, 80, 0.15) 50%, transparent 70%);
+  animation: pulseGlow 3s ease-in-out infinite;
+}
+
+@keyframes pulseGlow {
+  0%, 100% { opacity: 0.5; transform: scale(1); }
+  50%      { opacity: 1; transform: scale(1.08); }
+}
+
+.logo-image {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 2px solid rgba(30, 80, 180, 0.4);
+  box-shadow:
+    0 0 30px rgba(26, 108, 240, 0.3),
+    0 0 60px rgba(26, 108, 240, 0.15),
+    inset 0 0 20px rgba(26, 108, 240, 0.1);
+}
+
+.logo-image.rotating {
+  animation: rotateLogo 20s linear infinite;
+}
+
+@keyframes rotateLogo {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+
+/* ===== BRAND TEXT ===== */
+.brand-text {
+  text-align: center;
+  margin-top: 36px;
+  z-index: 2;
+}
+
+.brand-name {
+  font-size: 34px;
+  font-weight: 300;
+  color: #ffffff;
+  letter-spacing: 14px;
+  margin-bottom: 10px;
+}
+
+.brand-dot {
+  width: 6px;
+  height: 6px;
+  background: #1a6cf0;
+  border-radius: 50%;
+  margin: 0 auto 12px;
+  box-shadow: 0 0 12px #1a6cf0, 0 0 24px rgba(26, 108, 240, 0.3);
+}
+
+.brand-tagline {
+  font-size: 13px;
+  color: #3a6a9a;
+  letter-spacing: 8px;
+  font-weight: 400;
+}
+
+/* ===== COPYRIGHT ===== */
+.login-copyright {
+  position: absolute;
+  bottom: 28px;
+  color: #1e3a5a;
+  font-size: 12px;
+  letter-spacing: 0.5px;
+}
+
+/* ===== RIGHT SIDE ===== */
+.login-right {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 40px;
+}
+
+/* ===== SIGN-IN CARD WITH NEON BORDER ===== */
+.login-card-wrapper {
+  position: relative;
+  width: 100%;
+  max-width: 440px;
+  border-radius: 20px;
+  padding: 2px;
+}
+
+/* Neon traveling border on the card */
+.neon-border {
+  position: absolute;
+  inset: 0;
+  border-radius: 20px;
+  overflow: hidden;
+  z-index: 0;
+}
+
+.neon-border::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 20px;
+  border: 1px solid rgba(26, 108, 240, 0.12);
+}
+
+.neon-light {
+  position: absolute;
+  inset: 0;
+  border-radius: 20px;
+  background: conic-gradient(
+    from var(--neon-angle, 0deg) at 50% 50%,
+    transparent 0deg,
+    transparent 330deg,
+    rgba(26, 108, 240, 0.6) 340deg,
+    rgba(74, 158, 255, 0.9) 348deg,
+    #ffffff 354deg,
+    rgba(74, 158, 255, 0.9) 357deg,
+    rgba(26, 108, 240, 0.6) 360deg
+  );
+  mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  mask-composite: exclude;
+  -webkit-mask-composite: xor;
+  padding: 2px;
+  animation: neonTravel 4s linear infinite;
+}
+
+.neon-light::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 20px;
+  background: conic-gradient(
+    from var(--neon-angle, 0deg) at 50% 50%,
+    transparent 0deg,
+    transparent 320deg,
+    rgba(26, 108, 240, 0.15) 340deg,
+    rgba(74, 158, 255, 0.3) 352deg,
+    rgba(74, 158, 255, 0.15) 360deg
+  );
+  mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  mask-composite: exclude;
+  -webkit-mask-composite: xor;
+  padding: 8px;
+  filter: blur(10px);
+  animation: neonTravel 4s linear infinite;
+}
+
+@keyframes neonTravel {
+  from { --neon-angle: 0deg; }
+  to   { --neon-angle: 360deg; }
+}
+
+/* ===== CARD BODY ===== */
+.login-card {
+  position: relative;
+  z-index: 1;
+  background: linear-gradient(160deg, #0f2040 0%, #0c1a38 40%, #0e1e3e 100%);
+  border-radius: 18px;
+  padding: 40px 36px;
+}
+
+/* Card header */
+.card-header {
+  margin-bottom: 28px;
+}
+
+.card-logo {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 20px;
+}
+
+.card-logo-img {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 1px solid rgba(26, 108, 240, 0.3);
+}
+
+.card-logo-text {
+  font-size: 13px;
+  font-weight: 600;
+  color: #6a9ace;
+  letter-spacing: 2.5px;
+}
+
+.card-title {
+  font-size: 26px;
+  font-weight: 700;
+  color: #ffffff;
+}
+
+/* ===== FORM ===== */
+.login-form {
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+}
+
+.form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.form-label {
+  font-size: 11px;
+  font-weight: 700;
+  color: #5a7a9a;
+  letter-spacing: 1.5px;
+}
+
+/* ===== NEON INPUT WRAPPER ===== */
+.neon-input-wrapper {
+  position: relative;
+  border-radius: 12px;
+  padding: 1.5px;
+}
+
+/* Neon traveling border on inputs */
+.neon-input-border {
+  position: absolute;
+  inset: 0;
+  border-radius: 12px;
+  overflow: hidden;
+  z-index: 0;
+  pointer-events: none;
+}
+
+.neon-input-border::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 12px;
+  border: 1px solid rgba(26, 108, 240, 0.18);
+}
+
+.neon-input-light {
+  position: absolute;
+  inset: 0;
+  border-radius: 12px;
+  background: conic-gradient(
+    from var(--input-neon-angle, 0deg) at 50% 50%,
+    transparent 0deg,
+    transparent 320deg,
+    rgba(26, 108, 240, 0.5) 335deg,
+    rgba(74, 158, 255, 0.8) 346deg,
+    #c0dfff 352deg,
+    rgba(74, 158, 255, 0.8) 356deg,
+    rgba(26, 108, 240, 0.5) 360deg
+  );
+  mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  mask-composite: exclude;
+  -webkit-mask-composite: xor;
+  padding: 1.5px;
+  animation: inputNeonTravel 3s linear infinite;
+}
+
+.neon-input-light::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 12px;
+  background: conic-gradient(
+    from var(--input-neon-angle, 0deg) at 50% 50%,
+    transparent 0deg,
+    transparent 310deg,
+    rgba(26, 108, 240, 0.1) 335deg,
+    rgba(74, 158, 255, 0.2) 350deg,
+    rgba(74, 158, 255, 0.1) 360deg
+  );
+  mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  mask-composite: exclude;
+  -webkit-mask-composite: xor;
+  padding: 5px;
+  filter: blur(6px);
+}
+
+@keyframes inputNeonTravel {
+  from { --input-neon-angle: 0deg; }
+  to   { --input-neon-angle: 360deg; }
+}
+
+/* Stagger the second input's animation */
+.form-group:nth-child(2) .neon-input-light {
+  animation-delay: -1.5s;
+}
+.form-group:nth-child(2) .neon-input-light::after {
+  animation-delay: -1.5s;
+}
+
+/* Input inner content */
+.input-inner {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: rgba(8, 18, 38, 0.95);
+  border-radius: 11px;
+  padding: 14px 16px;
+}
+
+.input-icon {
+  color: #3a6a9a;
+  flex-shrink: 0;
+}
+
+.form-input {
+  border: none;
+  background: transparent;
+  flex: 1;
+  font-size: 14px;
+  color: #b0d0f0;
+  letter-spacing: 0.3px;
+  min-width: 0;
+}
+
+.form-input::placeholder {
+  color: #2a4a6a;
+}
+
+.form-input[type="password"] {
+  letter-spacing: 4px;
+}
+
+.password-toggle {
+  background: none;
+  border: none;
+  color: #3a6a9a;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+  transition: color 0.2s;
+}
+
+.password-toggle:hover {
+  color: #5a9adf;
+}
+
+/* ===== OPTIONS ROW ===== */
+.form-options {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.remember-me {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: #4a6a8a;
+  cursor: pointer;
+  position: relative;
+}
+
+.remember-me input {
+  position: absolute;
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.checkmark {
+  width: 16px;
+  height: 16px;
+  border: 1.5px solid #1e3a5a;
+  border-radius: 4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+  flex-shrink: 0;
+  background: rgba(8, 18, 38, 0.6);
+}
+
+.remember-me input:checked + .checkmark {
+  background: #1a6cf0;
+  border-color: #1a6cf0;
+}
+
+.remember-me input:checked + .checkmark::after {
+  content: '';
+  width: 4px;
+  height: 8px;
+  border: solid #fff;
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg) translateY(-1px);
+}
+
+.forgot-link {
+  font-size: 13px;
+  color: #4a9eff;
+  font-weight: 500;
+  transition: color 0.2s;
+}
+
+.forgot-link:hover {
+  color: #6ab4ff;
+  text-decoration: underline;
+}
+
+/* ===== SIGN IN BUTTON ===== */
+.signin-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  background: linear-gradient(135deg, #1050c0 0%, #1a6cf0 50%, #2a80ff 100%);
+  color: #ffffff;
+  border: none;
+  border-radius: 12px;
+  padding: 16px;
+  font-size: 16px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  cursor: pointer;
+  transition: all 0.3s;
+  position: relative;
+  overflow: hidden;
+}
+
+.signin-btn::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(135deg, transparent 0%, rgba(255, 255, 255, 0.1) 50%, transparent 100%);
+  opacity: 0;
+  transition: opacity 0.3s;
+}
+
+.signin-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 8px 30px rgba(26, 108, 240, 0.45);
+}
+
+.signin-btn:hover::before {
+  opacity: 1;
+}
+
+.signin-btn:active {
+  transform: translateY(0);
+}
+
+/* ===== SECURED BADGE ===== */
+.secured-badge {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 30px;
+  padding-top: 22px;
+  border-top: 1px solid rgba(20, 50, 90, 0.25);
+  font-size: 11px;
+  color: #2e4e6e;
+  letter-spacing: 2px;
+  font-weight: 500;
+}
+
+.secured-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #22c55e;
+  box-shadow: 0 0 8px rgba(34, 197, 94, 0.6);
+  animation: pulseDot 2s ease-in-out infinite;
+}
+
+@keyframes pulseDot {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.4; }
+}
+
+/* ===== RESPONSIVE ===== */
+@media (max-width: 960px) {
+  .login-page {
+    flex-direction: column;
+  }
+
+  .login-left {
+    padding: 48px 20px 32px;
+    min-height: auto;
+  }
+
+  .orbital-container {
+    width: 280px;
+    height: 280px;
+  }
+
+  .orbital-ring-1 { width: 220px; height: 220px; }
+  .orbital-ring-2 { width: 260px; height: 260px; }
+  .orbital-ring-3 { width: 300px; height: 300px; }
+
+  .logo-wrapper {
+    width: 160px;
+    height: 160px;
+  }
+
+  .brand-name {
+    font-size: 26px;
+    letter-spacing: 10px;
+  }
+
+  .login-copyright {
+    position: relative;
+    bottom: auto;
+    margin-top: 24px;
+  }
+
+  .login-right {
+    padding: 20px;
+    padding-bottom: 40px;
+  }
+
+  .login-card {
+    padding: 32px 24px;
+  }
+}

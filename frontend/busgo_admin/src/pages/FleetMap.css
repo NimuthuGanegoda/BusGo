@@ -1,0 +1,257 @@
+.fleet-map-page {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+}
+
+.fleet-map-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 20px;
+  background: #fff;
+  border-bottom: 1px solid #e2e6ed;
+}
+
+.map-filter {
+  padding: 8px 12px;
+  border: 1px solid #e2e6ed;
+  border-radius: 8px;
+  font-size: 13px;
+  color: #1a1a2e;
+  background: #fff;
+  cursor: pointer;
+}
+
+.map-toolbar-right {
+  margin-left: auto;
+  display: flex;
+  gap: 8px;
+}
+
+.map-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  border: 1px solid #e2e6ed;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  background: #fff;
+  color: #555;
+  transition: all 0.2s;
+}
+
+.map-btn:hover {
+  background: #f5f7fa;
+}
+
+.map-btn.primary {
+  background: #e74c3c;
+  color: #fff;
+  border-color: #e74c3c;
+}
+
+.map-btn.primary:hover {
+  background: #d63031;
+}
+
+.fleet-map-content {
+  flex: 1;
+  display: flex;
+  overflow: hidden;
+}
+
+.fleet-map-container {
+  flex: 1;
+  position: relative;
+}
+
+.map-crowd-legend {
+  position: absolute;
+  bottom: 20px;
+  left: 20px;
+  z-index: 1000;
+  background: #1a1a2e;
+  color: #fff;
+  padding: 8px 16px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  font-size: 12px;
+}
+
+.legend-title {
+  font-weight: 700;
+  letter-spacing: 0.5px;
+}
+
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.legend-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+}
+
+.legend-dot.green { background: #4caf50; }
+.legend-dot.yellow { background: #f59e0b; }
+.legend-dot.red { background: #e74c3c; }
+
+/* Bus Detail Panel */
+.bus-detail-panel {
+  width: 320px;
+  background: #fff;
+  border-left: 1px solid #e2e6ed;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}
+
+.bus-detail-header {
+  padding: 20px;
+  border-bottom: 1px solid #f0f2f5;
+}
+
+.bus-detail-header h2 {
+  font-size: 16px;
+  font-weight: 700;
+  color: #1a1a2e;
+  margin-bottom: 4px;
+}
+
+.bus-detail-header p {
+  font-size: 12px;
+  color: #9ca3af;
+}
+
+.bus-detail-rows {
+  padding: 16px 20px;
+  flex: 1;
+}
+
+.detail-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 0;
+  border-bottom: 1px solid #f5f7fa;
+}
+
+.detail-label {
+  font-size: 12px;
+  color: #9ca3af;
+  font-weight: 500;
+  letter-spacing: 0.3px;
+}
+
+.detail-value {
+  font-size: 14px;
+  color: #1a1a2e;
+  font-weight: 500;
+  text-align: right;
+}
+
+.detail-value.bold {
+  font-weight: 700;
+}
+
+.detail-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.detail-status .status-indicator {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.detail-status.active { color: #16a34a; }
+.detail-status.active .status-indicator { background: #16a34a; }
+.detail-status.breakdown { color: #e74c3c; }
+.detail-status.breakdown .status-indicator { background: #e74c3c; }
+
+.passenger-bar-wrap {
+  padding: 4px 0 10px;
+  border-bottom: 1px solid #f5f7fa;
+}
+
+.passenger-bar {
+  height: 8px;
+  background: #f0f2f5;
+  border-radius: 4px;
+  overflow: hidden;
+  margin-bottom: 4px;
+}
+
+.passenger-bar-fill {
+  height: 100%;
+  border-radius: 4px;
+  transition: width 0.3s;
+}
+
+.passenger-bar-fill.low { background: #4caf50; }
+.passenger-bar-fill.moderate { background: #f59e0b; }
+.passenger-bar-fill.high { background: #e74c3c; }
+
+.crowd-label {
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.crowd-label.low { color: #4caf50; }
+.crowd-label.moderate { color: #f59e0b; }
+.crowd-label.high { color: #e74c3c; }
+
+.bus-detail-actions {
+  padding: 16px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.detail-action-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 12px;
+  border-radius: 10px;
+  font-size: 14px;
+  font-weight: 600;
+  transition: all 0.2s;
+}
+
+.detail-action-btn.primary {
+  background: #e67e22;
+  color: #fff;
+}
+
+.detail-action-btn.primary:hover {
+  background: #d35400;
+}
+
+.detail-action-btn.secondary {
+  background: #fff;
+  color: #1a1a2e;
+  border: 1px solid #e2e6ed;
+}
+
+.detail-action-btn.secondary:hover {
+  background: #f5f7fa;
+}
+
+/* Override leaflet defaults */
+.leaflet-container {
+  font-family: 'Inter', sans-serif;
+}
