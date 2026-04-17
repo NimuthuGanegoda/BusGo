@@ -1,446 +1,600 @@
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import {
-  Plus, Download, Search, Pencil, Power, Trash2, Check, X,
-  UserPlus, Shield, Users,
+  Plus, Search, Power, Check, X,
+  UserPlus, Shield, Users, RefreshCw,
+  FileImage, Phone, Mail, Calendar, Eye,
 } from 'lucide-react';
-import { drivers as initialDrivers, passengers as initialPassengers, admins as initialAdmins } from '../data/mockData';
-import type { Driver, Passenger, Admin } from '../types';
 import './UserManagement.css';
+
+const API   = 'http://localhost:5000/api/admin';
+const token = () => localStorage.getItem('busgo_access_token') ?? '';
+
+type User = {
+  id: string;
+  email: string;
+  full_name: string;
+  username: string | null;
+  phone: string | null;
+  role: 'passenger' | 'driver' | 'admin';
+  is_active: boolean;
+  membership_type: string;
+  license_url: string | null;
+  created_at: string;
+};
 
 type Tab = 'passengers' | 'drivers' | 'admins';
 
 export default function UserManagement() {
-  const [activeTab, setActiveTab] = useState<Tab>('drivers');
-  const [searchQuery, setSearchQuery] = useState('');
-  const [statusFilter, setStatusFilter] = useState('all');
-  const [routeFilter, setRouteFilter] = useState('all');
-  const [sortBy, setSortBy] = useState('name');
-  const [currentPage, setCurrentPage] = useState(1);
+  const [activeTab,      setActiveTab]      = useState<Tab>('drivers');
+  const [users,          setUsers]          = useState<User[]>([]);
+  const [loading,        setLoading]        = useState(true);
+  const [searchQuery,    setSearchQuery]    = useState('');
+  const [statusFilter,   setStatusFilter]   = useState('all');
+  const [toast,          setToast]          = useState('');
+  const [toastType,      setToastType]      = useState<'success' | 'error'>('success');
+  const [selectedDriver, setSelectedDriver] = useState<User | null>(null);
+  const [licenseUrl,     setLicenseUrl]     = useState<string | null>(null);
+  const [licenseLoading, setLicenseLoading] = useState(false);
 
-  // State for each entity
-  const [driversList, setDriversList] = useState<Driver[]>(initialDrivers);
-  const [passengersList, setPassengersList] = useState<Passenger[]>(initialPassengers);
-  const [adminsList, setAdminsList] = useState<Admin[]>(initialAdmins);
-  const [toast, setToast] = useState<string | null>(null);
+  // Add user modal
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [addForm,      setAddForm]      = useState({
+    full_name: '', email: '', phone: '', password: '',
+    role: 'driver' as 'driver' | 'passenger' | 'admin',
+  });
+  const [addLoading, setAddLoading] = useState(false);
+  const [addError,   setAddError]   = useState('');
 
-  const showToast = (msg: string) => {
-    setToast(msg);
-    setTimeout(() => setToast(null), 3500);
+  const showToast = (msg: string, type: 'success' | 'error' = 'success') => {
+    setToast(msg); setToastType(type);
+    setTimeout(() => setToast(''), 4000);
   };
 
-  const pendingCount = driversList.filter((d) => d.status === 'Pending').length;
+  const fetchUsers = useCallback(async () => {
+    setLoading(true);
+    try {
+      const roleMap: Record<Tab, string> = {
+        drivers: 'driver', passengers: 'passenger', admins: 'admin',
+      };
+      const res  = await fetch(`${API}/users?role=${roleMap[activeTab]}&page_size=100`, {
+        headers: { Authorization: `Bearer ${token()}` },
+      });
+      const json = await res.json();
+      setUsers(Array.isArray(json.data) ? json.data : []);
+    } catch (e) {
+      console.error('[UserManagement] Fetch error:', e);
+    } finally {
+      setLoading(false);
+    }
+  }, [activeTab]);
 
-  // Driver filters
-  const filteredDrivers = driversList.filter((d) => {
-    if (statusFilter !== 'all' && d.status !== statusFilter) return false;
-    if (searchQuery && !d.name.toLowerCase().includes(searchQuery.toLowerCase()) && !d.id.toLowerCase().includes(searchQuery.toLowerCase())) return false;
-    return true;
+  useEffect(() => { fetchUsers(); }, [fetchUsers]);
+
+  // ── Fetch signed license URL from backend ──────────────────────────────────
+  const openDriverPanel = async (user: User) => {
+    setSelectedDriver(user);
+    setLicenseUrl(null);
+
+    if (!user.license_url) return;
+
+    setLicenseLoading(true);
+    try {
+      const res  = await fetch(`${API}/users/${user.id}/license-url`, {
+        headers: { Authorization: `Bearer ${token()}` },
+      });
+      const json = await res.json();
+      if (res.ok && json.data?.signed_url) {
+        setLicenseUrl(json.data.signed_url);
+      }
+    } catch (e) {
+      console.error('[License]', e);
+    } finally {
+      setLicenseLoading(false);
+    }
+  };
+
+  const closePanel = () => {
+    setSelectedDriver(null);
+    setLicenseUrl(null);
+  };
+
+  // ── Filtered list ──────────────────────────────────────────────────────────
+  const filtered = users.filter(u => {
+    const q           = searchQuery.toLowerCase();
+    const matchSearch = !q ||
+      u.full_name?.toLowerCase().includes(q) ||
+      u.email?.toLowerCase().includes(q) ||
+      u.id?.toLowerCase().includes(q);
+    if (statusFilter === 'pending')  return matchSearch && !u.is_active && u.role === 'driver';
+    if (statusFilter === 'active')   return matchSearch && u.is_active;
+    if (statusFilter === 'inactive') return matchSearch && !u.is_active;
+    return matchSearch;
   });
 
-  // Passenger filters
-  const filteredPassengers = passengersList.filter((p) => {
-    if (statusFilter !== 'all' && p.status !== statusFilter) return false;
-    if (searchQuery && !p.name.toLowerCase().includes(searchQuery.toLowerCase()) && !p.id.toLowerCase().includes(searchQuery.toLowerCase())) return false;
-    return true;
-  });
+  const pendingCount = users.filter(u => u.role === 'driver' && !u.is_active).length;
 
-  // Admin filters
-  const filteredAdmins = adminsList.filter((a) => {
-    if (statusFilter !== 'all' && a.status !== statusFilter) return false;
-    if (searchQuery && !a.name.toLowerCase().includes(searchQuery.toLowerCase()) && !a.id.toLowerCase().includes(searchQuery.toLowerCase())) return false;
-    return true;
-  });
-
-  // Driver actions
-  const approveDriver = (id: string) => {
-    setDriversList((prev) => prev.map((d) => d.id === id ? { ...d, status: 'Active' as const, pendingReview: false, rating: 5.0 } : d));
-    showToast('Driver approved successfully');
-  };
-  const rejectDriver = (id: string) => {
-    setDriversList((prev) => prev.filter((d) => d.id !== id));
-    showToast('Driver application rejected');
-  };
-  const deactivateDriver = (id: string) => {
-    setDriversList((prev) => prev.map((d) => d.id === id ? { ...d, status: 'Inactive' as const } : d));
-    showToast('Driver deactivated');
-  };
-  const activateDriver = (id: string) => {
-    setDriversList((prev) => prev.map((d) => d.id === id ? { ...d, status: 'Active' as const } : d));
-    showToast('Driver activated');
-  };
-  const deleteDriver = (id: string) => {
-    setDriversList((prev) => prev.filter((d) => d.id !== id));
-    showToast('Driver deleted');
+  // ── Actions ────────────────────────────────────────────────────────────────
+  const approveDriver = async (id: string) => {
+    try {
+      const res = await fetch(`${API}/users/${id}/reactivate`, {
+        method: 'PATCH',
+        headers: { Authorization: `Bearer ${token()}` },
+      });
+      if (!res.ok) throw new Error();
+      setUsers(prev => prev.map(u => u.id === id ? { ...u, is_active: true } : u));
+      if (selectedDriver?.id === id) setSelectedDriver(prev => prev ? { ...prev, is_active: true } : null);
+      showToast('✅ Driver approved — they can now log in');
+    } catch { showToast('❌ Failed to approve driver', 'error'); }
   };
 
-  // Passenger actions
-  const suspendPassenger = (id: string) => {
-    setPassengersList((prev) => prev.map((p) => p.id === id ? { ...p, status: 'Suspended' as const } : p));
-    showToast('Passenger suspended');
-  };
-  const activatePassenger = (id: string) => {
-    setPassengersList((prev) => prev.map((p) => p.id === id ? { ...p, status: 'Active' as const } : p));
-    showToast('Passenger activated');
-  };
-  const deletePassenger = (id: string) => {
-    setPassengersList((prev) => prev.filter((p) => p.id !== id));
-    showToast('Passenger deleted');
+  const rejectDriver = async (id: string) => {
+    try {
+      await fetch(`${API}/users/${id}/deactivate`, {
+        method: 'PATCH',
+        headers: { Authorization: `Bearer ${token()}` },
+      });
+      setUsers(prev => prev.filter(u => u.id !== id));
+      closePanel();
+      showToast('Driver application rejected');
+    } catch { showToast('❌ Failed to reject driver', 'error'); }
   };
 
-  // Admin actions
-  const deactivateAdmin = (id: string) => {
-    setAdminsList((prev) => prev.map((a) => a.id === id ? { ...a, status: 'Inactive' as const } : a));
-    showToast('Admin deactivated');
-  };
-  const activateAdmin = (id: string) => {
-    setAdminsList((prev) => prev.map((a) => a.id === id ? { ...a, status: 'Active' as const } : a));
-    showToast('Admin activated');
-  };
-  const deleteAdmin = (id: string) => {
-    setAdminsList((prev) => prev.filter((a) => a.id !== id));
-    showToast('Admin removed');
+  const deactivateUser = async (id: string) => {
+    try {
+      const res = await fetch(`${API}/users/${id}/deactivate`, {
+        method: 'PATCH',
+        headers: { Authorization: `Bearer ${token()}` },
+      });
+      if (!res.ok) throw new Error();
+      setUsers(prev => prev.map(u => u.id === id ? { ...u, is_active: false } : u));
+      showToast('User deactivated');
+    } catch { showToast('❌ Failed to deactivate user', 'error'); }
   };
 
-  const getAddLabel = () => {
-    if (activeTab === 'passengers') return 'Add Passenger';
-    if (activeTab === 'admins') return 'Add Admin';
-    return 'Add Driver';
+  const reactivateUser = async (id: string) => {
+    try {
+      const res = await fetch(`${API}/users/${id}/reactivate`, {
+        method: 'PATCH',
+        headers: { Authorization: `Bearer ${token()}` },
+      });
+      if (!res.ok) throw new Error();
+      setUsers(prev => prev.map(u => u.id === id ? { ...u, is_active: true } : u));
+      showToast('User activated');
+    } catch { showToast('❌ Failed to activate user', 'error'); }
   };
 
-  const getStatusOptions = () => {
-    if (activeTab === 'passengers') return ['Active', 'Suspended', 'Inactive'];
-    if (activeTab === 'admins') return ['Active', 'Inactive'];
-    return ['Active', 'Inactive', 'Pending'];
+  // ── Add user ───────────────────────────────────────────────────────────────
+  const handleAddUser = async () => {
+    if (!addForm.full_name || !addForm.email || !addForm.password) {
+      setAddError('Full name, email and password are required'); return;
+    }
+    setAddLoading(true); setAddError('');
+    try {
+      const res  = await fetch(`http://localhost:5000/api/auth/register`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token()}` },
+        body: JSON.stringify({
+          full_name: addForm.full_name, email: addForm.email.toLowerCase(),
+          phone: addForm.phone || undefined, password: addForm.password,
+          role: addForm.role, membership_type: 'standard',
+        }),
+      });
+      const json = await res.json();
+      if (!res.ok) { setAddError(json.message || 'Failed to create user'); return; }
+
+      if (addForm.role === 'driver' && json.data?.user?.id) {
+        await fetch(`${API}/users/${json.data.user.id}/reactivate`, {
+          method: 'PATCH',
+          headers: { Authorization: `Bearer ${token()}` },
+        });
+      }
+
+      setShowAddModal(false);
+      setAddForm({ full_name: '', email: '', phone: '', password: '', role: 'driver' });
+      showToast(`✅ ${addForm.role.charAt(0).toUpperCase() + addForm.role.slice(1)} created`);
+      fetchUsers();
+    } catch { setAddError('Connection failed'); }
+    finally { setAddLoading(false); }
   };
 
-  const getTotalLabel = () => {
-    if (activeTab === 'passengers') return `${filteredPassengers.length} of ${passengersList.length} passengers`;
-    if (activeTab === 'admins') return `${filteredAdmins.length} of ${adminsList.length} admins`;
-    return `${filteredDrivers.length} of ${driversList.length} drivers`;
+  const getStatusLabel = (u: User) => {
+    if (u.role === 'driver' && !u.is_active) return 'pending';
+    return u.is_active ? 'active' : 'inactive';
+  };
+
+  const getStatusText = (u: User) => {
+    if (u.role === 'driver' && !u.is_active) return 'Pending';
+    return u.is_active ? 'Active' : 'Inactive';
   };
 
   return (
     <div className="users-page">
+
       {/* Toast */}
       {toast && (
-        <div className="users-toast">
-          <Check size={16} />
+        <div className="users-toast"
+          style={{ background: toastType === 'error' ? '#dc2626' : '#16a34a' }}>
+          {toastType === 'success' ? <Check size={16} /> : <X size={16} />}
           <span>{toast}</span>
-          <button onClick={() => setToast(null)}><X size={14} /></button>
+          <button onClick={() => setToast('')}><X size={14} /></button>
         </div>
       )}
 
+      {/* Add User Modal */}
+      {showAddModal && (
+        <div className="em-modal-overlay" onClick={() => setShowAddModal(false)}>
+          <div className="em-modal" onClick={e => e.stopPropagation()} style={{ maxWidth: '440px' }}>
+            <div className="em-modal-header">
+              <h3>Add New User</h3>
+              <button className="em-modal-close" onClick={() => setShowAddModal(false)}>
+                <X size={20} />
+              </button>
+            </div>
+            <div className="em-modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              {addError && (
+                <div style={{ background: '#fef2f2', border: '1px solid #fca5a5',
+                  borderRadius: '8px', padding: '10px 14px', color: '#dc2626', fontSize: '13px' }}>
+                  {addError}
+                </div>
+              )}
+              <div>
+                <label style={{ fontSize: '11px', fontWeight: 700, color: '#6b7280', letterSpacing: '0.5px' }}>ROLE</label>
+                <select value={addForm.role}
+                  onChange={e => setAddForm(f => ({ ...f, role: e.target.value as any }))}
+                  style={{ width: '100%', marginTop: '6px', padding: '10px 12px',
+                    border: '1px solid #e2e6ed', borderRadius: '8px', fontSize: '14px' }}>
+                  <option value="driver">Driver</option>
+                  <option value="passenger">Passenger</option>
+                  <option value="admin">Admin</option>
+                </select>
+              </div>
+              {(['full_name', 'email', 'phone', 'password'] as const).map(field => (
+                <div key={field}>
+                  <label style={{ fontSize: '11px', fontWeight: 700, color: '#6b7280', letterSpacing: '0.5px' }}>
+                    {field.replace('_', ' ').toUpperCase()}{field === 'phone' ? ' (optional)' : ''}
+                  </label>
+                  <input
+                    type={field === 'password' ? 'password' : field === 'email' ? 'email' : 'text'}
+                    value={addForm[field]}
+                    onChange={e => setAddForm(f => ({ ...f, [field]: e.target.value }))}
+                    placeholder={field === 'full_name' ? 'Nimal Perera'
+                      : field === 'email' ? 'user@example.com'
+                      : field === 'phone' ? '+94 77 123 4567' : '••••••••'}
+                    style={{ width: '100%', marginTop: '6px', padding: '10px 12px',
+                      border: '1px solid #e2e6ed', borderRadius: '8px',
+                      fontSize: '14px', boxSizing: 'border-box' }}
+                  />
+                </div>
+              ))}
+              <button onClick={handleAddUser} disabled={addLoading}
+                style={{ marginTop: '8px', padding: '12px', background: '#1a6cf0',
+                  color: '#fff', border: 'none', borderRadius: '8px',
+                  fontSize: '14px', fontWeight: 700, cursor: 'pointer' }}>
+                {addLoading ? 'Creating...' : 'Create User'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Header */}
       <div className="users-header">
         <h1>User Management</h1>
         <div className="users-header-actions">
-          <button className="users-btn primary">
-            <Plus size={16} /> {getAddLabel()}
+          <button className="users-btn primary" onClick={() => setShowAddModal(true)}>
+            <Plus size={16} /> Add User
           </button>
-          <button className="users-btn outline">
-            <Download size={16} /> Export
+          <button className="users-btn outline" onClick={fetchUsers}>
+            <RefreshCw size={16} /> Refresh
           </button>
         </div>
       </div>
 
+      {/* Tabs */}
       <div className="users-tabs">
-        <button
-          className={`users-tab ${activeTab === 'passengers' ? 'active' : ''}`}
-          onClick={() => { setActiveTab('passengers'); setSearchQuery(''); setStatusFilter('all'); }}
-        >
+        <button className={`users-tab ${activeTab === 'passengers' ? 'active' : ''}`}
+          onClick={() => { setActiveTab('passengers'); setSearchQuery(''); setStatusFilter('all'); closePanel(); }}>
           <Users size={16} /> Passengers
-          <span className="tab-count">{passengersList.length}</span>
+          <span className="tab-count">{activeTab === 'passengers' ? users.length : '—'}</span>
         </button>
-        <button
-          className={`users-tab ${activeTab === 'drivers' ? 'active' : ''}`}
-          onClick={() => { setActiveTab('drivers'); setSearchQuery(''); setStatusFilter('all'); }}
-        >
+        <button className={`users-tab ${activeTab === 'drivers' ? 'active' : ''}`}
+          onClick={() => { setActiveTab('drivers'); setSearchQuery(''); setStatusFilter('all'); closePanel(); }}>
           <UserPlus size={16} /> Drivers
           {pendingCount > 0 && <span className="tab-badge">{pendingCount}</span>}
         </button>
-        <button
-          className={`users-tab ${activeTab === 'admins' ? 'active' : ''}`}
-          onClick={() => { setActiveTab('admins'); setSearchQuery(''); setStatusFilter('all'); }}
-        >
+        <button className={`users-tab ${activeTab === 'admins' ? 'active' : ''}`}
+          onClick={() => { setActiveTab('admins'); setSearchQuery(''); setStatusFilter('all'); closePanel(); }}>
           <Shield size={16} /> Admins
-          <span className="tab-count">{adminsList.length}</span>
+          <span className="tab-count">{activeTab === 'admins' ? users.length : '—'}</span>
         </button>
       </div>
 
+      {/* Filters */}
       <div className="users-filters">
         <div className="users-search-wrap">
           <Search size={16} className="search-icon" />
-          <input
-            type="text"
-            placeholder={`Search ${activeTab} by name or ID...`}
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="users-search"
-          />
+          <input type="text" placeholder={`Search ${activeTab}...`}
+            value={searchQuery} onChange={e => setSearchQuery(e.target.value)}
+            className="users-search" />
         </div>
-        <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="users-filter">
-          <option value="all">Status: All</option>
-          {getStatusOptions().map((s) => (
-            <option key={s} value={s}>{s}</option>
-          ))}
+        <select value={statusFilter}
+          onChange={e => setStatusFilter(e.target.value)} className="users-filter">
+          <option value="all">All Status</option>
+          <option value="active">Active</option>
+          <option value="inactive">Inactive</option>
+          {activeTab === 'drivers' && <option value="pending">Pending Approval</option>}
         </select>
-        {activeTab === 'drivers' && (
-          <>
-            <select value={routeFilter} onChange={(e) => setRouteFilter(e.target.value)} className="users-filter">
-              <option value="all">Route</option>
-              <option value="138">Route 138</option>
-              <option value="220">Route 220</option>
-            </select>
-            <select value={sortBy} onChange={(e) => setSortBy(e.target.value)} className="users-filter">
-              <option value="name">Sort: Name</option>
-              <option value="id">Sort: ID</option>
-              <option value="rating">Sort: Rating</option>
-            </select>
-          </>
-        )}
-        <span className="users-showing">Showing {getTotalLabel()}</span>
+        <span className="users-showing">
+          Showing {filtered.length} of {users.length} {activeTab}
+        </span>
       </div>
 
-      {/* ===== DRIVERS TABLE ===== */}
-      {activeTab === 'drivers' && (
-        <div className="users-table-wrap">
-          <table className="users-table">
-            <thead>
-              <tr>
-                <th>ID</th>
-                <th>NAME</th>
-                <th>EMAIL</th>
-                <th>PHONE</th>
-                <th>ROUTE</th>
-                <th>STATUS</th>
-                <th>ACTIONS</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredDrivers.map((driver) => (
-                <tr key={driver.id}>
-                  <td className="driver-id">{driver.id}</td>
-                  <td>
-                    <div className="driver-name-cell">
-                      <span className="driver-name">{driver.name}</span>
-                      {driver.pendingReview ? (
-                        <span className="driver-pending-label">Pending Review</span>
-                      ) : (
-                        <span className="driver-rating">Rating: {driver.rating}</span>
-                      )}
-                    </div>
-                  </td>
-                  <td className="driver-email">{driver.email}</td>
-                  <td>{driver.phone}</td>
-                  <td>
-                    {driver.route ? (
-                      <span className="route-num">{driver.route}</span>
-                    ) : (
-                      <span className="unassigned">Unassigned</span>
-                    )}
-                  </td>
-                  <td>
-                    <span className={`user-status-badge ${driver.status.toLowerCase()}`}>
-                      <span className="status-dot-sm"></span>
-                      {driver.status}
-                    </span>
-                  </td>
-                  <td>
-                    <div className="user-action-btns">
-                      {driver.status === 'Pending' ? (
-                        <>
-                          <button className="user-action-btn green" onClick={() => approveDriver(driver.id)}>
-                            <Check size={14} /> Approve
-                          </button>
-                          <button className="user-action-btn red-outline" onClick={() => rejectDriver(driver.id)}>
-                            <X size={14} /> Reject
-                          </button>
-                        </>
-                      ) : (
-                        <>
-                          <button className="user-action-btn blue">
-                            <Pencil size={14} /> Edit
-                          </button>
-                          {driver.status === 'Active' ? (
-                            <button className="user-action-btn gray" onClick={() => deactivateDriver(driver.id)}>
-                              <Power size={14} /> Deactivate
+      {/* Main layout — table + side panel */}
+      <div style={{ display: 'flex', gap: '16px', alignItems: 'flex-start' }}>
+
+        {/* Table */}
+        <div style={{ flex: 1, minWidth: 0 }}>
+          {loading ? (
+            <div style={{ textAlign: 'center', padding: '40px', color: '#6b7280' }}>
+              Loading {activeTab}...
+            </div>
+          ) : (
+            <div className="users-table-wrap">
+              <table className="users-table">
+                <thead>
+                  <tr>
+                    <th>NAME</th>
+                    <th>EMAIL</th>
+                    <th>PHONE</th>
+                    <th>JOINED</th>
+                    <th>STATUS</th>
+                    <th>ACTIONS</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filtered.map(user => {
+                    const statusLabel = getStatusLabel(user);
+                    const isPending   = user.role === 'driver' && !user.is_active;
+                    const isSelected  = selectedDriver?.id === user.id;
+
+                    return (
+                      <tr key={user.id}
+                        style={{
+                          background: isSelected ? '#eff6ff' : undefined,
+                          cursor: 'pointer',
+                        }}
+                        onClick={() => openDriverPanel(user)}>
+                        <td>
+                          <div className="driver-name-cell">
+                            <span className="driver-name">{user.full_name || '—'}</span>
+                            <span style={{ fontFamily: 'monospace', fontSize: '11px', color: '#9ca3af' }}>
+                              {user.id.slice(0, 8)}…
+                            </span>
+                          </div>
+                        </td>
+                        <td className="driver-email">{user.email}</td>
+                        <td>{user.phone || '—'}</td>
+                        <td style={{ fontSize: '12px', color: '#9ca3af' }}>
+                          {new Date(user.created_at).toLocaleDateString()}
+                        </td>
+                        <td>
+                          <span className={`user-status-badge ${statusLabel}`}>
+                            <span className="status-dot-sm"></span>
+                            {getStatusText(user)}
+                          </span>
+                        </td>
+                        <td onClick={e => e.stopPropagation()}>
+                          <div className="user-action-btns">
+                            {isPending ? (
+                              <>
+                                <button className="user-action-btn green"
+                                  onClick={() => approveDriver(user.id)}>
+                                  <Check size={14} /> Approve
+                                </button>
+                                <button className="user-action-btn red-outline"
+                                  onClick={() => rejectDriver(user.id)}>
+                                  <X size={14} /> Reject
+                                </button>
+                              </>
+                            ) : (
+                              user.is_active ? (
+                                <button className="user-action-btn gray"
+                                  onClick={() => deactivateUser(user.id)}>
+                                  <Power size={14} /> Deactivate
+                                </button>
+                              ) : (
+                                <button className="user-action-btn green"
+                                  onClick={() => reactivateUser(user.id)}>
+                                  <Check size={14} /> Activate
+                                </button>
+                              )
+                            )}
+                            <button className="user-action-btn blue"
+                              onClick={() => openDriverPanel(user)}>
+                              <Eye size={14} /> View
                             </button>
-                          ) : (
-                            <button className="user-action-btn green" onClick={() => activateDriver(driver.id)}>
-                              <Check size={14} /> Activate
-                            </button>
-                          )}
-                          <button className="user-action-btn red" onClick={() => deleteDriver(driver.id)}>
-                            <Trash2 size={14} /> Delete
-                          </button>
-                        </>
-                      )}
-                    </div>
-                  </td>
-                </tr>
-              ))}
-              {filteredDrivers.length === 0 && (
-                <tr><td colSpan={7} className="empty-row">No drivers found</td></tr>
-              )}
-            </tbody>
-          </table>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                  {filtered.length === 0 && (
+                    <tr>
+                      <td colSpan={6} className="empty-row">
+                        {activeTab === 'drivers' && statusFilter === 'pending'
+                          ? '✓ No pending driver applications'
+                          : `No ${activeTab} found`}
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
-      )}
 
-      {/* ===== PASSENGERS TABLE ===== */}
-      {activeTab === 'passengers' && (
-        <div className="users-table-wrap">
-          <table className="users-table">
-            <thead>
-              <tr>
-                <th>ID</th>
-                <th>NAME</th>
-                <th>EMAIL</th>
-                <th>PHONE</th>
-                <th>NIC</th>
-                <th>TRIPS</th>
-                <th>STATUS</th>
-                <th>ACTIONS</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredPassengers.map((psg) => (
-                <tr key={psg.id}>
-                  <td className="driver-id">{psg.id}</td>
-                  <td>
-                    <div className="driver-name-cell">
-                      <span className="driver-name">{psg.name}</span>
-                      <span className="driver-rating">Since {psg.registeredDate}</span>
-                    </div>
-                  </td>
-                  <td className="driver-email">{psg.email}</td>
-                  <td>{psg.phone}</td>
-                  <td><span className="nic-badge">{psg.nic}</span></td>
-                  <td>
-                    <div className="trips-cell">
-                      <span className="trips-today">{psg.tripsToday} today</span>
-                      <span className="trips-total">{psg.totalTrips} total</span>
-                    </div>
-                  </td>
-                  <td>
-                    <span className={`user-status-badge ${psg.status.toLowerCase()}`}>
-                      <span className="status-dot-sm"></span>
-                      {psg.status}
-                    </span>
-                  </td>
-                  <td>
-                    <div className="user-action-btns">
-                      <button className="user-action-btn blue">
-                        <Pencil size={14} /> Edit
-                      </button>
-                      {psg.status === 'Active' ? (
-                        <button className="user-action-btn gray" onClick={() => suspendPassenger(psg.id)}>
-                          <Power size={14} /> Suspend
-                        </button>
-                      ) : psg.status === 'Suspended' ? (
-                        <button className="user-action-btn green" onClick={() => activatePassenger(psg.id)}>
-                          <Check size={14} /> Activate
-                        </button>
-                      ) : (
-                        <button className="user-action-btn green" onClick={() => activatePassenger(psg.id)}>
-                          <Check size={14} /> Activate
-                        </button>
-                      )}
-                      <button className="user-action-btn red" onClick={() => deletePassenger(psg.id)}>
-                        <Trash2 size={14} /> Delete
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-              {filteredPassengers.length === 0 && (
-                <tr><td colSpan={8} className="empty-row">No passengers found</td></tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      )}
+        {/* ── Driver Detail Side Panel ─────────────────────────────────────── */}
+        {selectedDriver && (
+          <div style={{
+            width: '340px', flexShrink: 0,
+            background: '#fff', borderRadius: '16px',
+            border: '1px solid #e5e7eb',
+            boxShadow: '0 4px 24px rgba(0,0,0,0.08)',
+            overflow: 'hidden',
+          }}>
 
-      {/* ===== ADMINS TABLE ===== */}
-      {activeTab === 'admins' && (
-        <div className="users-table-wrap">
-          <table className="users-table">
-            <thead>
-              <tr>
-                <th>ID</th>
-                <th>NAME</th>
-                <th>EMAIL</th>
-                <th>PHONE</th>
-                <th>ROLE</th>
-                <th>LAST LOGIN</th>
-                <th>STATUS</th>
-                <th>ACTIONS</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredAdmins.map((admin) => (
-                <tr key={admin.id}>
-                  <td className="driver-id">{admin.id}</td>
-                  <td><span className="driver-name">{admin.name}</span></td>
-                  <td className="driver-email">{admin.email}</td>
-                  <td>{admin.phone}</td>
-                  <td>
-                    <span className={`role-badge role-${admin.role.toLowerCase().replace(' ', '-')}`}>
-                      {admin.role}
-                    </span>
-                  </td>
-                  <td className="last-login">{admin.lastLogin}</td>
-                  <td>
-                    <span className={`user-status-badge ${admin.status.toLowerCase()}`}>
-                      <span className="status-dot-sm"></span>
-                      {admin.status}
-                    </span>
-                  </td>
-                  <td>
-                    <div className="user-action-btns">
-                      <button className="user-action-btn blue">
-                        <Pencil size={14} /> Edit
-                      </button>
-                      {admin.status === 'Active' ? (
-                        <button className="user-action-btn gray" onClick={() => deactivateAdmin(admin.id)}>
-                          <Power size={14} /> Deactivate
-                        </button>
-                      ) : (
-                        <button className="user-action-btn green" onClick={() => activateAdmin(admin.id)}>
-                          <Check size={14} /> Activate
-                        </button>
-                      )}
-                      {admin.role !== 'Super Admin' && (
-                        <button className="user-action-btn red" onClick={() => deleteAdmin(admin.id)}>
-                          <Trash2 size={14} /> Delete
-                        </button>
-                      )}
-                    </div>
-                  </td>
-                </tr>
-              ))}
-              {filteredAdmins.length === 0 && (
-                <tr><td colSpan={8} className="empty-row">No admins found</td></tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      )}
+            {/* Panel header */}
+            <div style={{
+              background: selectedDriver.is_active
+                ? 'linear-gradient(135deg, #0a2342, #1565c0)'
+                : 'linear-gradient(135deg, #78350f, #d97706)',
+              padding: '20px',
+              color: '#fff',
+            }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                <div>
+                  <div style={{ fontSize: '11px', fontWeight: 700, letterSpacing: '1px',
+                    opacity: 0.8, marginBottom: '6px' }}>
+                    {selectedDriver.role === 'driver' && !selectedDriver.is_active
+                      ? '⏳ PENDING APPROVAL' : '👤 DRIVER PROFILE'}
+                  </div>
+                  <div style={{ fontSize: '18px', fontWeight: 800 }}>
+                    {selectedDriver.full_name}
+                  </div>
+                  <div style={{ fontSize: '12px', opacity: 0.8, marginTop: '4px' }}>
+                    {selectedDriver.email}
+                  </div>
+                </div>
+                <button onClick={closePanel} style={{
+                  background: 'rgba(255,255,255,0.2)', border: 'none',
+                  borderRadius: '8px', padding: '6px', cursor: 'pointer', color: '#fff',
+                }}>
+                  <X size={16} />
+                </button>
+              </div>
+            </div>
 
-      <div className="users-pagination">
-        <span className="pagination-info">Showing {getTotalLabel()}</span>
-        <div className="pagination-controls">
-          <button className="page-btn" disabled={currentPage === 1} onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}>&larr;</button>
-          {[1, 2, 3].map((p) => (
-            <button
-              key={p}
-              className={`page-btn ${p === currentPage ? 'active' : ''}`}
-              onClick={() => setCurrentPage(p)}
-            >
-              {p}
-            </button>
-          ))}
-          <button className="page-btn" onClick={() => setCurrentPage((p) => p + 1)}>&rarr;</button>
-        </div>
+            {/* Driver details */}
+            <div style={{ padding: '16px', borderBottom: '1px solid #f3f4f6' }}>
+              {[
+                { icon: <Mail size={14} />,     label: 'Email',   value: selectedDriver.email },
+                { icon: <Phone size={14} />,    label: 'Phone',   value: selectedDriver.phone || '—' },
+                { icon: <Calendar size={14} />, label: 'Joined',  value: new Date(selectedDriver.created_at).toLocaleDateString('en-LK') },
+                { icon: <Shield size={14} />,   label: 'Role',    value: selectedDriver.role },
+              ].map(({ icon, label, value }) => (
+                <div key={label} style={{
+                  display: 'flex', alignItems: 'center', gap: '10px',
+                  padding: '8px 0', borderBottom: '1px solid #f9fafb',
+                }}>
+                  <div style={{ color: '#6b7280', width: '16px' }}>{icon}</div>
+                  <span style={{ fontSize: '11px', color: '#9ca3af', width: '52px' }}>{label}</span>
+                  <span style={{ fontSize: '13px', fontWeight: 600, color: '#1f2937' }}>{value}</span>
+                </div>
+              ))}
+            </div>
+
+            {/* License image */}
+            <div style={{ padding: '16px', borderBottom: '1px solid #f3f4f6' }}>
+              <div style={{ fontSize: '11px', fontWeight: 700, color: '#6b7280',
+                letterSpacing: '0.8px', marginBottom: '10px', display: 'flex',
+                alignItems: 'center', gap: '6px' }}>
+                <FileImage size={14} /> DRIVER'S LICENSE
+              </div>
+
+              {!selectedDriver.license_url ? (
+                <div style={{
+                  background: '#fef2f2', border: '1px solid #fecaca',
+                  borderRadius: '10px', padding: '20px', textAlign: 'center',
+                }}>
+                  <FileImage size={24} style={{ color: '#f87171', margin: '0 auto 8px' }} />
+                  <div style={{ fontSize: '13px', color: '#dc2626', fontWeight: 600 }}>
+                    No license uploaded
+                  </div>
+                  <div style={{ fontSize: '11px', color: '#f87171', marginTop: '4px' }}>
+                    Driver did not upload a license
+                  </div>
+                </div>
+              ) : licenseLoading ? (
+                <div style={{
+                  background: '#f9fafb', borderRadius: '10px', padding: '40px',
+                  textAlign: 'center', color: '#6b7280', fontSize: '13px',
+                }}>
+                  Loading license image...
+                </div>
+              ) : licenseUrl ? (
+                <div>
+                  <img
+                    src={licenseUrl}
+                    alt="Driver License"
+                    style={{
+                      width: '100%', borderRadius: '10px',
+                      border: '1px solid #e5e7eb',
+                      objectFit: 'cover', maxHeight: '200px',
+                    }}
+                  />
+                  <a href={licenseUrl} target="_blank" rel="noopener noreferrer"
+                    style={{
+                      display: 'block', textAlign: 'center', marginTop: '8px',
+                      fontSize: '12px', color: '#1a6cf0', textDecoration: 'none',
+                      fontWeight: 600,
+                    }}>
+                    Open full image ↗
+                  </a>
+                </div>
+              ) : (
+                <div style={{
+                  background: '#fef2f2', borderRadius: '10px', padding: '20px',
+                  textAlign: 'center', fontSize: '13px', color: '#dc2626',
+                }}>
+                  Failed to load license image
+                </div>
+              )}
+            </div>
+
+            {/* Approve / Reject actions */}
+            {selectedDriver.role === 'driver' && !selectedDriver.is_active && (
+              <div style={{ padding: '16px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                <div style={{ fontSize: '11px', fontWeight: 700, color: '#6b7280',
+                  letterSpacing: '0.8px', marginBottom: '2px' }}>
+                  APPROVAL DECISION
+                </div>
+                <button onClick={() => approveDriver(selectedDriver.id)}
+                  style={{
+                    width: '100%', padding: '12px', background: '#16a34a',
+                    color: '#fff', border: 'none', borderRadius: '10px',
+                    fontSize: '14px', fontWeight: 700, cursor: 'pointer',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
+                  }}>
+                  <Check size={16} /> Approve Driver
+                </button>
+                <button onClick={() => rejectDriver(selectedDriver.id)}
+                  style={{
+                    width: '100%', padding: '12px', background: '#fff',
+                    color: '#dc2626', border: '2px solid #dc2626', borderRadius: '10px',
+                    fontSize: '14px', fontWeight: 700, cursor: 'pointer',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
+                  }}>
+                  <X size={16} /> Reject Application
+                </button>
+              </div>
+            )}
+
+            {/* Active driver actions */}
+            {selectedDriver.is_active && (
+              <div style={{ padding: '16px' }}>
+                <button onClick={() => deactivateUser(selectedDriver.id)}
+                  style={{
+                    width: '100%', padding: '12px', background: '#fff',
+                    color: '#6b7280', border: '1px solid #e5e7eb', borderRadius: '10px',
+                    fontSize: '14px', fontWeight: 600, cursor: 'pointer',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
+                  }}>
+                  <Power size={16} /> Deactivate Driver
+                </button>
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );

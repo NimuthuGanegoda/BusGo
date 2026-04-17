@@ -1,14 +1,15 @@
 import { useState } from 'react';
 import { Mail, Lock, Eye, EyeOff, ArrowRight } from 'lucide-react';
 import './Login.css';
+import busgoLogo from '../assets/busgo-logo.jpeg';
 
 export default function Login() {
-  const [email,       setEmail]       = useState('');
-  const [password,    setPassword]    = useState('');
-  const [rememberMe,  setRememberMe]  = useState(false);
+  const [email,        setEmail]        = useState('');
+  const [password,     setPassword]     = useState('');
+  const [rememberMe,   setRememberMe]   = useState(false);
   const [showPassword, setShowPassword] = useState(false);
-  const [loading,     setLoading]     = useState(false);
-  const [error,       setError]       = useState('');
+  const [loading,      setLoading]      = useState(false);
+  const [error,        setError]        = useState('');
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -23,7 +24,7 @@ export default function Login() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.message || 'Login failed');
       if (data.data?.user?.role !== 'admin') throw new Error('Admin accounts only');
-      localStorage.setItem('busgo_access_token', data.data.access_token);
+      localStorage.setItem('busgo_access_token',  data.data.access_token);
       localStorage.setItem('busgo_refresh_token', data.data.refresh_token);
       window.location.href = '/admin/dashboard';
     } catch (err: any) {
@@ -35,6 +36,7 @@ export default function Login() {
 
   return (
     <div className="login-page">
+      {/* ── LEFT PANEL ── */}
       <div className="login-left">
         <div className="login-logo-section">
           <div className="orbital-container">
@@ -47,7 +49,7 @@ export default function Login() {
           </div>
           <div className="logo-wrapper">
             <div className="logo-glow"></div>
-            <img src="/busgo-logo.jpeg" alt="BUSGO Logo" className="logo-image rotating" />
+            <img src={busgoLogo} alt="BUSGO Logo" className="logo-image rotating" />
           </div>
           <div className="brand-text">
             <h1 className="brand-name">A X I S</h1>
@@ -60,6 +62,7 @@ export default function Login() {
         </div>
       </div>
 
+      {/* ── RIGHT PANEL ── */}
       <div className="login-right">
         <div className="login-card-wrapper">
           <div className="neon-border">
@@ -68,7 +71,7 @@ export default function Login() {
           <div className="login-card">
             <div className="card-header">
               <div className="card-logo">
-                <img src="/busgo-logo.jpeg" alt="" className="card-logo-img" />
+                <img src={busgoLogo} alt="" className="card-logo-img" />
                 <span className="card-logo-text">BUSGO AXIS</span>
               </div>
               <h2 className="card-title">Sign In</h2>
@@ -76,19 +79,20 @@ export default function Login() {
 
             {error && (
               <div style={{
-                background: 'rgba(239,68,68,0.1)',
-                border: '1px solid rgba(239,68,68,0.3)',
-                borderRadius: '8px',
-                padding: '10px 14px',
-                marginBottom: '16px',
-                color: '#ef4444',
-                fontSize: '13px',
+                background:    'rgba(239,68,68,0.1)',
+                border:        '1px solid rgba(239,68,68,0.3)',
+                borderRadius:  '8px',
+                padding:       '10px 14px',
+                marginBottom:  '16px',
+                color:         '#ef4444',
+                fontSize:      '13px',
               }}>
                 {error}
               </div>
             )}
 
             <form onSubmit={handleSubmit} className="login-form">
+              {/* Email */}
               <div className="form-group">
                 <label className="form-label">EMAIL</label>
                 <div className="neon-input-wrapper">
@@ -109,6 +113,7 @@ export default function Login() {
                 </div>
               </div>
 
+              {/* Password */}
               <div className="form-group">
                 <label className="form-label">PASSWORD</label>
                 <div className="neon-input-wrapper">
@@ -136,6 +141,7 @@ export default function Login() {
                 </div>
               </div>
 
+              {/* Options */}
               <div className="form-options">
                 <label className="remember-me">
                   <input
@@ -149,6 +155,7 @@ export default function Login() {
                 <a href="#" className="forgot-link">Forgot password?</a>
               </div>
 
+              {/* Submit */}
               <button type="submit" className="signin-btn" disabled={loading}>
                 <span>{loading ? 'Signing in...' : 'Sign In'}</span>
                 {!loading && <ArrowRight size={20} />}

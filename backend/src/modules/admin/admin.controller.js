@@ -152,3 +152,15 @@ export async function deleteRoute(req, res, next) {
     return sendSuccess(res, {}, 'Route deleted');
   } catch (err) { next(err); }
 }
+
+
+// ── Driver License URL ─────────────────────────────────────────────────────────
+export async function getDriverLicenseUrl(req, res, next) {
+  try {
+    const data = await adminService.getDriverLicenseUrl(req.params.id);
+    return sendSuccess(res, data, 'License URL generated');
+  } catch (err) {
+    if (err.statusCode) return sendError(res, err.message, err.statusCode, err.code);
+    next(err);
+  }
+}

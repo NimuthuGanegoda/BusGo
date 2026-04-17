@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:geolocator/geolocator.dart';
 import 'core/config/app_config.dart';
 import 'core/theme/app_theme.dart';
 import 'providers/auth_provider.dart';
@@ -14,24 +15,35 @@ import 'services/api_client.dart';
 import 'services/auth_service.dart';
 import 'services/bus_service.dart';
 import 'services/emergency_service.dart';
-import 'services/eta_service.dart';
 import 'services/local_storage_service.dart';
-import 'services/notification_service.dart';
-import 'services/qr_service.dart';
 import 'services/rating_service.dart';
-import 'services/realtime_service.dart';
-import 'services/search_service.dart';
 import 'services/token_service.dart';
 import 'services/trip_service.dart';
 import 'services/user_service.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
+
+Future<void> _requestLocationPermission() async {
+  try {
+    LocationPermission permission = await Geolocator.checkPermission();
+    if (permission == LocationPermission.denied) {
+      await Geolocator.requestPermission();
+    }
+  } catch (e) {
+    debugPrint('[main] Location permission error: $e');
+  }
+}
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await dotenv.load(fileName: ".env");
 
-  // Local preferences
+  // Request GPS permission at startup — before any screen loads
+  await _requestLocationPermission();
+
+  // Local preferences (notification toggles only)
   await LocalStorageService.init();
 
-  // Supabase — used for Realtime bus-location broadcasts only
+  // Supabase — used only for Realtime bus-location broadcasts
   await Supabase.initialize(
     url:     AppConfig.supabaseUrl,
     anonKey: AppConfig.supabaseAnonKey,
@@ -40,8 +52,8 @@ void main() async {
   SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
   SystemChrome.setSystemUIOverlayStyle(
     const SystemUiOverlayStyle(
-      statusBarColor:            Colors.transparent,
-      statusBarIconBrightness:   Brightness.light,
+      statusBarColor:          Colors.transparent,
+      statusBarIconBrightness: Brightness.light,
     ),
   );
 
@@ -53,7 +65,6 @@ class BusGoApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Build the shared service graph once at the root.
     final tokenService     = TokenService();
     final apiClient        = ApiClient(tokenService);
     final authService      = AuthService(apiClient, tokenService);
@@ -62,11 +73,6 @@ class BusGoApp extends StatelessWidget {
     final tripService      = TripService(apiClient);
     final ratingService    = RatingService(apiClient);
     final emergencyService = EmergencyService(apiClient);
-    final etaService       = EtaService(apiClient);
-    final qrService        = QrService(apiClient);
-    final notifService     = NotificationService(apiClient);
-    final searchService    = SearchService(apiClient);
-    final realtimeService  = RealtimeService();
 
     return MultiProvider(
       providers: [
@@ -75,14 +81,6 @@ class BusGoApp extends StatelessWidget {
         ),
         ChangeNotifierProvider(
           create: (_) => UserProvider(userService),
-        ),
-        Provider<EtaService>(create: (_) => etaService),
-        Provider<QrService>(create: (_) => qrService),
-        Provider<NotificationService>(create: (_) => notifService),
-        Provider<SearchService>(create: (_) => searchService),
-        Provider<RealtimeService>(
-          create: (_) => realtimeService,
-          dispose: (_, s) => s.dispose(),
         ),
         ChangeNotifierProvider(
           create: (_) => BusProvider(busService),

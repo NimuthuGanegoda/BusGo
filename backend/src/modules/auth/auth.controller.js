@@ -1,4 +1,5 @@
 import * as authService from './auth.service.js';
+import { supabase } from '../../config/supabase.js';
 import { sendSuccess, sendError } from '../../utils/response.utils.js';
 
 export async function register(req, res, next) {
@@ -44,7 +45,6 @@ export async function refresh(req, res, next) {
 export async function forgotPasswordRequest(req, res, next) {
   try {
     await authService.requestPasswordReset(req.body.email);
-    // Always return success to prevent user enumeration
     return sendSuccess(res, {}, 'If that email exists, a reset PIN has been sent');
   } catch (err) {
     next(err);
@@ -67,6 +67,58 @@ export async function forgotPasswordReset(req, res, next) {
     return sendSuccess(res, {}, 'Password reset successful. Please log in with your new password.');
   } catch (err) {
     if (err.statusCode) return sendError(res, err.message, err.statusCode, err.code);
+    next(err);
+  }
+}
+
+// ── Public license upload (called right after registration, no token needed) ──
+export async function uploadLicense(req, res, next) {
+  try {
+    if (!req.file) {
+      return sendError(res, 'License image is required', 400, 'NO_FILE');
+    }
+    if (!req.body.email) {
+      return sendError(res, 'Email is required', 400, 'NO_EMAIL');
+    }
+
+    // Find the user by email
+    const { data: user, error: userError } = await supabase
+      .from('users')
+      .select('id')
+      .eq('email', req.body.email.toLowerCase().trim())
+      .maybeSingle();
+
+    if (userError || !user) {
+      return sendError(res, 'User not found', 404, 'USER_NOT_FOUND');
+    }
+
+    // Upload to Supabase Storage
+    
+    const ext      = req.file.originalname?.toLowerCase().endsWith('.png') ? 'png'
+                    : req.file.originalname?.toLowerCase().endsWith('.webp') ? 'webp'
+                    : 'jpg';
+    const filePath = `licenses/${user.id}.${ext}`;
+    const forcedMime = ext === 'png' ? 'image/png'
+                      : ext === 'webp' ? 'image/webp'
+                      : 'image/jpeg';
+
+    const { error: uploadError } = await supabase.storage
+      .from('driver-licenses')
+      .upload(filePath, req.file.buffer, {
+        contentType: forcedMime,
+        upsert:      true,
+      });
+
+    if (uploadError) throw uploadError;
+
+    // Save path to users table
+    await supabase
+      .from('users')
+      .update({ license_url: filePath })
+      .eq('id', user.id);
+
+    return sendSuccess(res, { license_url: filePath }, 'License uploaded successfully');
+  } catch (err) {
     next(err);
   }
 }

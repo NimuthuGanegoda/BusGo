@@ -233,7 +233,7 @@ export default function Dashboard() {
               scrollWheelZoom={false}
             >
               <TileLayer
-                url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                url="https://api.maptiler.com/maps/streets-v2/{z}/{x}/{y}.png?key=fsVEp87wcHaGchb3gygh"
                 attribution='&copy; OpenStreetMap contributors'
               />
               {activeBuses.map((bus) => (

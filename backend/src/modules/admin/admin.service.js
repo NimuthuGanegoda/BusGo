@@ -11,7 +11,7 @@ export async function listUsers(filters) {
   let query = supabase
     .from('users')
     .select(
-      'id, email, full_name, username, phone, membership_type, role, is_active, created_at, updated_at',
+      'id, email, full_name, username, phone, membership_type, role, is_active, license_url, created_at, updated_at',
       { count: 'exact' }
     )
     .order('created_at', { ascending: false })
@@ -136,19 +136,22 @@ export async function deleteBus(busId) {
 // ── Emergency Management ───────────────────────────────────────────────────────
 
 export async function listAllAlerts(filters) {
-  const { status, alert_type, page, page_size } = filters;
+  const { status, alert_type, page = 1, page_size = 50 } = filters;
   const offset = (page - 1) * page_size;
 
   let query = supabase
     .from('emergency_alerts')
     .select(
+      // ← ml_priority_label was missing — added here
       `id, alert_type, description, latitude, longitude, status,
-       ml_priority, ml_is_false, ml_confidence, ml_action,
+       ml_priority, ml_priority_label, ml_is_false, ml_confidence, ml_action,
        created_at, updated_at,
-       users ( id, full_name, email, phone ),
+       users ( id, full_name, email, phone, role ),
        buses ( id, bus_number, driver_name )`,
       { count: 'exact' }
     )
+    // ← Sort: highest ML priority first (P5 CRITICAL → P1 FALSE),
+    //   then newest within same priority
     .order('ml_priority', { ascending: false, nullsFirst: false })
     .order('created_at', { ascending: false })
     .range(offset, offset + page_size - 1);
@@ -172,7 +175,6 @@ export async function adminUpdateAlertStatus(alertId, status, adminId) {
 
   if (error) throw error;
 
-  // Log to audit trail
   await logAdminAction(adminId, 'UPDATE_ALERT_STATUS', 'emergency_alerts', alertId, { status });
 
   return data;
@@ -243,26 +245,28 @@ export async function getDashboardStats() {
   ]);
 
   return {
-    users:          { total: totalUsers, active_passengers: activePassengers },
-    buses:          { total: totalBuses, active: activeBuses, inactive: totalBuses - activeBuses },
-    alerts:         { pending: pendingAlerts, critical_pending: criticalAlerts },
-    trips:          { ongoing: ongoingTrips, today: todayTrips },
+    users:  { total: totalUsers, active_passengers: activePassengers },
+    buses:  { total: totalBuses, active: activeBuses, inactive: totalBuses - activeBuses },
+    alerts: { pending: pendingAlerts, critical_pending: criticalAlerts },
+    trips:  { ongoing: ongoingTrips, today: todayTrips },
   };
 }
 
 // ── Audit Log ─────────────────────────────────────────────────────────────────
 
+// AFTER — proper try/catch works correctly
 export async function logAdminAction(adminId, action, table, recordId, metadata = {}) {
-  await supabase.from('admin_audit_logs').insert({
-    admin_id:  adminId,
-    action,
-    table_name: table,
-    record_id:  recordId,
-    metadata,
-  }).catch((e) => {
-    // Non-fatal — log warning but don't crash the request
+  try {
+    await supabase.from('admin_audit_logs').insert({
+      admin_id:   adminId,
+      action,
+      table_name: table,
+      record_id:  recordId,
+      metadata,
+    });
+  } catch (e) {
     console.warn('Audit log insert failed:', e.message);
-  });
+  }
 }
 
 export async function getAuditLogs(filters) {
@@ -316,4 +320,24 @@ export async function updateRoute(routeId, dto) {
 export async function deleteRoute(routeId) {
   const { error } = await supabase.from('bus_routes').delete().eq('id', routeId);
   if (error) throw error;
+}
+
+
+export async function getDriverLicenseUrl(userId) {
+  const { data: user } = await supabase
+    .from('users')
+    .select('license_url')
+    .eq('id', userId)
+    .maybeSingle();
+
+  if (!user?.license_url) {
+    const err = new Error('No license found'); err.statusCode = 404; throw err;
+  }
+
+  const { data, error } = await supabase.storage
+    .from('driver-licenses')
+    .createSignedUrl(user.license_url, 60 * 60); // 1 hour
+
+  if (error) throw error;
+  return { signed_url: data.signedUrl };
 }

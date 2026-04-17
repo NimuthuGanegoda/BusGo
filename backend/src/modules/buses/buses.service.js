@@ -21,7 +21,8 @@ export async function getNearbyBuses(lat, lng, radius) {
     `)
     .eq('status', 'active')
     .not('current_lat', 'is', null)
-    .not('current_lng', 'is', null);
+    .not('current_lng', 'is', null)
+    .gte('last_location_update', new Date(Date.now() - 2 * 60 * 1000).toISOString());
 
   if (error) throw error;
 

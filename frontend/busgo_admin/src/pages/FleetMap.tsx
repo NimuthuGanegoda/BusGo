@@ -1,181 +1,281 @@
-import { useState } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
 import L from 'leaflet';
-import { RefreshCw, Crosshair, Bus, User } from 'lucide-react';
-import { activeBuses } from '../data/mockData';
-import type { Bus as BusType } from '../types';
+import { RefreshCw, Bus, User } from 'lucide-react';
 import './FleetMap.css';
 
-function createBusIcon(passengers: number, capacity: number, status: string) {
-  const ratio = passengers / capacity;
-  let color = '#4caf50';
-  if (status === 'Breakdown') color = '#e74c3c';
-  else if (ratio > 0.8) color = '#e74c3c';
-  else if (ratio > 0.5) color = '#f59e0b';
+const API      = 'http://localhost:5000/api/admin';
+const MAPTILER_KEY = (import.meta as any).env?.VITE_MAPTILER_KEY ?? 'fsVEp87wcHaGchb3gygh';
+const TILE_URL = `https://api.maptiler.com/maps/streets-v2/{z}/{x}/{y}.png?key=${MAPTILER_KEY}`;
+const token    = () => localStorage.getItem('busgo_access_token') ?? '';
 
+type BusRecord = {
+  id: string;
+  bus_number: string;
+  driver_name: string;
+  status: string;
+  crowd_level: string;
+  current_lat: number | null;
+  current_lng: number | null;
+  speed_kmh: number | null;
+  last_location_update: string | null;
+  bus_routes: {
+    route_number: string;
+    route_name: string;
+    origin: string;
+    destination: string;
+  } | null;
+};
+
+function createBusIcon(status: string, crowd: string) {
+  const color = status === 'breakdown' ? '#e74c3c'
+    : crowd === 'high'   ? '#e74c3c'
+    : crowd === 'medium' ? '#f59e0b'
+    : '#4caf50';
   return L.divIcon({
     className: 'custom-bus-marker',
-    html: `<div style="background:${color};width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;font-size:11px;font-weight:700;border:3px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,0.3);">${passengers}</div>`,
+    html: `<div style="background:${color};width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;font-size:10px;font-weight:700;border:3px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,0.3);">
+      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="white">
+        <path d="M4 16c0 .88.39 1.67 1 2.22V20c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-1h8v1c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-1.78c.61-.55 1-1.34 1-2.22V6c0-3.5-3.58-4-8-4s-8 .5-8 4v10zm3.5 1c-.83 0-1.5-.67-1.5-1.5S6.67 14 7.5 14s1.5.67 1.5 1.5S8.33 17 7.5 17zm9 0c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5zm1.5-6H6V6h12v5z"/>
+      </svg>
+    </div>`,
     iconSize: [32, 32],
     iconAnchor: [16, 16],
   });
 }
 
-const allBuses: BusType[] = [
-  ...activeBuses,
-  { id: 'BUS-74-D', registration: 'WP-XX-7400', route: 74, driver: 'Nimal P.', passengers: 20, capacity: 50, status: 'Active', speed: 40, lat: 6.89, lng: 79.92, lastUpdated: '14:30' },
-  { id: 'BUS-24-E', registration: 'WP-YY-2400', route: 24, driver: 'Ajith K.', passengers: 38, capacity: 50, status: 'Active', speed: 22, lat: 6.88, lng: 79.96, lastUpdated: '14:31' },
-  { id: 'BUS-55-F', registration: 'WP-ZZ-5500', route: 55, driver: 'Sunil R.', passengers: 45, capacity: 50, status: 'Active', speed: 15, lat: 6.87, lng: 80.02, lastUpdated: '14:29' },
-  { id: 'BUS-110-G', registration: 'SP-AA-1100', route: 110, driver: 'Kumara S.', passengers: 12, capacity: 50, status: 'Active', speed: 50, lat: 6.82, lng: 79.88, lastUpdated: '14:28' },
-  { id: 'BUS-76-H', registration: 'SP-BB-7600', route: 76, driver: 'Lalith M.', passengers: 28, capacity: 50, status: 'Active', speed: 32, lat: 6.82, lng: 79.95, lastUpdated: '14:27' },
-  { id: 'BUS-92-I', registration: 'CP-CC-9200', route: 92, driver: 'Rohan D.', passengers: 35, capacity: 50, status: 'Active', speed: 18, lat: 6.82, lng: 80.01, lastUpdated: '14:26' },
-  { id: 'BUS-103-J', registration: 'CP-DD-1030', route: 103, driver: 'Asanka J.', passengers: 22, capacity: 50, status: 'Active', speed: 45, lat: 6.80, lng: 80.08, lastUpdated: '14:25' },
-];
+function isRecentlyUpdated(lastUpdate: string | null): boolean {
+  if (!lastUpdate) return false;
+  const twoMinutesAgo = new Date(Date.now() - 2 * 60 * 1000);
+  return new Date(lastUpdate) > twoMinutesAgo;
+}
 
 export default function FleetMap() {
-  const [selectedBus, setSelectedBus] = useState<BusType>(allBuses[0]);
-  const [routeFilter, setRouteFilter] = useState('all');
+  const [buses,        setBuses]        = useState<BusRecord[]>([]);
+  const [selected,     setSelected]     = useState<BusRecord | null>(null);
+  const [loading,      setLoading]      = useState(true);
+  const [lastUpdated,  setLastUpdated]  = useState<Date | null>(null);
   const [statusFilter, setStatusFilter] = useState('all');
-  const [crowdFilter, setCrowdFilter] = useState('all');
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  const getCrowdLevel = (bus: BusType) => {
-    const ratio = bus.passengers / bus.capacity;
-    if (ratio > 0.8) return 'high';
-    if (ratio > 0.5) return 'moderate';
-    return 'low';
+  const fetchBuses = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true);
+    try {
+      const res  = await fetch(`${API}/buses?page_size=100`, {
+        headers: { Authorization: `Bearer ${token()}` },
+      });
+      const json = await res.json();
+      const all: BusRecord[] = Array.isArray(json.data) ? json.data : [];
+      setBuses(all);
+      setLastUpdated(new Date());
+    } catch (e) {
+      console.error('[FleetMap]', e);
+    } finally {
+      if (!silent) setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchBuses();
+    pollRef.current = setInterval(() => fetchBuses(true), 10_000);
+    return () => { if (pollRef.current) clearInterval(pollRef.current); };
+  }, [fetchBuses]);
+
+  const filtered = buses.filter(b =>
+    statusFilter === 'all' || b.status === statusFilter
+  );
+
+  // ── Only show buses that are active AND have recent GPS update ────────────
+  const withGps = filtered.filter(b =>
+    b.current_lat &&
+    b.current_lng &&
+    b.status === 'active' &&
+    isRecentlyUpdated(b.last_location_update)
+  );
+
+  const withoutGps = filtered.filter(b =>
+    !b.current_lat || !b.current_lng || !isRecentlyUpdated(b.last_location_update)
+  );
+
+  const getCrowdLabel = (b: BusRecord) => {
+    if (b.crowd_level === 'high')   return { label: 'High',   color: '#dc2626', bg: '#fef2f2' };
+    if (b.crowd_level === 'medium') return { label: 'Medium', color: '#d97706', bg: '#fffbeb' };
+    return { label: 'Low', color: '#16a34a', bg: '#f0fdf4' };
   };
-
-  const filteredBuses = allBuses.filter((bus) => {
-    if (statusFilter !== 'all' && bus.status !== statusFilter) return false;
-    if (crowdFilter !== 'all' && getCrowdLevel(bus) !== crowdFilter) return false;
-    return true;
-  });
-
-  const crowdPercent = Math.round((selectedBus.passengers / selectedBus.capacity) * 100);
-  const crowdLabel = getCrowdLevel(selectedBus);
 
   return (
     <div className="fleet-map-page">
       <div className="fleet-map-toolbar">
-        <select value={routeFilter} onChange={(e) => setRouteFilter(e.target.value)} className="map-filter">
-          <option value="all">All Routes</option>
-          <option value="138">Route 138</option>
-          <option value="220">Route 220</option>
-          <option value="176">Route 176</option>
-        </select>
-        <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="map-filter">
+        <select
+          value={statusFilter}
+          onChange={e => setStatusFilter(e.target.value)}
+          className="map-filter"
+        >
           <option value="all">All Status</option>
-          <option value="Active">Active</option>
-          <option value="Breakdown">Breakdown</option>
-        </select>
-        <select value={crowdFilter} onChange={(e) => setCrowdFilter(e.target.value)} className="map-filter">
-          <option value="all">Crowd Level</option>
-          <option value="low">Low</option>
-          <option value="moderate">Moderate</option>
-          <option value="high">High</option>
+          <option value="active">Active</option>
+          <option value="breakdown">Breakdown</option>
+          <option value="inactive">Inactive</option>
         </select>
         <div className="map-toolbar-right">
-          <button className="map-btn"><RefreshCw size={16} /> Refresh</button>
-          <button className="map-btn primary"><Crosshair size={16} /> Center Map</button>
+          {lastUpdated && (
+            <span style={{ fontSize: '12px', color: '#9ca3af', marginRight: '8px' }}>
+              Updated {lastUpdated.toLocaleTimeString()}
+            </span>
+          )}
+          <button className="map-btn" onClick={() => fetchBuses()}>
+            <RefreshCw size={16} /> Refresh
+          </button>
         </div>
       </div>
 
       <div className="fleet-map-content">
         <div className="fleet-map-container">
-          <MapContainer
-            center={[6.85, 79.95]}
-            zoom={12}
-            style={{ height: '100%', width: '100%' }}
-            zoomControl={false}
-          >
-            <TileLayer
-              url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-              attribution='&copy; OpenStreetMap contributors'
-            />
-            {filteredBuses.map((bus) => (
-              <Marker
-                key={bus.id}
-                position={[bus.lat!, bus.lng!]}
-                icon={createBusIcon(bus.passengers, bus.capacity, bus.status)}
-                eventHandlers={{
-                  click: () => setSelectedBus(bus),
-                }}
-              >
-                <Popup>{bus.id}</Popup>
-              </Marker>
-            ))}
-          </MapContainer>
+          {loading ? (
+            <div style={{
+              display: 'flex', alignItems: 'center',
+              justifyContent: 'center', height: '100%', color: '#6b7280'
+            }}>
+              Loading fleet map...
+            </div>
+          ) : (
+            <MapContainer
+              center={[6.85, 79.95]}
+              zoom={12}
+              style={{ height: '100%', width: '100%' }}
+              zoomControl={false}
+            >
+              <TileLayer
+                url={TILE_URL}
+                attribution='&copy; <a href="https://www.maptiler.com/">MapTiler</a>'
+              />
+              {withGps.map(bus => (
+                <Marker
+                  key={bus.id}
+                  position={[bus.current_lat!, bus.current_lng!]}
+                  icon={createBusIcon(bus.status, bus.crowd_level)}
+                  eventHandlers={{ click: () => setSelected(bus) }}
+                >
+                  <Popup>
+                    <strong>{bus.bus_number}</strong><br />
+                    {bus.driver_name || '—'}<br />
+                    Route {bus.bus_routes?.route_number || 'N/A'}<br />
+                    Speed: {bus.speed_kmh?.toFixed(0) || '0'} km/h
+                  </Popup>
+                </Marker>
+              ))}
+            </MapContainer>
+          )}
+
           <div className="map-crowd-legend">
             <span className="legend-title">CROWD LEVEL</span>
-            <span className="legend-item"><span className="legend-dot green"></span> Low</span>
-            <span className="legend-item"><span className="legend-dot yellow"></span> Moderate</span>
-            <span className="legend-item"><span className="legend-dot red"></span> High</span>
+            <span className="legend-item">
+              <span className="legend-dot green"></span> Low
+            </span>
+            <span className="legend-item">
+              <span className="legend-dot yellow"></span> Medium
+            </span>
+            <span className="legend-item">
+              <span className="legend-dot red"></span> High
+            </span>
           </div>
+
+          {/* Live bus count badge */}
+          <div style={{
+            position: 'absolute', top: '12px', right: '12px',
+            background: withGps.length > 0 ? '#16a34a' : '#6b7280',
+            color: 'white', padding: '6px 12px',
+            borderRadius: '8px', fontSize: '12px', fontWeight: 700,
+            boxShadow: '0 2px 8px rgba(0,0,0,0.2)',
+          }}>
+            {withGps.length} BUS{withGps.length !== 1 ? 'ES' : ''} LIVE
+          </div>
+
+          {withoutGps.length > 0 && (
+            <div style={{
+              position: 'absolute', bottom: '60px', left: '12px',
+              background: 'white', padding: '8px 12px',
+              borderRadius: '8px', fontSize: '12px', color: '#6b7280',
+              boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
+            }}>
+              ⚠ {withoutGps.length} bus{withoutGps.length > 1 ? 'es' : ''} offline
+            </div>
+          )}
         </div>
 
+        {/* Side panel */}
         <div className="bus-detail-panel">
-          <div className="bus-detail-header">
-            <h2>{selectedBus.id.replace('BUS-', 'Bus #')} — Selected</h2>
-            <p>Route {selectedBus.route} · Last updated {selectedBus.lastUpdated}</p>
-          </div>
-
-          <div className="bus-detail-rows">
-            <div className="detail-row">
-              <span className="detail-label">BUS ID</span>
-              <span className="detail-value">{selectedBus.id}</span>
-            </div>
-            <div className="detail-row">
-              <span className="detail-label">ROUTE</span>
-              <span className="detail-value">{selectedBus.route} — Fort — Homagama</span>
-            </div>
-            <div className="detail-row">
-              <span className="detail-label">DRIVER</span>
-              <span className="detail-value">{selectedBus.driver}</span>
-            </div>
-            <div className="detail-row">
-              <span className="detail-label">SPEED</span>
-              <span className="detail-value">{selectedBus.speed} km/h</span>
-            </div>
-            <div className="detail-row">
-              <span className="detail-label">STATUS</span>
-              <span className={`detail-status ${selectedBus.status.toLowerCase()}`}>
-                <span className="status-indicator"></span>
-                {selectedBus.status}
-              </span>
-            </div>
-            <div className="detail-row">
-              <span className="detail-label">PASSENGERS</span>
-              <span className="detail-value">{selectedBus.passengers} / {selectedBus.capacity}</span>
-            </div>
-            <div className="passenger-bar-wrap">
-              <div className="passenger-bar">
-                <div
-                  className={`passenger-bar-fill ${crowdLabel}`}
-                  style={{ width: `${crowdPercent}%` }}
-                ></div>
+          {selected ? (
+            <>
+              <div className="bus-detail-header">
+                <h2>{selected.bus_number} — Selected</h2>
+                <p>
+                  Route {selected.bus_routes?.route_number || 'N/A'} ·{' '}
+                  {selected.bus_routes?.route_name || '—'}
+                </p>
               </div>
-              <span className={`crowd-label ${crowdLabel}`}>
-                {crowdLabel.charAt(0).toUpperCase() + crowdLabel.slice(1)} — {crowdPercent}%
-              </span>
+              <div className="bus-detail-rows">
+                {[
+                  ['BUS NUMBER', selected.bus_number],
+                  ['DRIVER',     selected.driver_name || '—'],
+                  ['ROUTE',      selected.bus_routes
+                    ? `${selected.bus_routes.route_number} — ${selected.bus_routes.origin} → ${selected.bus_routes.destination}`
+                    : 'Unassigned'],
+                  ['SPEED',      selected.speed_kmh
+                    ? `${selected.speed_kmh.toFixed(0)} km/h`
+                    : 'No GPS'],
+                  ['STATUS',     selected.status],
+                  ['GPS AGE',    selected.last_location_update
+                    ? isRecentlyUpdated(selected.last_location_update)
+                      ? '✅ Live'
+                      : '⚠️ Stale'
+                    : 'Never'],
+                  ['LAST GPS',   selected.last_location_update
+                    ? new Date(selected.last_location_update).toLocaleTimeString()
+                    : 'Never'],
+                ].map(([label, value]) => (
+                  <div key={label} className="detail-row">
+                    <span className="detail-label">{label}</span>
+                    <span className="detail-value">{value}</span>
+                  </div>
+                ))}
+                <div className="detail-row">
+                  <span className="detail-label">CROWD</span>
+                  <span style={{
+                    ...(() => {
+                      const c = getCrowdLabel(selected);
+                      return { color: c.color, background: c.bg };
+                    })(),
+                    padding: '2px 8px', borderRadius: '6px',
+                    fontSize: '12px', fontWeight: 600,
+                  }}>
+                    {getCrowdLabel(selected).label}
+                  </span>
+                </div>
+              </div>
+              <div className="bus-detail-actions">
+                <button
+                  className="detail-action-btn secondary"
+                  onClick={() => setSelected(null)}
+                >
+                  <User size={16} /> Deselect
+                </button>
+              </div>
+            </>
+          ) : (
+            <div style={{
+              padding: '24px', textAlign: 'center', color: '#9ca3af'
+            }}>
+              <Bus size={32} style={{
+                margin: '0 auto 12px', display: 'block', opacity: 0.3
+              }} />
+              <p style={{ fontSize: '14px' }}>
+                Click a bus on the map to see its details
+              </p>
+              <p style={{ fontSize: '12px', marginTop: '8px' }}>
+                {withGps.length} buses with live GPS · {withoutGps.length} offline
+              </p>
             </div>
-            <div className="detail-row">
-              <span className="detail-label">NEXT STOP</span>
-              <span className="detail-value bold">{selectedBus.nextStop || 'N/A'}</span>
-            </div>
-            <div className="detail-row">
-              <span className="detail-label">ETA</span>
-              <span className="detail-value bold">{selectedBus.eta ? `${selectedBus.eta} minutes` : 'N/A'}</span>
-            </div>
-          </div>
-
-          <div className="bus-detail-actions">
-            <button className="detail-action-btn primary">
-              <Bus size={16} /> Deploy Standby Bus
-            </button>
-            <button className="detail-action-btn secondary">
-              <User size={16} /> View Driver Profile
-            </button>
-          </div>
+          )}
         </div>
       </div>
     </div>

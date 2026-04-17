@@ -2,7 +2,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
-const String _kBaseUrlDev  = 'http://10.0.2.2:5000/api';
+const String _kBaseUrlDev  = 'http://192.168.8.101:5000/api';
 const String _kBaseUrlProd = 'https://your-api-domain.com/api';
 const String _kBaseUrl     = kDebugMode ? _kBaseUrlDev : _kBaseUrlProd;
 

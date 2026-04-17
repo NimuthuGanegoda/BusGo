@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
@@ -12,7 +13,6 @@ enum ScanMode { boarding, alighting }
 class ActiveScannerScreen extends StatefulWidget {
   final ScannerApiService api;
   const ActiveScannerScreen({super.key, required this.api});
-
   @override
   State<ActiveScannerScreen> createState() => _ActiveScannerScreenState();
 }
@@ -22,9 +22,13 @@ class _ActiveScannerScreenState extends State<ActiveScannerScreen>
 
   final MobileScannerController _cameraCtrl = MobileScannerController();
 
-  ScanMode _mode       = ScanMode.boarding;
-  bool     _isScanning = false; // prevent double-scan
-  int      _scanCount  = 0;
+  ScanMode  _mode       = ScanMode.boarding;
+  bool      _isScanning = false;
+  int       _scanCount  = 0;
+
+  Timer?    _debounceTimer;
+  String?   _lastScannedValue;
+  DateTime? _lastScanTime;
 
   late AnimationController _scanLineCtrl;
   late Animation<double>   _scanLineAnim;
@@ -34,15 +38,17 @@ class _ActiveScannerScreenState extends State<ActiveScannerScreen>
   @override
   void initState() {
     super.initState();
-    _scanLineCtrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 2400))
+    _scanLineCtrl = AnimationController(
+        vsync: this, duration: const Duration(milliseconds: 2400))
       ..repeat(reverse: true);
     _scanLineAnim = Tween<double>(begin: 0.0, end: 1.0).animate(
-      CurvedAnimation(parent: _scanLineCtrl, curve: Curves.easeInOut));
+        CurvedAnimation(parent: _scanLineCtrl, curve: Curves.easeInOut));
 
-    _pulseCtrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 1500))
+    _pulseCtrl = AnimationController(
+        vsync: this, duration: const Duration(milliseconds: 1500))
       ..repeat(reverse: true);
     _pulseAnim = Tween<double>(begin: 0.3, end: 1.0).animate(
-      CurvedAnimation(parent: _pulseCtrl, curve: Curves.easeInOut));
+        CurvedAnimation(parent: _pulseCtrl, curve: Curves.easeInOut));
   }
 
   @override
@@ -50,11 +56,18 @@ class _ActiveScannerScreenState extends State<ActiveScannerScreen>
     _cameraCtrl.dispose();
     _scanLineCtrl.dispose();
     _pulseCtrl.dispose();
+    _debounceTimer?.cancel();
     super.dispose();
   }
 
-  // ── Core scan handler ─────────────────────────────────────────────────────
+  // ── Camera restart helper ─────────────────────────────────────────────────
+  Future<void> _restartCamera() async {
+    await Future.delayed(const Duration(milliseconds: 300));
+    if (!mounted) return;
+    try { await _cameraCtrl.start(); } catch (_) {}
+  }
 
+  // ── Core scan handler ─────────────────────────────────────────────────────
   Future<void> _onDetect(BarcodeCapture capture) async {
     if (_isScanning) return;
     final barcode = capture.barcodes.firstOrNull;
@@ -62,10 +75,30 @@ class _ActiveScannerScreenState extends State<ActiveScannerScreen>
 
     final scannedToken = barcode!.rawValue!;
 
-    // Basic UUID validation
-    final uuidPattern = RegExp(r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$', caseSensitive: false);
+    final now = DateTime.now();
+    if (_lastScannedValue == scannedToken &&
+        _lastScanTime != null &&
+        now.difference(_lastScanTime!).inSeconds < 2) {
+      return;
+    }
+    _lastScannedValue = scannedToken;
+    _lastScanTime     = now;
+
+    _debounceTimer?.cancel();
+    _debounceTimer = Timer(const Duration(milliseconds: 500), () async {
+      await _processScan(scannedToken);
+    });
+  }
+
+  Future<void> _processScan(String scannedToken) async {
+    if (_isScanning) return;
+
+    final uuidPattern = RegExp(
+        r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$',
+        caseSensitive: false);
     if (!uuidPattern.hasMatch(scannedToken)) {
-      _navigateError('Invalid QR code format.\nPlease ask the passenger to show their BUSGO card.');
+      await _navigateError(
+          'Invalid QR code format.\nPlease ask the passenger to show their BUSGO card.');
       return;
     }
 
@@ -81,41 +114,102 @@ class _ActiveScannerScreenState extends State<ActiveScannerScreen>
       }
 
       setState(() { _scanCount++; });
-
       if (!mounted) return;
-      final cont = await Navigator.push<bool>(context, MaterialPageRoute(
-        builder: (_) => ScanSuccessScreen(result: result),
-      ));
 
-      // Resume scanner if driver taps "Scan Next"
-      if (cont == true) {
-        setState(() => _isScanning = false);
-        await _cameraCtrl.start();
+      await Navigator.push<bool>(
+        context,
+        MaterialPageRoute(builder: (_) => ScanSuccessScreen(result: result)),
+      );
+
+      if (mounted) {
+        setState(() { _isScanning = false; _lastScannedValue = null; });
+        await _restartCamera();
       }
+
     } catch (e) {
-      final msg = e.toString().replaceFirst('Exception: ', '').replaceFirst('DioException: ', '');
-      _navigateError(msg);
+      final msg = e.toString()
+          .replaceFirst('Exception: ', '')
+          .replaceFirst('DioException: ', '');
+
+      final is409 = msg.contains('409') || msg.contains('TRIP_ALREADY_ONGOING');
+      final is410 = msg.contains('410') || msg.contains('QR_EXPIRED');
+
+      if (is409) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: const Row(children: [
+              Icon(Icons.info_rounded, color: Colors.white, size: 18),
+              SizedBox(width: 10),
+              Expanded(child: Text(
+                'Passenger already on board.\nSwitch to Alighting mode to scan exit.',
+                style: TextStyle(color: Colors.white, fontSize: 13, height: 1.4),
+              )),
+            ]),
+            backgroundColor: const Color(0xFFD97706),
+            behavior: SnackBarBehavior.floating,
+            margin: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+            duration: const Duration(seconds: 4),
+            shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(10)),
+          ));
+          setState(() { _isScanning = false; _lastScannedValue = null; });
+          await _restartCamera();
+        }
+        return;
+      }
+
+      if (is410) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: const Row(children: [
+              Icon(Icons.refresh_rounded, color: Colors.white, size: 18),
+              SizedBox(width: 10),
+              Expanded(child: Text(
+                'QR expired.\nAsk passenger to refresh their QR card.',
+                style: TextStyle(color: Colors.white, fontSize: 13, height: 1.4),
+              )),
+            ]),
+            backgroundColor: const Color(0xFF1A6FA8),
+            behavior: SnackBarBehavior.floating,
+            margin: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+            duration: const Duration(seconds: 4),
+            shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(10)),
+          ));
+          setState(() { _isScanning = false; _lastScannedValue = null; });
+          await _restartCamera();
+        }
+        return;
+      }
+
+      await _navigateError(msg);
     }
   }
 
   Future<void> _navigateError(String message) async {
     if (!mounted) return;
-    final retry = await Navigator.push<bool>(context, MaterialPageRoute(
-      builder: (_) => ScanErrorScreen(errorMessage: message),
-    ));
-    setState(() => _isScanning = false);
-    if (retry == true) await _cameraCtrl.start();
+    try { await _cameraCtrl.stop(); } catch (_) {}
+
+    await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(builder: (_) => ScanErrorScreen(errorMessage: message)),
+    );
+
+    if (!mounted) return;
+    setState(() { _isScanning = false; _lastScannedValue = null; });
+    await _restartCamera();
   }
 
   // ── Build ─────────────────────────────────────────────────────────────────
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.scannerBg,
       body: SafeArea(
         child: Column(children: [
-          ScannerTopbar(scanCount: _scanCount, mode: _mode == ScanMode.boarding ? 'Board' : 'Alight'),
+          ScannerTopbar(
+              scanCount: _scanCount,
+              mode: _mode == ScanMode.boarding ? 'Board' : 'Alight'),
           _modeToggle(),
           Expanded(child: _buildViewfinder()),
           _buildBottomPanel(),
@@ -141,47 +235,51 @@ class _ActiveScannerScreenState extends State<ActiveScannerScreen>
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: 10),
         decoration: BoxDecoration(
-          color: active ? AppColors.primaryLight : Colors.white.withOpacity(0.08),
+          color: active
+              ? AppColors.primaryLight
+              : Colors.white.withOpacity(0.08),
           borderRadius: BorderRadius.circular(10),
-          border: Border.all(color: active ? AppColors.primaryLight : Colors.white.withOpacity(0.15)),
+          border: Border.all(
+              color: active
+                  ? AppColors.primaryLight
+                  : Colors.white.withOpacity(0.15)),
         ),
-        child: Center(child: Text(label, style: GoogleFonts.inter(
-          fontSize: 14, fontWeight: FontWeight.w700,
-          color: active ? Colors.white : Colors.white.withOpacity(0.5),
-        ))),
+        child: Center(child: Text(label,
+            style: GoogleFonts.inter(
+                fontSize: 14, fontWeight: FontWeight.w700,
+                color: active
+                    ? Colors.white
+                    : Colors.white.withOpacity(0.5)))),
       ),
     );
   }
 
   Widget _buildViewfinder() {
     return Stack(fit: StackFit.expand, children: [
-      // Live camera feed
       MobileScanner(controller: _cameraCtrl, onDetect: _onDetect),
-
-      // Dark overlay with cut-out
       LayoutBuilder(builder: (ctx, constraints) {
         const boxSize = 260.0;
-        final left  = (constraints.maxWidth  - boxSize) / 2;
-        final top   = (constraints.maxHeight - boxSize) / 2;
+        final left = (constraints.maxWidth  - boxSize) / 2;
+        final top  = (constraints.maxHeight - boxSize) / 2;
 
         return Stack(children: [
-          // Overlay panels
           Positioned(top: 0, left: 0, right: 0, height: top,
-            child: Container(color: Colors.black54)),
-          Positioned(bottom: 0, left: 0, right: 0, height: constraints.maxHeight - top - boxSize,
-            child: Container(color: Colors.black54)),
+              child: Container(color: Colors.black54)),
+          Positioned(bottom: 0, left: 0, right: 0,
+              height: constraints.maxHeight - top - boxSize,
+              child: Container(color: Colors.black54)),
           Positioned(top: top, left: 0, width: left, height: boxSize,
-            child: Container(color: Colors.black54)),
+              child: Container(color: Colors.black54)),
           Positioned(top: top, right: 0, width: left, height: boxSize,
-            child: Container(color: Colors.black54)),
-
-          // Corner brackets
+              child: Container(color: Colors.black54)),
           Positioned(top: top, left: left, child: _corner(0)),
           Positioned(top: top, right: left, child: _corner(1)),
-          Positioned(bottom: constraints.maxHeight - top - boxSize, left: left, child: _corner(2)),
-          Positioned(bottom: constraints.maxHeight - top - boxSize, right: left, child: _corner(3)),
-
-          // Animated scan line
+          Positioned(
+              bottom: constraints.maxHeight - top - boxSize,
+              left: left, child: _corner(2)),
+          Positioned(
+              bottom: constraints.maxHeight - top - boxSize,
+              right: left, child: _corner(3)),
           Positioned(
             top: top, left: left, width: boxSize, height: boxSize,
             child: AnimatedBuilder(
@@ -203,10 +301,7 @@ class _ActiveScannerScreenState extends State<ActiveScannerScreen>
           ),
         ]);
       }),
-
-      // Mode label overlay
-      Positioned(
-        bottom: 20, left: 0, right: 0,
+      Positioned(bottom: 20, left: 0, right: 0,
         child: Center(child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
           decoration: BoxDecoration(
@@ -216,11 +311,12 @@ class _ActiveScannerScreenState extends State<ActiveScannerScreen>
             borderRadius: BorderRadius.circular(20),
           ),
           child: Text(
-            _mode == ScanMode.boarding ? '🟢 BOARDING MODE' : '🔴 ALIGHTING MODE',
-            style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w700, color: Colors.white),
-          ),
-        )),
-      ),
+            _mode == ScanMode.boarding
+                ? '🟢 BOARDING MODE' : '🔴 ALIGHTING MODE',
+            style: GoogleFonts.inter(
+                fontSize: 13, fontWeight: FontWeight.w700,
+                color: Colors.white)),
+        ))),
     ]);
   }
 
@@ -229,19 +325,23 @@ class _ActiveScannerScreenState extends State<ActiveScannerScreen>
     final top    = pos < 2;
     final isLeft = pos == 0 || pos == 2;
     return SizedBox(width: size, height: size,
-      child: CustomPaint(painter: _CornerPainter(top: top, left: isLeft, color: color, thickness: thick)));
+        child: CustomPaint(painter: _CornerPainter(
+            top: top, left: isLeft, color: color, thickness: thick)));
   }
 
   Widget _buildBottomPanel() => Container(
     color: AppColors.scannerSurface,
     padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
     child: Row(children: [
-      Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Text('Ready to scan', style: GoogleFonts.inter(
-          fontSize: 15, fontWeight: FontWeight.w700, color: Colors.white)),
-        Text('Point camera at passenger\'s QR card', style: GoogleFonts.inter(
-          fontSize: 13, color: Colors.white54)),
-      ])),
+      Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(_isScanning ? 'Processing...' : 'Ready to scan',
+              style: GoogleFonts.inter(fontSize: 15,
+                  fontWeight: FontWeight.w700, color: Colors.white)),
+          Text('Point camera at passenger\'s QR card',
+              style: GoogleFonts.inter(
+                  fontSize: 13, color: Colors.white54)),
+        ])),
       AnimatedBuilder(
         animation: _pulseAnim,
         builder: (_, __) => Container(
@@ -250,26 +350,39 @@ class _ActiveScannerScreenState extends State<ActiveScannerScreen>
             shape: BoxShape.circle,
             color: AppColors.primaryLight.withOpacity(_pulseAnim.value * 0.2),
           ),
-          child: const Icon(Icons.qr_code_scanner, color: Colors.white, size: 26),
+          child: Icon(
+            _isScanning
+                ? Icons.hourglass_top_rounded
+                : Icons.qr_code_scanner,
+            color: Colors.white, size: 26),
         ),
       ),
     ]),
   );
 }
 
-// ── Corner painter ─────────────────────────────────────────────────────────────
+// ── Corner painter ────────────────────────────────────────────────────────────
 class _CornerPainter extends CustomPainter {
   final bool top, left;
   final Color color;
   final double thickness;
-  const _CornerPainter({required this.top, required this.left, required this.color, required this.thickness});
+  const _CornerPainter({
+    required this.top,
+    required this.left,
+    required this.color,
+    required this.thickness,
+  });
 
   @override
   void paint(Canvas canvas, Size size) {
-    final paint = Paint()..color = color..strokeWidth = thickness..style = PaintingStyle.stroke..strokeCap = StrokeCap.round;
+    final paint = Paint()
+      ..color       = color
+      ..strokeWidth = thickness
+      ..style       = PaintingStyle.stroke
+      ..strokeCap   = StrokeCap.round;
     final l = left ? 0.0 : size.width;
     final t = top  ? 0.0 : size.height;
-    final r = left ? size.width * 0.6 : size.width * 0.4;
+    final r = left ? size.width  * 0.6 : size.width  * 0.4;
     final b = top  ? size.height * 0.6 : size.height * 0.4;
     canvas.drawLine(Offset(l, t), Offset(r, t), paint);
     canvas.drawLine(Offset(l, t), Offset(l, b), paint);

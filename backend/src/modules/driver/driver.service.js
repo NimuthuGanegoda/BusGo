@@ -1,4 +1,3 @@
-// driver.service.js
 import { supabase, broadcastToChannel } from '../../config/supabase.js';
 import { CONSTANTS } from '../../config/constants.js';
 
@@ -11,13 +10,13 @@ export async function getDriverProfile(userId) {
     .single();
 
   if (error || !data) {
-    const err = new Error('Driver profile not found'); err.statusCode = 404; err.code = 'DRIVER_NOT_FOUND'; throw err;
+    const err = new Error('Driver profile not found');
+    err.statusCode = 404; err.code = 'DRIVER_NOT_FOUND'; throw err;
   }
   return data;
 }
 
 export async function getAssignedBus(userId) {
-  // Drivers are linked to a bus by driver_user_id field
   const { data, error } = await supabase
     .from('buses')
     .select(`
@@ -35,7 +34,6 @@ export async function getAssignedBus(userId) {
 }
 
 export async function updateDriverLocation(userId, dto) {
-  // Find bus assigned to driver
   const { data: bus } = await supabase
     .from('buses')
     .select('id')
@@ -62,7 +60,6 @@ export async function updateDriverLocation(userId, dto) {
 
   if (error) throw error;
 
-  // Broadcast to all Flutter passenger subscribers
   await broadcastToChannel(CONSTANTS.REALTIME_CHANNEL_BUS_LOCATIONS, 'location-update', {
     bus_id: bus.id, lat: dto.lat, lng: dto.lng,
     heading: dto.heading, speed_kmh: dto.speed_kmh, timestamp: now,
@@ -76,7 +73,8 @@ export async function updateCrowdLevel(userId, crowd_level) {
     .from('buses').select('id').eq('driver_user_id', userId).maybeSingle();
 
   if (!bus) {
-    const err = new Error('No active bus assigned'); err.statusCode = 404; err.code = 'NO_BUS_ASSIGNED'; throw err;
+    const err = new Error('No active bus assigned');
+    err.statusCode = 404; err.code = 'NO_BUS_ASSIGNED'; throw err;
   }
 
   const { data, error } = await supabase
@@ -87,36 +85,40 @@ export async function updateCrowdLevel(userId, crowd_level) {
   return data;
 }
 
-export async function getDriverRating(userId) {
-  // Get the bus this driver is assigned to
+export async function updateDriverBusStatus(userId, status) {
   const { data: bus } = await supabase
-    .from('buses').select('id, bus_number').eq('driver_user_id', userId).maybeSingle();
+    .from('buses')
+    .select('id')
+    .eq('driver_user_id', userId)
+    .maybeSingle();
 
-  if (!bus) return { bus: null, total_ratings: 0, average_stars: null, average_ml_rating: null, star_breakdown: {} };
+  if (!bus) {
+    const err = new Error('No bus assigned to this driver');
+    err.statusCode = 404; err.code = 'NO_BUS_ASSIGNED'; throw err;
+  }
 
-  const { data: ratings, error } = await supabase
-    .from('ratings')
-    .select('stars, ml_rating, comment, created_at')
-    .eq('bus_id', bus.id)
-    .order('created_at', { ascending: false });
+  const updateData = status === 'active'
+    ? {
+        status: 'active',
+        last_location_update: new Date().toISOString(),
+      }
+    : {
+        status: 'inactive',
+        current_lat: null,
+        current_lng: null,
+        last_location_update: null,
+        speed_kmh: 0,
+      };
+
+  const { data, error } = await supabase
+    .from('buses')
+    .update(updateData)
+    .eq('id', bus.id)
+    .select('id, bus_number, status')
+    .single();
 
   if (error) throw error;
-
-  const total = ratings.length;
-  const avg_stars = total > 0 ? +(ratings.reduce((s, r) => s + r.stars, 0) / total).toFixed(2) : null;
-  const ml_ratings = ratings.filter(r => r.ml_rating !== null);
-  const avg_ml = ml_ratings.length > 0 ? +(ml_ratings.reduce((s, r) => s + r.ml_rating, 0) / ml_ratings.length).toFixed(2) : null;
-  const breakdown = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
-  ratings.forEach(r => { breakdown[r.stars] = (breakdown[r.stars] || 0) + 1; });
-
-  return {
-    bus,
-    total_ratings: total,
-    average_stars: avg_stars,
-    average_ml_rating: avg_ml,
-    star_breakdown: breakdown,
-    recent_comments: ratings.slice(0, 5).map(r => ({ comment: r.comment, stars: r.stars, ml_rating: r.ml_rating, date: r.created_at })),
-  };
+  return data;
 }
 
 export async function getDriverCurrentTrip(userId) {
@@ -139,4 +141,76 @@ export async function getDriverCurrentTrip(userId) {
 
   if (error) throw error;
   return { bus_id: bus.id, active_passengers: data?.length || 0, trips: data };
+}
+
+export async function getDriverRating(driverUserId) {
+  const { data: bus } = await supabase
+    .from('buses')
+    .select('id, bus_number')
+    .eq('driver_user_id', driverUserId)
+    .maybeSingle();
+
+  if (!bus) {
+    return {
+      overall_rating: 0, ml_rating: 0, total_reviews: 0,
+      star_breakdown: { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 },
+      recent_ratings: [], bus_number: null,
+    };
+  }
+
+  const { data: ratings, error } = await supabase
+    .from('ratings')
+    .select('id, stars, tags, comment, ml_rating, ml_confidence, ml_context, created_at')
+    .eq('bus_id', bus.id)
+    .order('created_at', { ascending: false });
+
+  if (error) throw error;
+
+  const total = ratings?.length ?? 0;
+  const star_breakdown = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
+  let starSum = 0, mlSum = 0, mlCount = 0;
+
+  for (const r of ratings ?? []) {
+    const s = Math.round(r.stars);
+    if (s >= 1 && s <= 5) { star_breakdown[s]++; starSum += s; }
+    if (r.ml_rating != null) { mlSum += r.ml_rating; mlCount++; }
+  }
+
+  return {
+    bus_number:     bus.bus_number,
+    overall_rating: total   > 0 ? Math.round((starSum / total)  * 10) / 10 : 0,
+    ml_rating:      mlCount > 0 ? Math.round((mlSum / mlCount)  * 10) / 10 : 0,
+    total_reviews:  total,
+    star_breakdown,
+    recent_ratings: (ratings ?? []).slice(0, 20),
+  };
+}
+
+export async function uploadDriverLicense(userId, fileBuffer, mimeType) {
+  const ext      = mimeType === 'image/png' ? 'png' : mimeType === 'image/webp' ? 'webp' : 'jpg';
+  const filePath = `licenses/${userId}.${ext}`;
+
+  const { error: uploadError } = await supabase.storage
+    .from('driver-licenses')
+    .upload(filePath, fileBuffer, {
+      contentType: mimeType,
+      upsert:      true,
+    });
+
+  if (uploadError) throw uploadError;
+
+  const { data: signedData, error: signedError } = await supabase.storage
+    .from('driver-licenses')
+    .createSignedUrl(filePath, 60 * 60 * 24 * 365);
+
+  if (signedError) throw signedError;
+
+  const { error: dbError } = await supabase
+    .from('users')
+    .update({ license_url: filePath })
+    .eq('id', userId);
+
+  if (dbError) throw dbError;
+
+  return { license_url: filePath, signed_url: signedData.signedUrl };
 }

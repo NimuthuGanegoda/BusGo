@@ -1,9 +1,21 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { CheckCircle, Eye, RefreshCw, X } from 'lucide-react';
 import './Emergencies.css';
 
 const PRIORITY_COLORS: Record<number, string> = {
-  5: '#ef4444', 4: '#f59e0b', 3: '#3b82f6', 2: '#22c55e', 1: '#6b7280',
+  5: '#ef4444', // CRITICAL — red
+  4: '#f59e0b', // HIGH     — amber
+  3: '#3b82f6', // MEDIUM   — blue
+  2: '#22c55e', // LOW      — green
+  1: '#6b7280', // FALSE    — grey
+};
+
+const PRIORITY_LABELS: Record<number, string> = {
+  5: 'P5 • CRITICAL',
+  4: 'P4 • HIGH',
+  3: 'P3 • MEDIUM',
+  2: 'P2 • LOW',
+  1: 'P1 • FALSE',
 };
 
 const STATUS_CONFIG: Record<string, { label: string; color: string; bg: string }> = {
@@ -13,8 +25,16 @@ const STATUS_CONFIG: Record<string, { label: string; color: string; bg: string }
 };
 
 const TYPE_ICONS: Record<string, string> = {
-  medical: '🏥', criminal: '🚨', breakdown: '🔧', harassment: '⚠️', other: '📋',
+  medical:    '🏥',
+  criminal:   '🚨',
+  breakdown:  '🔧',
+  harassment: '⚠️',
+  other:      '📋',
 };
+
+// ── CORRECT endpoint: /api/admin/emergency returns ALL alerts with user joins
+//    /api/emergency only returns alerts for the logged-in user (wrong for admin)
+const ADMIN_API = 'http://localhost:5000/api/admin';
 
 export default function Emergencies() {
   const [alerts,       setAlerts]       = useState<any[]>([]);
@@ -23,51 +43,80 @@ export default function Emergencies() {
   const [typeFilter,   setTypeFilter]   = useState('all');
   const [toast,        setToast]        = useState('');
   const [detail,       setDetail]       = useState<any>(null);
+  const [lastUpdated,  setLastUpdated]  = useState<Date | null>(null);
 
-  const token = localStorage.getItem('busgo_access_token');
-  
+  const prevCountRef = useRef(0);
+  const pollRef      = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const showToast = (msg: string) => {
     setToast(msg);
     setTimeout(() => setToast(''), 4000);
   };
 
-  const fetchAlerts = useCallback(async () => {
-    setLoading(true);
+  const fetchAlerts = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true);
     try {
       const params = new URLSearchParams({ page_size: '50' });
       if (statusFilter !== 'all') params.set('status', statusFilter);
       if (typeFilter   !== 'all') params.set('alert_type', typeFilter);
 
-      const res  = await fetch(
-        `http://localhost:5000/api/admin/emergency?${params}`,
-        { headers: { Authorization: `Bearer ${localStorage.getItem('busgo_access_token')}` } }
-      );
-      const json = await res.json();
-      console.log('Full API response:', JSON.stringify(json));
+      const res  = await fetch(`${ADMIN_API}/emergency?${params}`, {
+        headers: { Authorization: `Bearer ${localStorage.getItem('busgo_access_token')}` },
+      });
 
-      // Handle all possible response shapes
+      if (!res.ok) {
+        console.error('[Emergencies] HTTP error:', res.status, res.statusText);
+        return;
+      }
+
+      const json = await res.json();
+      console.log('[Emergencies] Response:', json);
+
+      // Backend returns: { success: true, data: [...alerts], message: '...' }
       const found: any[] = Array.isArray(json.data) ? json.data : [];
-      console.log('Alerts found:', found.length);
+
+      // Notify if new alerts arrived during silent poll
+      if (silent && found.length > prevCountRef.current) {
+        const newCount = found.length - prevCountRef.current;
+        showToast(`🚨 ${newCount} new emergency alert${newCount > 1 ? 's' : ''} received`);
+      }
+      prevCountRef.current = found.length;
+
       setAlerts(found);
+      setLastUpdated(new Date());
     } catch (e) {
-      console.error('Fetch error:', e);
+      console.error('[Emergencies] Fetch error:', e);
+    } finally {
+      if (!silent) setLoading(false);
     }
-    finally { setLoading(false); }
   }, [statusFilter, typeFilter]);
 
+  // Initial load + re-fetch when filters change
   useEffect(() => { fetchAlerts(); }, [fetchAlerts]);
+
+  // Auto-poll every 20 seconds (silent — no spinner)
+  useEffect(() => {
+    pollRef.current = setInterval(() => fetchAlerts(true), 20_000);
+    return () => { if (pollRef.current) clearInterval(pollRef.current); };
+  }, [fetchAlerts]);
 
   const updateStatus = async (id: string, status: string) => {
     try {
-      await fetch(`http://localhost:5000/api/admin/emergency/${id}/status`, {
+      const res = await fetch(`${ADMIN_API}/emergency/${id}/status`, {
         method:  'PATCH',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem('busgo_access_token')}` },
-        body:    JSON.stringify({ status }),
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${localStorage.getItem('busgo_access_token')}`,
+        },
+        body: JSON.stringify({ status }),
       });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
       setAlerts(prev => prev.map(a => a.id === id ? { ...a, status } : a));
-      showToast(`Alert ${status}`);
-    } catch (e) { console.error(e); }
+      showToast(`✅ Alert marked as ${status}`);
+    } catch (e) {
+      console.error('[Emergencies] Status update failed:', e);
+      showToast('❌ Failed to update alert status');
+    }
   };
 
   const totals = {
@@ -103,12 +152,13 @@ export default function Emergencies() {
               {[
                 ['Alert ID',     detail.id],
                 ['Type',         detail.alert_type?.toUpperCase()],
-                ['ML Priority',  detail.ml_priority_label || '—'],
+                ['ML Priority',  detail.ml_priority ? PRIORITY_LABELS[detail.ml_priority] : '—'],
                 ['ML Action',    detail.ml_action || '—'],
                 ['False Alert?', detail.ml_is_false ? '⚠️ YES' : 'No'],
                 ['Confidence',   detail.ml_confidence ? `${(detail.ml_confidence * 100).toFixed(0)}%` : '—'],
                 ['Description',  detail.description || '—'],
                 ['Reporter',     detail.users?.full_name || '—'],
+                ['Role',         detail.users?.role || '—'],
                 ['Phone',        detail.users?.phone || '—'],
                 ['Bus',          detail.buses?.bus_number || '—'],
                 ['Status',       detail.status],
@@ -132,14 +182,21 @@ export default function Emergencies() {
           </div>
           <div>
             <h1 className="em-title">Emergency Alerts</h1>
-            <p className="em-subtitle">ML-prioritized — most critical shown first</p>
+            <p className="em-subtitle">
+              ML-prioritized — P5 Critical shown first
+              {lastUpdated && (
+                <span style={{ marginLeft: '8px', color: '#9ca3af', fontSize: '11px' }}>
+                  · Updated {lastUpdated.toLocaleTimeString()}
+                </span>
+              )}
+            </p>
           </div>
         </div>
         <div className="em-header-right">
           <span className="em-live-badge">
             <span className="em-live-dot"></span>LIVE
           </span>
-          <button onClick={fetchAlerts}
+          <button onClick={() => fetchAlerts()} title="Refresh"
             style={{ background: 'transparent', border: 'none', cursor: 'pointer', marginLeft: '8px' }}>
             <RefreshCw size={18} />
           </button>
@@ -149,10 +206,10 @@ export default function Emergencies() {
       {/* Stats */}
       <div className="em-stats">
         {[
-          { value: totals.all,          label: 'Total Alerts',  cls: 'total' },
-          { value: totals.pending,      label: 'Active / New',  cls: 'critical' },
-          { value: totals.acknowledged, label: 'Acknowledged',  cls: 'responded' },
-          { value: totals.resolved,     label: 'Resolved',      cls: 'resolved' },
+          { value: totals.all,          label: 'Total Alerts', cls: 'total' },
+          { value: totals.pending,      label: 'Active / New', cls: 'critical' },
+          { value: totals.acknowledged, label: 'Acknowledged', cls: 'responded' },
+          { value: totals.resolved,     label: 'Resolved',     cls: 'resolved' },
         ].map(s => (
           <div key={s.label} className="em-stat-card">
             <div className={`em-stat-icon ${s.cls}`}></div>
@@ -167,17 +224,13 @@ export default function Emergencies() {
       {/* Filters */}
       <div className="em-filters-bar">
         <div className="em-filters-left">
-          <select value={statusFilter}
-            onChange={e => setStatusFilter(e.target.value)}
-            className="em-filter-select">
+          <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)} className="em-filter-select">
             <option value="all">All Status</option>
             <option value="pending">Pending</option>
             <option value="acknowledged">Acknowledged</option>
             <option value="resolved">Resolved</option>
           </select>
-          <select value={typeFilter}
-            onChange={e => setTypeFilter(e.target.value)}
-            className="em-filter-select">
+          <select value={typeFilter} onChange={e => setTypeFilter(e.target.value)} className="em-filter-select">
             <option value="all">All Types</option>
             <option value="medical">Medical</option>
             <option value="criminal">Criminal</option>
@@ -200,35 +253,48 @@ export default function Emergencies() {
       ) : (
         <div className="em-alerts-list">
           {alerts.map(alert => {
-            const priColor = PRIORITY_COLORS[alert.ml_priority || 2];
+            // ── Priority: use ml_priority number; fall back to 2 (LOW) if null
+            const pri      = alert.ml_priority ?? null;
+            const priColor = pri ? PRIORITY_COLORS[pri] : '#9ca3af';
+            // ── Label: prefer backend label, fall back to our map, then blank
+            const priLabel = alert.ml_priority_label || (pri ? PRIORITY_LABELS[pri] : null);
             const status   = STATUS_CONFIG[alert.status] || STATUS_CONFIG.pending;
+            // ── Reporter: show driver/passenger name + role in brackets
+            const reporter = alert.users?.full_name
+              ? `${alert.users.full_name}${alert.users.role ? ` (${alert.users.role})` : ''}`
+              : '—';
+
             return (
-              <div key={alert.id} className="em-alert-card"
-                style={{ borderLeftColor: priColor }}>
+              <div key={alert.id} className="em-alert-card" style={{ borderLeftColor: priColor }}>
                 <div className="em-alert-main">
 
-                  <div className="em-alert-type-icon"
-                    style={{ fontSize: '24px', marginRight: '16px' }}>
+                  <div style={{ fontSize: '24px', marginRight: '16px' }}>
                     {TYPE_ICONS[alert.alert_type] || '📋'}
                   </div>
 
                   <div className="em-alert-content">
                     <div className="em-alert-row-top">
-                      {alert.ml_priority && (
+                      {/* Priority badge */}
+                      {priLabel && (
                         <span style={{
-                          color: priColor,
-                          background: `${priColor}18`,
-                          padding: '2px 8px',
-                          borderRadius: '6px',
-                          fontSize: '12px',
-                          fontWeight: 700,
-                          marginRight: '8px',
+                          color: priColor, background: `${priColor}18`,
+                          padding: '2px 8px', borderRadius: '6px',
+                          fontSize: '12px', fontWeight: 700, marginRight: '8px',
                         }}>
-                          {alert.ml_priority_label || `P${alert.ml_priority}`}
+                          {priLabel}
                         </span>
                       )}
-                      <span className="em-alert-type-label"
-                        style={{ color: priColor, fontWeight: 600 }}>
+                      {/* No ML result yet */}
+                      {!priLabel && (
+                        <span style={{
+                          color: '#9ca3af', background: '#f3f4f6',
+                          padding: '2px 8px', borderRadius: '6px',
+                          fontSize: '12px', fontWeight: 600, marginRight: '8px',
+                        }}>
+                          Awaiting ML
+                        </span>
+                      )}
+                      <span className="em-alert-type-label" style={{ color: priColor, fontWeight: 600 }}>
                         {alert.alert_type?.toUpperCase()}
                       </span>
                       {alert.ml_is_false && (
@@ -254,16 +320,14 @@ export default function Emergencies() {
                     </h3>
 
                     {alert.ml_action && (
-                      <div style={{
-                        fontSize: '12px', color: priColor,
-                        fontWeight: 600, marginBottom: '8px',
-                      }}>
+                      <div style={{ fontSize: '12px', color: priColor, fontWeight: 600, marginBottom: '8px' }}>
                         ⚡ {alert.ml_action}
                       </div>
                     )}
 
                     <div className="em-alert-meta">
-                      <span>👤 {alert.users?.full_name || '—'}</span>
+                      {/* Reporter name + role */}
+                      <span>👤 {reporter}</span>
                       {alert.buses?.bus_number && (
                         <><span className="em-alert-meta-divider">|</span>
                         <span>🚌 {alert.buses.bus_number}</span></>
@@ -285,8 +349,7 @@ export default function Emergencies() {
                           <CheckCircle size={14} /> Resolve
                         </button>
                       )}
-                      <button className="em-action-btn secondary"
-                        onClick={() => setDetail(alert)}>
+                      <button className="em-action-btn secondary" onClick={() => setDetail(alert)}>
                         <Eye size={14} /> Details
                       </button>
                     </div>
@@ -302,6 +365,7 @@ export default function Emergencies() {
                       </div>
                     )}
                   </div>
+
                 </div>
               </div>
             );

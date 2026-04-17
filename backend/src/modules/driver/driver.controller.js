@@ -39,6 +39,16 @@ export async function updateCrowd(req, res, next) {
   }
 }
 
+export async function updateStatus(req, res, next) {
+  try {
+    const bus = await driverService.updateDriverBusStatus(req.user.id, req.body.status);
+    return sendSuccess(res, bus, `Bus status set to ${req.body.status}`);
+  } catch (err) {
+    if (err.statusCode) return sendError(res, err.message, err.statusCode, err.code);
+    next(err);
+  }
+}
+
 export async function getMyRating(req, res, next) {
   try {
     const stats = await driverService.getDriverRating(req.user.id);
@@ -50,5 +60,19 @@ export async function getCurrentTrip(req, res, next) {
   try {
     const trip = await driverService.getDriverCurrentTrip(req.user.id);
     return sendSuccess(res, trip, 'Current trip data fetched');
+  } catch (err) { next(err); }
+}
+
+export async function uploadLicense(req, res, next) {
+  try {
+    if (!req.file) {
+      return sendError(res, 'License image is required', 400, 'NO_FILE');
+    }
+    const result = await driverService.uploadDriverLicense(
+      req.user.id,
+      req.file.buffer,
+      req.file.mimetype,
+    );
+    return sendSuccess(res, result, 'License uploaded successfully');
   } catch (err) { next(err); }
 }

@@ -32,6 +32,8 @@ router.get('/users/:id',                   controller.getUserById);
 router.patch('/users/:id',                 controller.updateUser);
 router.patch('/users/:id/deactivate',      controller.deactivateUser);
 router.patch('/users/:id/reactivate',      controller.reactivateUser);
+router.get('/users/:id/license-url',       controller.getDriverLicenseUrl);
+
 
 // ── Bus Management ───────────────────────────────────────────────────────────
 router.get('/buses',

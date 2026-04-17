@@ -1,21 +1,35 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'core/theme/app_theme.dart';
-import 'providers/drive_providers.dart';
+import 'providers/auth_provider.dart';
+import 'providers/route_provider.dart';
+import 'providers/trip_provider.dart';
+import 'providers/emergency_provider.dart';
 import 'routes/app_router.dart';
-import 'services/api_client.dart';
-import 'services/drive_services.dart';
 
-void main() {
+void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // Load .env first
+  await dotenv.load(fileName: '.env');
+
+  // Initialize Supabase for Realtime
+  await Supabase.initialize(
+    url:     dotenv.env['SUPABASE_URL']!,
+    anonKey: dotenv.env['SUPABASE_ANON_KEY']!,
+  );
+
   SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
   SystemChrome.setSystemUIOverlayStyle(
     const SystemUiOverlayStyle(
-      statusBarColor:          Colors.transparent,
+      statusBarColor:        Colors.transparent,
       statusBarIconBrightness: Brightness.light,
     ),
   );
+
   runApp(const BusGoDriveApp());
 }
 
@@ -24,26 +38,12 @@ class BusGoDriveApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Service graph
-    final tokenService  = DriveTokenService();
-    final apiClient     = DriveApiClient(tokenService);
-    final authService   = DriveAuthService(apiClient, tokenService);
-    final driverService = DriveDriverService(apiClient);
-    final emergencyService = DriveEmergencyService(apiClient);
-    final notifService  = DriveNotificationService(apiClient);
-
     return MultiProvider(
       providers: [
-        ChangeNotifierProvider(
-          create: (_) => DriveAuthProvider(authService, tokenService),
-        ),
-        ChangeNotifierProvider(
-          create: (_) => DriveDriverProvider(driverService),
-        ),
-        ChangeNotifierProvider(
-          create: (_) => DriveEmergencyProvider(emergencyService),
-        ),
-        Provider<DriveNotificationService>(create: (_) => notifService),
+        ChangeNotifierProvider(create: (_) => AuthProvider()),
+        ChangeNotifierProvider(create: (_) => RouteProvider()),
+        ChangeNotifierProvider(create: (_) => TripProvider()),
+        ChangeNotifierProvider(create: (_) => EmergencyProvider()),
       ],
       child: MaterialApp.router(
         title:                    'BusGo Drive',
