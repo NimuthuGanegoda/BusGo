@@ -42,6 +42,13 @@ const envSchema = z.object({
 
   // ML Microservice
   ML_SERVICE_URL: z.string().url().default('http://localhost:8000'),
+
+  // Payment (WebXPay)
+  PAYMENT_SANDBOX: z.string().default('true'),
+  WEBXPAY_MERCHANT_ID: z.string().default(''),
+  WEBXPAY_MERCHANT_SECRET: z.string().default(''),
+  WEBXPAY_RETURN_URL: z.string().default(''),
+  WEBXPAY_NOTIFY_URL: z.string().default(''),
 });
 
 const parsed = envSchema.safeParse(process.env);

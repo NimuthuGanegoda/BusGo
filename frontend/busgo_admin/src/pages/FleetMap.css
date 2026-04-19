@@ -103,6 +103,13 @@
 .legend-dot.green { background: #4caf50; }
 .legend-dot.yellow { background: #f59e0b; }
 .legend-dot.red { background: #e74c3c; }
+.legend-dot.black { background: #1a1a1a; }
+
+/* Fleet stop marker */
+.fleet-stop-marker {
+  background: none !important;
+  border: none !important;
+}
 
 /* Bus Detail Panel */
 .bus-detail-panel {

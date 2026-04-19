@@ -36,6 +36,9 @@ class ScannerApiService {
   final ScannerTokenService _tokens;
   bool _refreshing = false;
 
+  /// Cached route ID from the driver's assigned bus
+  String? _driverRouteId;
+
   ScannerApiService(this._tokens) {
     _dio = Dio(BaseOptions(
       baseUrl:        _kBaseUrl,
@@ -99,6 +102,10 @@ class ScannerApiService {
       throw Exception('Scanner is for drivers only.');
     }
     await _tokens.save(d['access_token'] as String, d['refresh_token'] as String);
+
+    // Fetch and cache the driver's route ID after login
+    await _fetchDriverRouteId();
+
     return user;
   }
 
@@ -110,58 +117,92 @@ class ScannerApiService {
       );
     } catch (_) {}
     await _tokens.clear();
+    _driverRouteId = null;
   }
 
-  // ── QR Scan-In (passenger boards) ─────────────────────────────────────────
+  // ── Driver info ───────────────────────────────────────────────────────────
 
-  /// POST /qr/scan-in
+  /// Fetches the driver's assigned bus to get the route_id
+  Future<void> _fetchDriverRouteId() async {
+    try {
+      final res = await _dio.get('/driver/bus');
+      final d = _unwrap(res) as Map<String, dynamic>;
+      _driverRouteId = d['route_id'] as String?;
+    } catch (e) {
+      debugPrint('Failed to fetch driver route: $e');
+    }
+  }
+
+  // ── Ticket Verification (passenger boards) ────────────────────────────────
+
+  /// POST /payments/verify-scan
   /// [scannedToken] is the UUID decoded from the passenger's QR code.
-  /// Returns { trip_id, passenger: { full_name, membership_type, ... }, message }
+  /// Returns scan result with ticket status: PAID, CASH, or UNKNOWN
   Future<ScanResult> scanIn(String scannedToken) async {
-    final res = await _dio.post('/qr/scan-in',
-        data: {'scanned_token': scannedToken});
+    // Ensure we have the route ID
+    if (_driverRouteId == null) {
+      await _fetchDriverRouteId();
+    }
+
+    final res = await _dio.post('/payments/verify-scan', data: {
+      'qr_token': scannedToken,
+      'route_id': _driverRouteId,
+    });
     final d = _unwrap(res) as Map<String, dynamic>;
-    return ScanResult.fromJson(d, isBoarding: true);
+    return ScanResult.fromJson(d);
   }
 
   // ── QR Scan-Exit (passenger alights) ─────────────────────────────────────
 
   /// POST /qr/scan-exit
+  /// NOTE: Keep this if you still need scan-exit functionality,
+  /// otherwise remove it.
   Future<ScanResult> scanExit(String scannedToken) async {
-    final res = await _dio.post('/qr/scan-exit',
-        data: {'scanned_token': scannedToken});
+    if (_driverRouteId == null) {
+      await _fetchDriverRouteId();
+    }
+
+    final res = await _dio.post('/payments/verify-scan', data: {
+      'qr_token': scannedToken,
+      'route_id': _driverRouteId,
+    });
     final d = _unwrap(res) as Map<String, dynamic>;
-    return ScanResult.fromJson(d, isBoarding: false);
+    return ScanResult.fromJson(d);
   }
 }
 
 // ── Data model returned after a scan ─────────────────────────────────────────
 class ScanResult {
   final bool   success;
-  final bool   isBoarding;
-  final String tripId;
-  final String passengerName;
-  final String membershipType;
+  final String status;       // PAID, CASH, or UNKNOWN
   final String message;
+  final String passengerName;
+  final String routeName;
+  final String boardingStop;
+  final String alightingStop;
 
   const ScanResult({
     required this.success,
-    required this.isBoarding,
-    required this.tripId,
-    required this.passengerName,
-    required this.membershipType,
+    required this.status,
     required this.message,
+    required this.passengerName,
+    required this.routeName,
+    required this.boardingStop,
+    required this.alightingStop,
   });
 
-  factory ScanResult.fromJson(Map<String, dynamic> json, {required bool isBoarding}) {
-    final pax = json['passenger'] as Map<String, dynamic>? ?? {};
+  factory ScanResult.fromJson(Map<String, dynamic> json) {
+    final ticket = json['ticket'] as Map<String, dynamic>? ?? {};
+    final status = json['payment_status'] as String? ?? 'UNKNOWN';  // was json['status']
+
     return ScanResult(
-      success:        true,
-      isBoarding:     isBoarding,
-      tripId:         json['trip_id']   as String? ?? '',
-      passengerName:  pax['full_name']      as String? ?? 'Passenger',
-      membershipType: pax['membership_type'] as String? ?? 'standard',
-      message:        json['message']   as String? ?? 'Scan successful',
+      success:       status == 'PAID',
+      status:        status,
+      message:       json['message'] as String? ?? 'Scan complete',
+      passengerName: ticket['passenger_name'] as String? ?? 'Passenger',
+      routeName:     ticket['route_name'] as String? ?? '',
+      boardingStop:  ticket['from'] as String? ?? '',
+      alightingStop: ticket['to'] as String? ?? '',
     );
   }
 }

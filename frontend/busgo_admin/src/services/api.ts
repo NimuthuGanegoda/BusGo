@@ -136,6 +136,14 @@ export const busApi = {
     api.get<Bus[]>(`/buses/nearby?lat=${lat}&lng=${lng}&radius=${radius}`),
 };
 
+// ── Bus stops (public endpoint) ───────────────────────────────────────────────
+export const stopsApi = {
+  getAll:    ()                                     => api.get<Stop[]>('/stops'),
+  getNearby: (lat: number, lng: number, radius = 5) => api.get<Stop[]>(`/stops/nearby?lat=${lat}&lng=${lng}&radius=${radius}`),
+  getById:   (id: string)                           => api.get<Stop>(`/stops/${id}`),
+  getRoutes: (id: string)                           => api.get<Route[]>(`/stops/${id}/routes`),
+};
+
 // ── Types ──────────────────────────────────────────────────────────────────────
 export interface User {
   id: string;
@@ -191,8 +199,17 @@ export interface Route {
   route_name: string;
   origin: string;
   destination: string;
+  waypoints?: { lat: number; lng: number }[];
   color: string;
   is_active: boolean;
+}
+
+export interface Stop {
+  id: string;
+  stop_name: string;
+  latitude: number;
+  longitude: number;
+  created_at?: string;
 }
 
 export interface AuditLog {

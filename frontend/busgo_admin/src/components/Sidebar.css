@@ -31,6 +31,7 @@
   font-size: 20px;
   font-weight: 800;
   letter-spacing: 1.5px;
+  color: #fff;
 }
 
 .sidebar-logo-subtitle {
@@ -65,21 +66,57 @@
   gap: 12px;
   padding: 10px 12px;
   border-radius: 8px;
-  color: #a0b0c4;
+  color: #8a9bb4;
   font-size: 14px;
   font-weight: 500;
-  transition: all 0.2s;
   margin-bottom: 2px;
+  text-decoration: none;
+  position: relative;
+  transform: translateY(0);
+  transition: transform 0.4s ease, color 0.3s ease, background 0.3s ease;
+  cursor: pointer;
+}
+
+/* Icon micro-interaction */
+.sidebar-link svg {
+  transition: transform 0.4s ease, color 0.3s ease;
+}
+
+/* Label micro-interaction */
+.sidebar-link span {
+  transition: transform 0.4s ease, opacity 0.3s ease, letter-spacing 0.4s ease;
+  text-decoration: none;
 }
 
 .sidebar-link:hover {
-  color: #fff;
-  background: rgba(255, 255, 255, 0.06);
+  color: #5a6ae6;
+  background: rgba(90, 106, 230, 0.06);
+  transform: translateY(-3px);
+  text-decoration: none;
+}
+
+.sidebar-link:hover svg {
+  transform: scale(1.15);
+  color: #5a6ae6;
+}
+
+.sidebar-link:hover span {
+  letter-spacing: 0.03em;
 }
 
 .sidebar-link.active {
   color: #fff;
   background: #1a6cf0;
+  transform: translateY(0);
+}
+
+.sidebar-link.active svg {
+  transform: scale(1);
+}
+
+.sidebar-link.active:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(26, 108, 240, 0.3);
 }
 
 .sidebar-badge {

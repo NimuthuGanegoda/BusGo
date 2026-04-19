@@ -223,6 +223,8 @@ class _RouteSearchScreenState extends State<RouteSearchScreen> {
                 _buildRecentTrips(),
                 const SizedBox(height: 8),
                 _buildSearchResults(),
+                const SizedBox(height: 8),
+                _buildStopBasedRoutes(),
               ],
             ),
           ),
@@ -579,6 +581,183 @@ class _RouteSearchScreenState extends State<RouteSearchScreen> {
     );
   }
 
+  // ── Stop-based route results (NEW) ──────────────────────────────────────
+  Widget _buildStopBasedRoutes() {
+    return Consumer<BusProvider>(builder: (context, busProvider, _) {
+      final stopMatches = busProvider.stopMatches;
+      final routesMap = busProvider.routesViaStop;
+
+      if (stopMatches.isEmpty || busProvider.searchQuery.isEmpty) {
+        return const SizedBox.shrink();
+      }
+
+      // Collect all unique routes from matching stops (avoid duplicating direct route results)
+      final directRouteIds = busProvider.searchResults.map((r) => r.id).toSet();
+      final stopRouteEntries = <_StopRouteEntry>[];
+
+      for (final stop in stopMatches) {
+        final sid = stop.id ?? stop.stopId;
+        final routes = routesMap[sid] ?? [];
+        for (final route in routes) {
+          // Don't show if already in direct results
+          if (!directRouteIds.contains(route.id)) {
+            stopRouteEntries.add(_StopRouteEntry(stop: stop, route: route));
+          }
+        }
+      }
+
+      if (stopRouteEntries.isEmpty && !busProvider.loadingStopRoutes) {
+        return const SizedBox.shrink();
+      }
+
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const SizedBox(height: 4),
+          Row(children: [
+            Container(
+              padding: const EdgeInsets.all(5),
+              decoration: BoxDecoration(
+                color: const Color(0xFF16A34A).withOpacity(0.1),
+                borderRadius: BorderRadius.circular(6),
+              ),
+              child: const Icon(Icons.alt_route_rounded,
+                  size: 14, color: Color(0xFF16A34A)),
+            ),
+            const SizedBox(width: 8),
+            const Text('Routes via Bus Stops',
+                style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.primary)),
+            const Spacer(),
+            if (busProvider.loadingStopRoutes)
+              const SizedBox(
+                  width: 14,
+                  height: 14,
+                  child: CircularProgressIndicator(strokeWidth: 2)),
+            if (!busProvider.loadingStopRoutes && stopRouteEntries.isNotEmpty)
+              Text(
+                '${stopRouteEntries.length} routes',
+                style: TextStyle(
+                    fontSize: 11,
+                    color: AppColors.textMuted.withValues(alpha: 0.7),
+                    fontWeight: FontWeight.w500),
+              ),
+          ]),
+          const SizedBox(height: 10),
+
+          if (busProvider.loadingStopRoutes && stopRouteEntries.isEmpty)
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 16),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  SizedBox(
+                      width: 14,
+                      height: 14,
+                      child: CircularProgressIndicator(strokeWidth: 2)),
+                  SizedBox(width: 8),
+                  Text('Searching bus stops...',
+                      style: TextStyle(
+                          fontSize: 12, color: AppColors.textMuted)),
+                ],
+              ),
+            ),
+
+          ...stopRouteEntries.take(8).map((entry) => _buildStopRouteCard(entry)),
+        ],
+      );
+    });
+  }
+
+  Widget _buildStopRouteCard(_StopRouteEntry entry) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+          color: const Color(0xFF16A34A).withOpacity(0.25),
+          width: 1,
+        ),
+        boxShadow: [
+          BoxShadow(
+              color: Colors.black.withValues(alpha: 0.04),
+              blurRadius: 8,
+              offset: const Offset(0, 2)),
+        ],
+      ),
+      child: InkWell(
+        onTap: () => _onRouteTapped(entry.route),
+        borderRadius: BorderRadius.circular(14),
+        child: Padding(
+          padding: const EdgeInsets.all(14),
+          child: Row(children: [
+            // Route number badge
+            Container(
+              width: 38,
+              height: 38,
+              decoration: BoxDecoration(
+                color: entry.route.routeColor,
+                borderRadius: BorderRadius.circular(10),
+              ),
+              alignment: Alignment.center,
+              child: Text(entry.route.routeNumber,
+                  style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700)),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(entry.route.displayRoute,
+                      style: const TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          color: AppColors.primary)),
+                  const SizedBox(height: 3),
+                  Row(children: [
+                    Icon(Icons.place_rounded,
+                        size: 11,
+                        color: const Color(0xFF16A34A).withOpacity(0.8)),
+                    const SizedBox(width: 3),
+                    Expanded(
+                      child: Text(
+                        'Passes through ${entry.stop.name}',
+                        style: TextStyle(
+                            fontSize: 11,
+                            color: const Color(0xFF16A34A).withOpacity(0.9),
+                            fontWeight: FontWeight.w500),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ]),
+                ],
+              ),
+            ),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+              decoration: BoxDecoration(
+                color: const Color(0xFF16A34A).withOpacity(0.1),
+                borderRadius: BorderRadius.circular(4),
+              ),
+              child: const Text('VIA',
+                  style: TextStyle(
+                      fontSize: 9,
+                      fontWeight: FontWeight.w700,
+                      color: Color(0xFF16A34A),
+                      letterSpacing: 0.5)),
+            ),
+          ]),
+        ),
+      ),
+    );
+  }
+
   Widget _buildStopItem({
     required IconData icon,
     required String title,
@@ -871,4 +1050,10 @@ class _RouteSearchScreenState extends State<RouteSearchScreen> {
       ]),
     );
   }
+}
+/// Helper class to pair a stop with a route that passes through it
+class _StopRouteEntry {
+  final StopModel stop;
+  final BusRoute route;
+  const _StopRouteEntry({required this.stop, required this.route});
 }

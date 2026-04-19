@@ -20,6 +20,9 @@ import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
 import '../providers/trip_provider.dart';
 import '../widgets/rating_popup.dart';
+import '../screens/payment/payment_screen.dart';
+
+
 
 final GoRouter appRouter = GoRouter(
   initialLocation: '/splash',
@@ -40,6 +43,11 @@ final GoRouter appRouter = GoRouter(
       path: '/forgot-password',
       builder: (context, state) => const ForgotPasswordScreen(),
     ),
+
+    // Add this GoRoute:
+    GoRoute(
+      path: '/payment',
+      builder: (context, state) => const PaymentScreen()),
 
     StatefulShellRoute.indexedStack(
       builder: (context, state, navigationShell) {

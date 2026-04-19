@@ -20,6 +20,12 @@ class BusProvider extends ChangeNotifier {
   String _searchQuery = '';
   String? _errorMessage;
 
+  // ── Stop-based search state ─────────────────────────────────────────────
+  List<StopModel> _allStops = [];
+  List<StopModel> _stopMatches = [];
+  Map<String, List<BusRoute>> _routesViaStop = {};
+  bool _loadingStopRoutes = false;
+
   RealtimeChannel? _locationChannel;
 
   BusProvider(this._busService);
@@ -32,6 +38,12 @@ class BusProvider extends ChangeNotifier {
   bool get isLoading => _isLoading;
   String get searchQuery => _searchQuery;
   String? get errorMessage => _errorMessage;
+
+  // ── Stop search getters ─────────────────────────────────────────────────
+  List<StopModel> get allStops => _allStops;
+  List<StopModel> get stopMatches => _stopMatches;
+  Map<String, List<BusRoute>> get routesViaStop => _routesViaStop;
+  bool get loadingStopRoutes => _loadingStopRoutes;
 
   // ── Data loading ────────────────────────────────────────────────────────────
 
@@ -83,6 +95,32 @@ class BusProvider extends ChangeNotifier {
     }
   }
 
+  /// Load ALL bus stops from Supabase (for stop-based search)
+  Future<void> loadAllStops() async {
+    try {
+      final res = await Supabase.instance.client
+          .from('bus_stops')
+          .select('id, stop_name, latitude, longitude')
+          .order('stop_name');
+
+      _allStops = (res as List).map((s) {
+        final json = s as Map<String, dynamic>;
+        return StopModel(
+          id: json['id'] as String,
+          stopId: json['id'] as String,
+          name: json['stop_name'] as String? ?? '',
+          latitude: (json['latitude'] as num?)?.toDouble(),
+          longitude: (json['longitude'] as num?)?.toDouble(),
+          distance: 0,
+          routes: [],
+        );
+      }).toList();
+      notifyListeners();
+    } catch (e) {
+      debugPrint('[BusProvider] loadAllStops error: $e');
+    }
+  }
+
   Future<void> loadAll(double lat, double lng, {double radius = 20.0}) async {
     _isLoading = true;
     _errorMessage = null;
@@ -92,13 +130,14 @@ class BusProvider extends ChangeNotifier {
       loadNearbyBuses(lat, lng, radius: radius),
       loadNearbyStops(lat, lng),
       loadAllRoutes(),
+      loadAllStops(),
     ]);
 
     _isLoading = false;
     notifyListeners();
   }
 
-  // ── Search ──────────────────────────────────────────────────────────────────
+  // ── Search (enhanced: routes + stops) ───────────────────────────────────
 
   Future<void> searchByDestination(String query) async {
     _searchQuery = query;
@@ -106,10 +145,13 @@ class BusProvider extends ChangeNotifier {
 
     if (q.isEmpty) {
       _searchResults = List.from(_allRoutes);
+      _stopMatches = [];
+      _routesViaStop = {};
       notifyListeners();
       return;
     }
 
+    // 1) Search routes by origin/destination/number (existing logic)
     try {
       _searchResults = await _busService.searchRoutes(query);
     } catch (_) {
@@ -120,18 +162,82 @@ class BusProvider extends ChangeNotifier {
               r.routeNumber.toLowerCase().contains(q))
           .toList();
     }
+
+    // 2) Search bus stops by name (NEW)
+    _stopMatches = _allStops
+        .where((s) => s.name.toLowerCase().contains(q))
+        .take(10)
+        .toList();
+
+    // 3) Fetch routes for each matching stop (NEW)
+    _loadingStopRoutes = _stopMatches.isNotEmpty;
+    notifyListeners();
+
+    for (final stop in _stopMatches) {
+      final sid = stop.id ?? stop.stopId;
+      if (sid.isEmpty) continue;
+      if (!_routesViaStop.containsKey(sid)) {
+        await _fetchRoutesViaStop(sid);
+      }
+    }
+
+    _loadingStopRoutes = false;
     notifyListeners();
   }
 
+  /// Fetch routes that pass through a specific stop via Supabase
+  Future<void> _fetchRoutesViaStop(String stopId) async {
+    try {
+      final res = await Supabase.instance.client
+          .from('bus_stop_routes')
+          .select('''
+            stop_order,
+            bus_routes (
+              id,
+              route_number,
+              route_name,
+              origin,
+              destination,
+              color,
+              is_active
+            )
+          ''')
+          .eq('stop_id', stopId);
+
+      final routes = <BusRoute>[];
+      for (final item in (res as List)) {
+        final routeData = item['bus_routes'];
+        if (routeData != null && routeData is Map<String, dynamic>) {
+          routes.add(BusRoute.fromJson(routeData));
+        }
+      }
+
+      _routesViaStop[stopId] = routes;
+      notifyListeners();
+    } catch (e) {
+      debugPrint('[BusProvider] fetchRoutesViaStop error: $e');
+      _routesViaStop[stopId] = [];
+    }
+  }
+
+  /// Enhanced suggestions: includes both route destinations AND stop names
   List<String> getDestinationSuggestions(String query) {
     final q = query.trim().toLowerCase();
     if (q.isEmpty) return [];
-    final destinations = <String>{};
+    final suggestions = <String>{};
+
+    // Route origins/destinations
     for (final r in _allRoutes) {
-      if (r.from.toLowerCase().contains(q)) destinations.add(r.from);
-      if (r.to.toLowerCase().contains(q)) destinations.add(r.to);
+      if (r.from.toLowerCase().contains(q)) suggestions.add(r.from);
+      if (r.to.toLowerCase().contains(q)) suggestions.add(r.to);
     }
-    return destinations.toList();
+
+    // Bus stop names
+    for (final s in _allStops) {
+      if (s.name.toLowerCase().contains(q)) suggestions.add(s.name);
+    }
+
+    return suggestions.take(8).toList();
   }
 
   // ── Selection ───────────────────────────────────────────────────────────────

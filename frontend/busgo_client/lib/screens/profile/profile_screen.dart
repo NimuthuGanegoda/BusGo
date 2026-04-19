@@ -5,6 +5,7 @@ import '../../core/constants/app_colors.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/user_provider.dart';
 
+
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
 
@@ -24,411 +25,250 @@ class _ProfileScreenState extends State<ProfileScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF0D1B2A),
+      backgroundColor: const Color(0xFFF5F5F5),
       body: Consumer<UserProvider>(
         builder: (context, userProvider, _) {
           final user = userProvider.user;
           return SingleChildScrollView(
             child: Column(
               children: [
-                // Header band
+                // ── Profile Header (centered, SkillHub style) ──
                 Container(
-                  color: AppColors.primary,
+                  width: double.infinity,
+                  decoration: const BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.only(
+                      bottomLeft: Radius.circular(24),
+                      bottomRight: Radius.circular(24),
+                    ),
+                  ),
                   child: SafeArea(
                     bottom: false,
                     child: Padding(
-                      padding: const EdgeInsets.fromLTRB(16, 14, 16, 48),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: const [
-                          Text(
-                            'My Profile',
-                            style: TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w700,
-                              color: Colors.white,
-                            ),
-                          ),
-                          SizedBox(height: 2),
-                          Text(
-                            'Manage your account',
-                            style: TextStyle(
-                              fontSize: 11,
-                              color: AppColors.lightBlue,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-
-                // Avatar card (overlapping header)
-                Transform.translate(
-                  offset: const Offset(0, -36),
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                    child: Container(
-                      padding: const EdgeInsets.all(16),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(16),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withValues(alpha: 0.1),
-                            blurRadius: 16,
-                            offset: const Offset(0, 4),
-                          ),
-                        ],
-                      ),
+                      padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
                       child: Column(
                         children: [
-                          Row(
-                            children: [
-                              // Avatar
-                              Stack(
-                                children: [
-                                  Container(
-                                    width: 64,
-                                    height: 64,
-                                    decoration: BoxDecoration(
-                                      gradient: const LinearGradient(
-                                        colors: [
-                                          AppColors.secondary,
-                                          AppColors.primary,
-                                        ],
-                                      ),
-                                      shape: BoxShape.circle,
-                                      border: Border.all(
-                                        color: Colors.white,
-                                        width: 3,
-                                      ),
-                                      boxShadow: [
-                                        BoxShadow(
-                                          color: Colors.black.withValues(
-                                            alpha: 0.1,
-                                          ),
-                                          blurRadius: 8,
-                                          offset: const Offset(0, 2),
-                                        ),
-                                      ],
-                                    ),
-                                    alignment: Alignment.center,
-                                    child: Text(
-                                      user?.initials ?? '?',
-                                      style: const TextStyle(
-                                        color: Colors.white,
-                                        fontSize: 24,
-                                        fontWeight: FontWeight.w700,
-                                      ),
-                                    ),
-                                  ),
-                                  Positioned(
-                                    bottom: 0,
-                                    right: 0,
-                                    child: Container(
-                                      width: 18,
-                                      height: 18,
-                                      decoration: BoxDecoration(
-                                        color: AppColors.success,
-                                        shape: BoxShape.circle,
-                                        border: Border.all(
-                                          color: Colors.white,
-                                          width: 2,
-                                        ),
-                                      ),
-                                      child: const Icon(
-                                        Icons.check,
-                                        size: 9,
-                                        color: Colors.white,
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment:
-                                      CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      user?.fullName ?? 'User',
-                                      style: const TextStyle(
-                                        fontSize: 16,
-                                        fontWeight: FontWeight.w700,
-                                        color: AppColors.primary,
-                                      ),
-                                    ),
-                                    Text(
-                                      user?.email ?? '',
-                                      style: const TextStyle(
-                                        fontSize: 11,
-                                        color: AppColors.textMuted,
-                                      ),
-                                    ),
-                                    Text(
-                                      user?.phone ?? '',
-                                      style: const TextStyle(
-                                        fontSize: 11,
-                                        color: AppColors.textMuted,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                              GestureDetector(
-                                onTap: () => context.push('/edit-profile'),
-                                child: Container(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 12,
-                                    vertical: 6,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    color: AppColors.iconBg,
-                                    borderRadius: BorderRadius.circular(8),
-                                  ),
-                                  child: const Text(
-                                    'Edit',
-                                    style: TextStyle(
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.w600,
-                                      color: AppColors.secondary,
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 12),
-                          // Membership badge
-                          Container(
-                            padding: const EdgeInsets.only(top: 10),
-                            decoration: const BoxDecoration(
-                              border: Border(
-                                top:
-                                    BorderSide(color: AppColors.divider),
+                          // Back + title
+                          const Align(
+                            alignment: Alignment.centerLeft,
+                            child: Text(
+                              'My Profile',
+                              style: TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.w700,
+                                color: Color(0xFF1A1D1F),
                               ),
                             ),
-                            child: Row(
-                              children: [
-                                const Text(
-                                  '\ud83e\udee0',
-                                  style: TextStyle(fontSize: 16),
-                                ),
-                                const SizedBox(width: 6),
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        user?.membershipType ?? 'Standard Member',
-                                        style: const TextStyle(
-                                          fontSize: 11,
-                                          fontWeight: FontWeight.w600,
-                                          color: AppColors.primary,
-                                        ),
-                                      ),
-                                      Text(
-                                        'Since ${user?.memberSince ?? 'N/A'} \u00b7 ${user?.totalTrips ?? 0} trips',
-                                        style: const TextStyle(
-                                          fontSize: 10,
-                                          color: AppColors.textMuted,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                                Container(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 8,
-                                    vertical: 2,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    color: const Color(0xFFE8F5E9),
-                                    borderRadius:
-                                        BorderRadius.circular(12),
-                                  ),
-                                  child: Text(
-                                    (user?.isActive ?? false) ? 'Active' : 'Inactive',
-                                    style: const TextStyle(
-                                      fontSize: 10,
-                                      fontWeight: FontWeight.w600,
-                                      color: AppColors.success,
-                                    ),
-                                  ),
+                          ),
+                          const SizedBox(height: 20),
+
+                          // Centered avatar (rounded square)
+                          Container(
+                            width: 100,
+                            height: 100,
+                            decoration: BoxDecoration(
+                              gradient: const LinearGradient(
+                                colors: [AppColors.secondary, AppColors.primary],
+                                begin: Alignment.topLeft,
+                                end: Alignment.bottomRight,
+                              ),
+                              borderRadius: BorderRadius.circular(20),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: AppColors.secondary.withOpacity(0.3),
+                                  blurRadius: 20,
+                                  offset: const Offset(0, 8),
                                 ),
                               ],
                             ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-
-                // Menu section
-                Transform.translate(
-                  offset: const Offset(0, -22),
-                  child: Padding(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 16),
-                    child: Container(
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(14),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black
-                                .withValues(alpha: 0.05),
-                            blurRadius: 6,
-                            offset: const Offset(0, 1),
-                          ),
-                        ],
-                      ),
-                      child: Column(
-                        children: [
-                          _buildMenuItem(
-                            icon: Icons.qr_code_2,
-                            label: 'My QR Card',
-                            onTap: () => context.push('/qr'),
-                          ),
-                          _buildMenuItem(
-                            icon: Icons.history,
-                            label: 'Ride History',
-                            onTap: () => context.push('/history'),
-                          ),
-                          _buildMenuItem(
-                            icon: Icons.credit_card,
-                            label: 'Payment Methods',
-                            onTap: () {},
-                          ),
-                          _buildMenuItem(
-                            icon: Icons.help_outline,
-                            label: 'Help & Support',
-                            onTap: () {},
-                            showBorder: false,
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-
-                // Notifications section
-                Transform.translate(
-                  offset: const Offset(0, -10),
-                  child: Padding(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 16),
-                    child: Container(
-                      padding: const EdgeInsets.all(16),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(14),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black
-                                .withValues(alpha: 0.05),
-                            blurRadius: 6,
-                            offset: const Offset(0, 1),
-                          ),
-                        ],
-                      ),
-                      child: Column(
-                        crossAxisAlignment:
-                            CrossAxisAlignment.start,
-                        children: [
-                          const Text(
-                            'Notifications',
-                            style: TextStyle(
-                              fontSize: 13,
-                              fontWeight: FontWeight.w700,
-                              color: AppColors.primary,
+                            alignment: Alignment.center,
+                            child: Text(
+                              user?.initials ?? '?',
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 36,
+                                fontWeight: FontWeight.w700,
+                              ),
                             ),
                           ),
-                          const SizedBox(height: 10),
-                          _buildToggle(
-                            title: 'Bus Arrival Alerts',
-                            subtitle:
-                                'Notify when bus approaches stop',
-                            value: userProvider.busArrivalAlerts,
-                            onChanged: () =>
-                                userProvider.toggleBusArrivalAlerts(),
-                          ),
-                          _buildToggle(
-                            title: 'Service Updates',
-                            subtitle:
-                                'Route changes & disruptions',
-                            value: userProvider.serviceUpdates,
-                            onChanged: () =>
-                                userProvider.toggleServiceUpdates(),
-                          ),
-                          _buildToggle(
-                            title: 'Promotions',
-                            subtitle: 'Special offers & deals',
-                            value: userProvider.promotions,
-                            onChanged: () =>
-                                userProvider.togglePromotions(),
-                            showBorder: false,
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
+                          const SizedBox(height: 14),
 
-                // Logout button
-                Padding(
-                  padding:
-                      const EdgeInsets.fromLTRB(16, 4, 16, 20),
-                  child: Column(
-                    children: [
-                      SizedBox(
-                        width: double.infinity,
-                        child: OutlinedButton(
-                          onPressed: () async {
-                            await context
-                                .read<AuthProvider>()
-                                .logout();
-                            if (mounted) {
-                              GoRouter.of(context).go('/login');
-                            }
-                          },
-                          style: OutlinedButton.styleFrom(
-                            foregroundColor: AppColors.danger,
-                            side: const BorderSide(
-                              color: AppColors.danger,
-                              width: 1.5,
-                            ),
-                            padding: const EdgeInsets.symmetric(
-                                vertical: 12),
-                            shape: RoundedRectangleBorder(
-                              borderRadius:
-                                  BorderRadius.circular(10),
-                            ),
-                          ),
-                          child: const Text(
-                            '\u21a9 Logout',
-                            style: TextStyle(
-                              fontSize: 14,
+                          // Name
+                          Text(
+                            user?.fullName ?? 'User',
+                            style: const TextStyle(
+                              fontSize: 22,
                               fontWeight: FontWeight.w600,
+                              color: Color(0xFF1A1D1F),
                             ),
                           ),
-                        ),
+                          const SizedBox(height: 4),
+
+                          // Email + phone
+                          Text(
+                            user?.email ?? '',
+                            style: const TextStyle(fontSize: 13, color: Color(0xFF6F767E)),
+                          ),
+                          if (user?.phone != null && user!.phone!.isNotEmpty)
+                            Text(
+                              user.phone!,
+                              style: const TextStyle(fontSize: 12, color: Color(0xFF6F767E)),
+                            ),
+                          const SizedBox(height: 6),
+
+                          // Member badge
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFE8F5E9),
+                              borderRadius: BorderRadius.circular(20),
+                            ),
+                            child: Text(
+                              (user?.isActive ?? false) ? '● Active Member' : '○ Inactive',
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w600,
+                                color: (user?.isActive ?? false)
+                                    ? AppColors.success
+                                    : AppColors.textMuted,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 18),
+
+                          // Stats grid (3 columns)
+                          Container(
+                            padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 8),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFF8F9FA),
+                              borderRadius: BorderRadius.circular(14),
+                            ),
+                            child: Row(
+                              children: [
+                                _buildStat('TRIPS', '${user?.totalTrips ?? 0}'),
+                                _statDivider(),
+                                _buildStat('MEMBER', user?.memberSince ?? 'N/A'),
+                                _statDivider(),
+                                _buildStat('TYPE', user?.membershipType ?? 'Standard'),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(height: 14),
+
+                          // Edit profile button
+                          SizedBox(
+                            width: double.infinity,
+                            child: ElevatedButton(
+                              onPressed: () => context.push('/edit-profile'),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: AppColors.secondary,
+                                foregroundColor: Colors.white,
+                                elevation: 0,
+                                padding: const EdgeInsets.symmetric(vertical: 12),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(10),
+                                ),
+                              ),
+                              child: const Text(
+                                'Edit Profile',
+                                style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
-                      const SizedBox(height: 8),
-                      const Text(
-                        'BUSGO v2.4.1 \u00b7 \u00a9 2026 BUSGO Ltd.',
-                        style: TextStyle(
-                          fontSize: 10,
-                          color: Color(0xFFCCCCCC),
-                        ),
-                      ),
-                    ],
+                    ),
                   ),
                 ),
+
+                const SizedBox(height: 16),
+
+                // ── Account Section ──
+                _buildSection(
+                  title: 'Account',
+                  children: [
+                    _buildMenuItem(Icons.qr_code_2, 'My QR Card', () => context.push('/qr')),
+                    _buildMenuItem(Icons.history_rounded, 'Ride History', () => context.push('/history')),
+                    _buildMenuItem(Icons.credit_card_rounded, 'Payment Methods', () => context.push('/payment'), showBorder: false),
+                  ],
+                ),
+
+                const SizedBox(height: 12),
+
+                // ── Notifications Section ──
+                _buildSection(
+                  title: 'Notifications',
+                  children: [
+                    _buildToggle(
+                      'Bus Arrival Alerts',
+                      'Notify when bus approaches stop',
+                      userProvider.busArrivalAlerts,
+                      () => userProvider.toggleBusArrivalAlerts(),
+                    ),
+                    _buildToggle(
+                      'Service Updates',
+                      'Route changes & disruptions',
+                      userProvider.serviceUpdates,
+                      () => userProvider.toggleServiceUpdates(),
+                    ),
+                    _buildToggle(
+                      'Promotions',
+                      'Special offers & deals',
+                      userProvider.promotions,
+                      () => userProvider.togglePromotions(),
+                      showBorder: false,
+                    ),
+                  ],
+                ),
+
+                const SizedBox(height: 12),
+
+                // ── Support Section ──
+                _buildSection(
+                  title: 'Support',
+                  children: [
+                    _buildMenuItem(Icons.help_outline_rounded, 'Help & Support', () {}),
+                    _buildMenuItem(Icons.shield_outlined, 'Privacy Policy', () {}, showBorder: false),
+                  ],
+                ),
+
+                const SizedBox(height: 16),
+
+                // ── Logout ──
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton(
+                      onPressed: () async {
+                        await context.read<AuthProvider>().logout();
+                        if (mounted) GoRouter.of(context).go('/login');
+                      },
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: AppColors.danger,
+                        side: const BorderSide(color: AppColors.danger, width: 1.5),
+                        padding: const EdgeInsets.symmetric(vertical: 13),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                      ),
+                      child: const Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.logout_rounded, size: 16),
+                          SizedBox(width: 6),
+                          Text('Logout', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                const Text(
+                  'BUSGO v2.4.1 · © 2026 BUSGO Ltd.',
+                  style: TextStyle(fontSize: 10, color: Color(0xFFBBBBBB)),
+                ),
+                const SizedBox(height: 24),
               ],
             ),
           );
@@ -437,62 +277,119 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  Widget _buildMenuItem({
-    required IconData icon,
-    required String label,
-    required VoidCallback onTap,
-    bool showBorder = true,
-  }) {
-    return GestureDetector(
-      onTap: onTap,
+  Widget _buildStat(String label, String value) {
+    return Expanded(
+      child: Column(
+        children: [
+          Text(
+            value,
+            style: const TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.w600,
+              color: Color(0xFF1A1D1F),
+            ),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+          const SizedBox(height: 2),
+          Text(
+            label,
+            style: const TextStyle(
+              fontSize: 10,
+              color: Color(0xFF6F767E),
+              fontWeight: FontWeight.w500,
+              letterSpacing: 0.5,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _statDivider() {
+    return Container(
+      width: 1,
+      height: 30,
+      color: const Color(0xFFE5E7EB),
+    );
+  }
+
+  Widget _buildSection({required String title, required List<Widget> children}) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
       child: Container(
-        padding:
-            const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         decoration: BoxDecoration(
-          border: showBorder
-              ? const Border(
-                  bottom: BorderSide(color: AppColors.divider),
-                )
-              : null,
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(14),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.04),
+              blurRadius: 8,
+              offset: const Offset(0, 2),
+            ),
+          ],
         ),
-        child: Row(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Icon(icon, size: 16, color: AppColors.primary),
-            const SizedBox(width: 12),
-            Expanded(
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 14, 16, 8),
               child: Text(
-                label,
+                title,
                 style: const TextStyle(
                   fontSize: 13,
-                  color: Color(0xFF333333),
+                  fontWeight: FontWeight.w700,
+                  color: Color(0xFF1A1D1F),
                 ),
               ),
             ),
-            const Icon(
-              Icons.chevron_right,
-              size: 14,
-              color: Color(0xFFCCCCCC),
-            ),
+            ...children,
           ],
         ),
       ),
     );
   }
 
-  Widget _buildToggle({
-    required String title,
-    required String subtitle,
-    required bool value,
-    required VoidCallback onChanged,
-    bool showBorder = true,
-  }) {
+  Widget _buildMenuItem(IconData icon, String label, VoidCallback onTap,
+      {bool showBorder = true}) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
+        decoration: BoxDecoration(
+          border: showBorder
+              ? const Border(bottom: BorderSide(color: Color(0xFFF0F0F0)))
+              : null,
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 32,
+              height: 32,
+              decoration: BoxDecoration(
+                color: AppColors.secondary.withOpacity(0.08),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Icon(icon, size: 16, color: AppColors.secondary),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(label,
+                  style: const TextStyle(fontSize: 13, color: Color(0xFF333333), fontWeight: FontWeight.w500)),
+            ),
+            const Icon(Icons.chevron_right_rounded, size: 16, color: Color(0xFFCCCCCC)),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildToggle(String title, String subtitle, bool value, VoidCallback onChanged,
+      {bool showBorder = true}) {
     return Container(
-      padding: const EdgeInsets.symmetric(vertical: 10),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       decoration: BoxDecoration(
-        border: showBorder
-            ? const Border(
-                bottom: BorderSide(color: AppColors.divider))
-            : null,
+        border: showBorder ? const Border(bottom: BorderSide(color: Color(0xFFF0F0F0))) : null,
       ),
       child: Row(
         children: [
@@ -500,55 +397,34 @@ class _ProfileScreenState extends State<ProfileScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  title,
-                  style: const TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w500,
-                    color: Color(0xFF333333),
-                  ),
-                ),
-                Text(
-                  subtitle,
-                  style: const TextStyle(
-                    fontSize: 10,
-                    color: AppColors.textMuted,
-                  ),
-                ),
+                Text(title,
+                    style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: Color(0xFF333333))),
+                const SizedBox(height: 1),
+                Text(subtitle, style: const TextStyle(fontSize: 10, color: Color(0xFF6F767E))),
               ],
             ),
           ),
           GestureDetector(
             onTap: onChanged,
             child: Container(
-              width: 36,
-              height: 20,
+              width: 44,
+              height: 24,
               decoration: BoxDecoration(
-                color: value
-                    ? AppColors.secondary
-                    : const Color(0xFFD1D5DB),
-                borderRadius: BorderRadius.circular(10),
+                color: value ? AppColors.secondary : const Color(0xFFD1D5DB),
+                borderRadius: BorderRadius.circular(12),
               ),
               child: AnimatedAlign(
                 duration: const Duration(milliseconds: 200),
-                alignment: value
-                    ? Alignment.centerRight
-                    : Alignment.centerLeft,
+                alignment: value ? Alignment.centerRight : Alignment.centerLeft,
                 child: Container(
-                  width: 16,
-                  height: 16,
-                  margin:
-                      const EdgeInsets.symmetric(horizontal: 2),
+                  width: 20,
+                  height: 20,
+                  margin: const EdgeInsets.symmetric(horizontal: 2),
                   decoration: BoxDecoration(
                     color: Colors.white,
                     shape: BoxShape.circle,
                     boxShadow: [
-                      BoxShadow(
-                        color:
-                            Colors.black.withValues(alpha: 0.2),
-                        blurRadius: 3,
-                        offset: const Offset(0, 1),
-                      ),
+                      BoxShadow(color: Colors.black.withOpacity(0.15), blurRadius: 4, offset: const Offset(0, 1)),
                     ],
                   ),
                 ),

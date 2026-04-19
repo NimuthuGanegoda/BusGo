@@ -9,11 +9,11 @@ class ScanSuccessScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isBoarding = result.isBoarding;
-    final color      = isBoarding ? const Color(0xFF166534) : const Color(0xFF1E3A5F);
-    final bgColor    = isBoarding ? const Color(0xFFF0FDF4) : const Color(0xFFEFF6FF);
-    final icon       = isBoarding ? Icons.login_rounded : Icons.logout_rounded;
-    final label      = isBoarding ? 'BOARDED' : 'ALIGHTED';
+    final isPaid     = result.status == 'PAID';
+    final color      = isPaid ? const Color(0xFF166534) : const Color(0xFFB45309);
+    final bgColor    = isPaid ? const Color(0xFFF0FDF4) : const Color(0xFFFFFBEB);
+    final icon       = isPaid ? Icons.check_circle_rounded : Icons.monetization_on_rounded;
+    final label      = isPaid ? 'TICKET VERIFIED' : 'CASH PAYMENT';
 
     return Scaffold(
       backgroundColor: AppColors.scannerBg,
@@ -46,7 +46,7 @@ class ScanSuccessScreen extends StatelessWidget {
                     color: color.withOpacity(0.2), blurRadius: 24, spreadRadius: 4,
                   )],
                 ),
-                child: Icon(Icons.check_circle_rounded, size: 60, color: color),
+                child: Icon(icon, size: 60, color: color),
               ),
               const SizedBox(height: 24),
 
@@ -68,7 +68,7 @@ class ScanSuccessScreen extends StatelessWidget {
               ),
               const SizedBox(height: 32),
 
-              // Passenger info card
+              // Ticket info card
               Container(
                 width: double.infinity,
                 padding: const EdgeInsets.all(20),
@@ -87,16 +87,20 @@ class ScanSuccessScreen extends StatelessWidget {
                   Text(result.passengerName, style: GoogleFonts.inter(
                     fontSize: 22, fontWeight: FontWeight.w800, color: const Color(0xFF1A1D26))),
                   const SizedBox(height: 4),
-                  Text(result.membershipType.toUpperCase(), style: GoogleFonts.inter(
+                  Text(result.status, style: GoogleFonts.inter(
                     fontSize: 12, fontWeight: FontWeight.w700,
                     color: const Color(0xFF6B7280), letterSpacing: 1.2,
                   )),
                   const SizedBox(height: 16),
                   const Divider(),
                   const SizedBox(height: 12),
-                  _row('Trip ID', result.tripId.length > 8 ? '${result.tripId.substring(0, 8)}…' : result.tripId),
-                  const SizedBox(height: 8),
-                  _row('Action', result.message),
+                  if (isPaid) ...[
+                    _row('From', result.boardingStop),
+                    const SizedBox(height: 8),
+                    _row('To', result.alightingStop),
+                    const SizedBox(height: 8),
+                  ],
+                  _row('Status', result.message),
                 ]),
               ),
 
@@ -133,7 +137,8 @@ class ScanSuccessScreen extends StatelessWidget {
     mainAxisAlignment: MainAxisAlignment.spaceBetween,
     children: [
       Text(label, style: GoogleFonts.inter(fontSize: 13, color: const Color(0xFF6B7280))),
-      Text(value, style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w600, color: const Color(0xFF1A1D26))),
+      Flexible(child: Text(value, style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w600, color: const Color(0xFF1A1D26)),
+        textAlign: TextAlign.right)),
     ],
   );
 }

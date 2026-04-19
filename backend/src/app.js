@@ -7,6 +7,7 @@ import { env } from './config/env.js';
 import { logger } from './utils/logger.js';
 import { generalLimiter } from './middleware/rateLimiter.middleware.js';
 import { errorHandler, notFoundHandler } from './middleware/error.middleware.js';
+import paymentsRoutes from './modules/payments/payments.routes.js';
 
 // ── Module routers ────────────────────────────────────────────────────────────
 import authRoutes          from './modules/auth/auth.routes.js';
@@ -26,6 +27,8 @@ import driverRoutes        from './modules/driver/driver.routes.js';
 import etaRoutes           from './modules/eta/eta.routes.js';
 
 const app = express();
+
+
 
 // ── Security headers ──────────────────────────────────────────────────────────
 app.use(helmet());
@@ -73,6 +76,7 @@ app.use('/api/auth',              authRoutes);
 app.use('/api/users',             usersRoutes);
 app.use('/api/qr',                qrRoutes);
 app.use('/api/buses',             busesRoutes);
+app.use('/api/payments',          paymentsRoutes);
 app.use('/api/routes',            routesRoutes);
 app.use('/api/stops',             stopsRoutes);
 app.use('/api/trips',             tripsRoutes);

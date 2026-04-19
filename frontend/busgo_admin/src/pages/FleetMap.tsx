@@ -2,6 +2,8 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
 import L from 'leaflet';
 import { RefreshCw, Bus, User } from 'lucide-react';
+import { stopsApi } from '../services/api';
+import type { Stop } from '../services/api';
 import './FleetMap.css';
 
 const API      = 'http://localhost:5000/api/admin';
@@ -44,6 +46,16 @@ function createBusIcon(status: string, crowd: string) {
   });
 }
 
+function createStopDot() {
+  return L.divIcon({
+    className: 'fleet-stop-marker',
+    html: `<div style="width:10px;height:10px;border-radius:50%;background:#1a1a1a;border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,0.3);"></div>`,
+    iconSize: [10, 10],
+    iconAnchor: [5, 5],
+    popupAnchor: [0, -8],
+  });
+}
+
 function isRecentlyUpdated(lastUpdate: string | null): boolean {
   if (!lastUpdate) return false;
   const twoMinutesAgo = new Date(Date.now() - 2 * 60 * 1000);
@@ -56,6 +68,7 @@ export default function FleetMap() {
   const [loading,      setLoading]      = useState(true);
   const [lastUpdated,  setLastUpdated]  = useState<Date | null>(null);
   const [statusFilter, setStatusFilter] = useState('all');
+  const [busStops, setBusStops] = useState<Stop[]>([]);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const fetchBuses = useCallback(async (silent = false) => {
@@ -80,6 +93,13 @@ export default function FleetMap() {
     pollRef.current = setInterval(() => fetchBuses(true), 10_000);
     return () => { if (pollRef.current) clearInterval(pollRef.current); };
   }, [fetchBuses]);
+
+  /* Fetch bus stops */
+  useEffect(() => {
+    stopsApi.getAll()
+      .then((data) => setBusStops(Array.isArray(data) ? data : []))
+      .catch(console.error);
+  }, []);
 
   const filtered = buses.filter(b =>
     statusFilter === 'all' || b.status === statusFilter
@@ -163,6 +183,17 @@ export default function FleetMap() {
                   </Popup>
                 </Marker>
               ))}
+
+              {/* Bus stops — black dot markers */}
+              {busStops.map(stop => (
+                <Marker
+                  key={`stop-${stop.id}`}
+                  position={[stop.latitude, stop.longitude]}
+                  icon={createStopDot()}
+                >
+                  <Popup><strong>{stop.stop_name}</strong></Popup>
+                </Marker>
+              ))}
             </MapContainer>
           )}
 
@@ -176,6 +207,9 @@ export default function FleetMap() {
             </span>
             <span className="legend-item">
               <span className="legend-dot red"></span> High
+            </span>
+            <span className="legend-item">
+              <span className="legend-dot black"></span> Stop
             </span>
           </div>
 
