@@ -42,7 +42,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const login = useCallback(async (email: string, password: string) => {
     const result = await authApi.login(email, password);
     if (result.user.role !== 'admin') {
-      throw new Error('Access denied. Admin accounts only.');
+      throw new Error('This account is not authorized to access this panel.');
     }
     TokenStore.set(result.access_token, result.refresh_token);
     setUser(result.user);

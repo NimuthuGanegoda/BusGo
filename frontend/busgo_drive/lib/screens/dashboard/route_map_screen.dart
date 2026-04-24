@@ -109,7 +109,7 @@ class _RouteMapScreenState extends State<RouteMapScreen>
             ),
             children: [
               TileLayer(
-                urlTemplate: 'https://api.maptiler.com/maps/streets-v2/{z}/{x}/{y}.png?key=fsVEp87wcHaGchb3gygh',
+                urlTemplate: 'https://api.maptiler.com/maps/streets-v2-dark/{z}/{x}/{y}.png?key=fsVEp87wcHaGchb3gygh',
                 userAgentPackageName: 'com.busgo.drive',
               ),
               // Remaining route ahead — faded blue

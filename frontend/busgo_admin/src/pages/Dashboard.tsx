@@ -10,6 +10,7 @@ import {
 import { adminApi, busApi, stopsApi } from '../services/api';
 import type { DashboardStats, Bus as BusType, Stop } from '../services/api';
 import './Dashboard.css';
+import busgoLogo from '../assets/busgo-axis-logo.jpeg';
 
 const priorityColors: Record<string, string> = {
   MEDICAL: '#e74c3c', ACCIDENT: '#e67e22',
@@ -241,7 +242,7 @@ export default function Dashboard() {
               style={{ height: '100%', width: '100%', borderRadius: '10px' }}
               zoomControl={false} scrollWheelZoom={false}>
               <TileLayer
-                url="https://api.maptiler.com/maps/streets-v2/{z}/{x}/{y}.png?key=fsVEp87wcHaGchb3gygh"
+                url="https://api.maptiler.com/maps/streets-v2-dark/{z}/{x}/{y}.png?key=fsVEp87wcHaGchb3gygh"
                 attribution='&copy; OpenStreetMap contributors'
               />
               {/* Only active buses on the map */}

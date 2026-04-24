@@ -43,3 +43,13 @@ class ValidationException extends AppException {
 class ConflictException extends AppException {
   const ConflictException([super.message = 'This action conflicts with existing data.']);
 }
+
+/// Server returned 423 — account temporarily locked.
+class AccountLockedException extends AppException {
+  const AccountLockedException([super.message = 'Account temporarily locked. Try again later.']);
+}
+
+/// Server returned 403 — pending approval.
+class PendingApprovalException extends AppException {
+  const PendingApprovalException([super.message = 'Your account is awaiting admin approval.']);
+}

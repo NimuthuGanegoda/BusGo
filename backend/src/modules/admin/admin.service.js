@@ -341,3 +341,12 @@ export async function getDriverLicenseUrl(userId) {
   if (error) throw error;
   return { signed_url: data.signedUrl };
 }
+
+export async function deleteUser(userId) {
+  // Delete related records first
+  await supabase.from('refresh_tokens').delete().eq('user_id', userId);
+  await supabase.from('notification_preferences').delete().eq('user_id', userId);
+  
+  const { error } = await supabase.from('users').delete().eq('id', userId);
+  if (error) throw error;
+}

@@ -1,94 +1,69 @@
-* {
-  margin: 0;
-  padding: 0;
-  box-sizing: border-box;
+@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap');
+
+/* ── CSS variables used by Sidebar + AdminLayout only ── */
+:root {
+  --primary:        #10b981;
+  --primary-light:  #34d399;
+  --primary-glow:   rgba(16, 185, 129, 0.25);
+  --surface:        #1a1f2e;
+  --surface-raised: #252d3d;
+  --border:         #2d3a4a;
+  --text:           #e2e8f0;
+  --text-muted:     #94a3b8;
+  --success:        #10b981;
+  --warning:        #f59e0b;
+  --danger:         #ef4444;
+  --font:           'Poppins', sans-serif;
+  --sidebar-width:  260px;
+  --radius:         12px;
+  --radius-sm:      8px;
 }
+
+/* ── Original base resets (your original index.css restored) ── */
+* { margin: 0; padding: 0; box-sizing: border-box; }
 
 body {
   font-family: 'Inter', system-ui, -apple-system, sans-serif;
-  background: #f0f2f5;
+  background: #f0fdf4;
   color: #1a1a2e;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
-#root {
-  min-height: 100vh;
-}
+#root { min-height: 100vh; }
+a { text-decoration: none; color: inherit; }
+button { cursor: pointer; border: none; outline: none; font-family: inherit; }
+input, select { font-family: inherit; outline: none; }
 
-a {
-  text-decoration: none;
-  color: inherit;
-}
+::-webkit-scrollbar       { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #c1c7d0; border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #a5adba; }
 
-button {
-  cursor: pointer;
-  border: none;
-  outline: none;
-  font-family: inherit;
-}
-
-input, select {
-  font-family: inherit;
-  outline: none;
-}
-
-::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
-}
-
-::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-::-webkit-scrollbar-thumb {
-  background: #c1c7d0;
-  border-radius: 3px;
-}
-
-::-webkit-scrollbar-thumb:hover {
-  background: #a5adba;
-}
-
-/* ===================================================================
-   PAGE HEADING — 3D Text Shadow Animation (from Codepen)
-   Applies to all main page headings across the admin panel.
-   Default: raised 3D extruded text
-   Hover: flattens to inset (pressed in)
-   =================================================================== */
 .admin-main h1 {
   color: #1a2332;
   transform: perspective(200px) rotateX(8deg);
   text-shadow:
-    0 -1px 0 #fff,
-    0 1px 0 #1a8a7a,
-    0 2px 0 #188571,
-    0 3px 0 #168068,
-    0 4px 0 #147b5f,
-    0 5px 0 #127656,
-    0 6px 0 #10714d,
-    0 7px 0 #0e6c44,
-    0 8px 0 #0c673b,
-    0 10px 15px rgba(0, 0, 0, 0.3),
-    0 8px 10px rgba(0, 0, 0, 0.2);
-  transition:
-    text-shadow 0.8s ease 0.3s,
-    color 0.6s ease,
-    transform 0.8s ease 0.3s,
-    letter-spacing 0.8s ease 0.3s;
+    0 -1px 0 #fff, 0 1px 0 #1a8a7a, 0 2px 0 #188571,
+    0 3px 0 #168068, 0 4px 0 #147b5f, 0 5px 0 #127656,
+    0 6px 0 #10714d, 0 7px 0 #0e6c44, 0 8px 0 #0c673b,
+    0 10px 15px rgba(0,0,0,0.3), 0 8px 10px rgba(0,0,0,0.2);
+  transition: text-shadow 0.8s ease 0.3s, color 0.6s ease,
+    transform 0.8s ease 0.3s, letter-spacing 0.8s ease 0.3s;
   cursor: default;
   display: inline-block;
 }
-
 .admin-main h1:hover {
   color: #0a0a0a;
   text-shadow: -1px -1px 1px #000, 2px 2px 1px #292929;
   transform: translate(0px, 6px) perspective(200px) rotateX(8deg);
   letter-spacing: 0.015em;
-  transition:
-    text-shadow 0.6s ease,
-    color 0.4s ease 0.5s,
-    transform 0.5s ease,
-    letter-spacing 0.5s ease;
+  transition: text-shadow 0.6s ease, color 0.4s ease 0.5s,
+    transform 0.5s ease, letter-spacing 0.5s ease;
 }
+
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(12px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.page-enter { animation: fadeInUp 0.25s ease forwards; }

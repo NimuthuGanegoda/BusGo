@@ -2,14 +2,99 @@ import { useState, useEffect, useRef } from 'react';
 import { Eye, EyeOff } from 'lucide-react';
 import anime from 'animejs';
 import './Login.css';
-import busgoLogo from '../assets/busgo-axis-logo.jpeg';
+import busgoLogo from '../assets/busgo-logo-new.jpeg';
 import busSvgRaw from '../assets/bus-animation.svg?raw';
 
-/*
- * BUSGO letter paths — geometric thick-stroke SVG, same style as the
- * anime.js logo (hand-crafted arcs + lines, stroke-width 32).
- * Coordinates are local to the <g> that holds them.
- */
+/* ═══════════════════════════════════════════════════════════════════
+   NEON TOAST NOTIFICATION SYSTEM
+   Matches the CodePen "error, success, warning and alert messages"
+   ═══════════════════════════════════════════════════════════════════ */
+type ToastType = 'success' | 'error' | 'warning' | 'info';
+interface ToastData { id: number; type: ToastType; title: string; message: string; }
+
+const toastConfig: Record<ToastType, {
+  bg: string; border: string; glow: string; text: string; icon: string;
+}> = {
+  success: {
+    bg: 'rgba(7,149,66,0.12)', border: 'rgba(36,241,6,0.46)',
+    glow: '#259c08', text: '#0ad406', icon: '✓',
+  },
+  error: {
+    bg: 'rgba(220,17,1,0.16)', border: 'rgba(241,6,6,0.81)',
+    glow: '#ff0303', text: '#ff0303', icon: '✕',
+  },
+  warning: {
+    bg: 'rgba(220,128,1,0.16)', border: 'rgba(241,142,6,0.81)',
+    glow: '#ffb103', text: '#ffb103', icon: '⚠',
+  },
+  info: {
+    bg: 'rgba(7,73,149,0.12)', border: 'rgba(6,44,241,0.46)',
+    glow: '#0396ff', text: '#0396ff', icon: 'ℹ',
+  },
+};
+
+function NeonToast({ toast, onClose }: { toast: ToastData; onClose: () => void }) {
+  const cfg = toastConfig[toast.type];
+  useEffect(() => {
+    const timer = setTimeout(onClose, 4000);
+    return () => clearTimeout(timer);
+  }, [onClose]);
+
+  return (
+    <div
+      style={{
+        background: cfg.bg,
+        border: `1px solid ${cfg.border}`,
+        boxShadow: `0 0 12px ${cfg.glow}40`,
+        borderRadius: '10px',
+        padding: '14px 16px',
+        marginBottom: '10px',
+        display: 'flex',
+        alignItems: 'flex-start',
+        gap: '12px',
+        animation: 'slideDown 0.4s ease-out',
+        cursor: 'pointer',
+        position: 'relative',
+      }}
+      onClick={onClose}
+    >
+      <div style={{
+        width: '3px', height: '40px', background: cfg.text,
+        borderRadius: '2px', boxShadow: `0 0 6px ${cfg.text}`,
+        flexShrink: 0,
+      }} />
+      <div style={{
+        fontSize: '18px', color: cfg.text,
+        textShadow: `0 0 8px ${cfg.glow}80`,
+        flexShrink: 0, marginTop: '2px',
+      }}>
+        {cfg.icon}
+      </div>
+      <div style={{ flex: 1 }}>
+        <div style={{
+          color: cfg.text, fontWeight: 700, fontSize: '14px',
+          textShadow: '1px 1px 2px rgba(0,0,0,0.8)',
+        }}>
+          {toast.title}
+        </div>
+        <div style={{
+          color: cfg.text, opacity: 0.8, fontSize: '12px', marginTop: '2px',
+          textShadow: '1px 1px 2px rgba(0,0,0,0.6)',
+        }}>
+          {toast.message}
+        </div>
+      </div>
+      <div style={{
+        color: cfg.text, opacity: 0.6, cursor: 'pointer',
+        fontSize: '14px', flexShrink: 0,
+      }}>
+        ✕
+      </div>
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════════════ */
 
 export default function Login() {
   const [email,        setEmail]        = useState('');
@@ -17,55 +102,95 @@ export default function Login() {
   const [rememberMe,   setRememberMe]   = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [loading,      setLoading]      = useState(false);
-  const [error,        setError]        = useState('');
+  const [toasts,       setToasts]       = useState<ToastData[]>([]);
 
   const [splashVisible, setSplashVisible] = useState(true);
   const [splashFading,  setSplashFading]  = useState(false);
   const splashRef = useRef<HTMLDivElement>(null);
   const busRef    = useRef<HTMLDivElement>(null);
+  let toastId = useRef(0);
 
-  /* ── Login handler (unchanged) ── */
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!email || !password) { setError('Please enter email and password.'); return; }
-    setError(''); setLoading(true);
-    try {
-      const res = await fetch('http://localhost:5000/api/auth/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.message || 'Login failed');
-      if (data.data?.user?.role !== 'admin') throw new Error('Admin accounts only');
-      localStorage.setItem('busgo_access_token',  data.data.access_token);
-      localStorage.setItem('busgo_refresh_token', data.data.refresh_token);
-      window.location.href = '/admin/dashboard';
-    } catch (err: any) {
-      setError(err.message);
-    } finally {
-      setLoading(false);
-    }
+  const addToast = (type: ToastType, title: string, message: string) => {
+    const id = ++toastId.current;
+    setToasts(prev => [...prev, { id, type, title, message }]);
+  };
+  const removeToast = (id: number) => {
+    setToasts(prev => prev.filter(t => t.id !== id));
   };
 
-  /* ═══════════════════════════════════════════════════
+  /* ── Login handler with role restriction + retry ── */
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!email || !password) {
+      addToast('warning', 'Missing Fields', 'Please enter email and password.');
+      return;
+    }
+    setLoading(true);
+
+    const maxRetries = 2;
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        const res = await fetch('http://localhost:5000/api/auth/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email, password }),
+        });
+        const data = await res.json();
+
+        if (res.status === 429) {
+          setLoading(false);
+          addToast('warning', 'Slow Down', 'Too many attempts. Please wait a moment and try again.');
+          return;
+        }
+
+        if (!res.ok) {
+          setLoading(false);
+          addToast('error', 'Login Failed', 'Invalid email or password. Please try again.');
+          return;
+        }
+
+        // Role restriction — generic message, no info leak
+        if (data.data?.user?.role !== 'admin') {
+          setLoading(false);
+          addToast('error', 'Access Denied', 'This account is not authorized to access this panel.');
+          return;
+        }
+
+        localStorage.setItem('busgo_access_token',  data.data.access_token);
+        localStorage.setItem('busgo_refresh_token', data.data.refresh_token);
+
+        addToast('success', 'Welcome!', 'Logged in successfully. Redirecting...');
+        setTimeout(() => { window.location.href = '/admin/dashboard'; }, 1000);
+        return;
+
+      } catch (err: any) {
+        if (attempt < maxRetries) {
+          await new Promise(r => setTimeout(r, 800));
+          continue;
+        }
+        setLoading(false);
+        addToast('warning', 'Connection Error', 'Could not reach the server. Check your connection.');
+        return;
+      }
+    }
+    setLoading(false);
+  };
+
+  /* ═══════════════════════════════════════════════════════════════
      SPLASH — anime.js logo-style animation for "BUSGO"
-     ═══════════════════════════════════════════════════ */
+     ═══════════════════════════════════════════════════════════════ */
   useEffect(() => {
     const el = splashRef.current;
     if (!el) return;
 
-    // Helper: set stroke-dasharray & return [length, 0] for anime
     const setDashoffset = function(pathEl: SVGGeometryElement) {
       const l = pathEl.getTotalLength();
       pathEl.setAttribute('stroke-dasharray', String(l));
       return [l, 0];
     };
 
-    // Show SVG
     el.classList.add('ready');
 
-    // 1) Letter strokes draw in (staggered, like original)
     const letters = anime({
       targets: '#splash-lines path',
       strokeDashoffset: {
@@ -78,7 +203,6 @@ export default function Login() {
       duration: 1400,
     });
 
-    // 2) Dot drops from above and bounces
     const dotDrop = anime({
       targets: '#splash-dot',
       transform: ['translate(0 -300) scale(1 3)', 'translate(0 0) scale(1 1)'],
@@ -88,7 +212,6 @@ export default function Login() {
       delay: (letters as any).duration - 200,
     });
 
-    // 3) Gradient fills fade in (staggered from center outward, like original)
     const fills = anime({
       targets: '#splash-fills *',
       opacity: [0, 1],
@@ -101,7 +224,6 @@ export default function Login() {
       easing: 'linear',
     });
 
-    // 4) "AXIS" subtitle fades up
     anime({
       targets: '.splash-subtitle',
       opacity: [0, 1],
@@ -111,7 +233,6 @@ export default function Login() {
       delay: (fills as any).duration + 200,
     });
 
-    // 5) After all done → fade out splash → reveal login
     const totalDuration = (fills as any).duration + 1200;
     setTimeout(() => {
       setSplashFading(true);
@@ -120,9 +241,9 @@ export default function Login() {
 
   }, []);
 
-  /* ═══════════════════════════════════════════════════
+  /* ═══════════════════════════════════════════════════════════════
      BUS ANIMATION — starts when splash exits
-     ═══════════════════════════════════════════════════ */
+     ═══════════════════════════════════════════════════════════════ */
   useEffect(() => {
     if (splashVisible) return;
     const bus = busRef.current;
@@ -144,7 +265,6 @@ export default function Login() {
     anime({ targets: bus.querySelectorAll('#tire-left, #tire-right'), translateY: -2.3, duration: 300, loop: true, direction: 'alternate', easing: 'linear' });
     anime({ targets: floor, scaleX: 0.98, duration: 400, loop: true, direction: 'alternate', easing: 'linear' });
 
-    // Line drawing
     const ids = ['#_2','#_3','#_7','#_8','#_6','#_5','#_4','#_1'];
     const tl = anime.timeline({ loop: true });
     ids.forEach((id, i) => {
@@ -158,11 +278,21 @@ export default function Login() {
     });
   }, [splashVisible]);
 
-  /* ═══════════════════════════════════════════════════
+  /* ═══════════════════════════════════════════════════════════════
      RENDER
-     ═══════════════════════════════════════════════════ */
+     ═══════════════════════════════════════════════════════════════ */
   return (
     <div className="login-page">
+
+      {/* ── NEON TOAST CONTAINER ── */}
+      <div style={{
+        position: 'fixed', top: '20px', right: '20px',
+        zIndex: 9999, width: '380px', maxWidth: '90vw',
+      }}>
+        {toasts.map(t => (
+          <NeonToast key={t.id} toast={t} onClose={() => removeToast(t.id)} />
+        ))}
+      </div>
 
       {/* ── SPLASH SCREEN ── */}
       {splashVisible && (
@@ -170,7 +300,6 @@ export default function Login() {
           <section className="splash-section">
             <svg className="splash-logo" width="36rem" height="12rem" viewBox="0 0 640 200">
               <defs>
-                {/* Radial gradients (same pattern as original anime.js demo) */}
                 <radialGradient cx="50%" cy="0%" fx="50%" fy="0%" r="50%" id="rg-indigo">
                   <stop stopColor="#6a70e0" offset="0%"/>
                   <stop stopColor="#3b3f8f" offset="100%"/>
@@ -185,50 +314,23 @@ export default function Login() {
                 </radialGradient>
               </defs>
               <g stroke="none" strokeWidth="1" fill="none" fillRule="evenodd">
-
-                {/* Dot (bounces in) */}
                 <rect id="splash-dot" fill="#40d8b0" x="24" y="28" width="18" height="18" rx="9" opacity="0"/>
-
-                {/* ── STROKE PATHS (draw in) ── */}
                 <g id="splash-lines" transform="translate(24, 36)">
-                  {/* B — stem + two bumps */}
-                  <path id="line-b-1" d="M 16,128 L 16,0"
-                    stroke="#3b3f8f" strokeWidth="32" strokeLinecap="round"/>
-                  <path id="line-b-2" d="M 16,0 C 58,0 58,64 16,64"
-                    stroke="#6a70e0" strokeWidth="32"/>
-                  <path id="line-b-3" d="M 16,64 C 66,64 66,128 16,128"
-                    stroke="#3b3f8f" strokeWidth="32"/>
-
-                  {/* U — down, arc, up */}
-                  <path id="line-u" d="M 112,0 L 112,80 C 112,106.5 133.5,128 160,128 C 186.5,128 208,106.5 208,80 L 208,0"
-                    stroke="#1a8a7a" strokeWidth="32"/>
-
-                  {/* S — double curve */}
-                  <path id="line-s" d="M 304,28 C 304,8 288,0 272,0 C 256,0 240,10 240,32 C 240,56 260,66 280,72 C 296,78 312,88 312,104 C 312,126 296,128 276,128 C 260,128 244,118 240,100"
-                    stroke="#3da55c" strokeWidth="32"/>
-
-                  {/* G — arc + horizontal bar */}
-                  <path id="line-g" d="M 408,36 C 398,12 384,0 368,0 C 345,0 336,28.6 336,64 C 336,99.3 345,128 368,128 C 384,128 398,116 408,92 L 408,64 L 372,64"
-                    stroke="#3b3f8f" strokeWidth="32"/>
-
-                  {/* O — full circle */}
-                  <path id="line-o" d="M 496,0 C 522.5,0 544,28.6 544,64 C 544,99.3 522.5,128 496,128 C 469.5,128 448,99.3 448,64 C 448,28.6 469.5,0 496,0 Z"
-                    stroke="#1a8a7a" strokeWidth="32"/>
+                  <path id="line-b-1" d="M 16,128 L 16,0" stroke="#3b3f8f" strokeWidth="32" strokeLinecap="round"/>
+                  <path id="line-b-2" d="M 16,0 C 58,0 58,64 16,64" stroke="#6a70e0" strokeWidth="32"/>
+                  <path id="line-b-3" d="M 16,64 C 66,64 66,128 16,128" stroke="#3b3f8f" strokeWidth="32"/>
+                  <path id="line-u" d="M 112,0 L 112,80 C 112,106.5 133.5,128 160,128 C 186.5,128 208,106.5 208,80 L 208,0" stroke="#1a8a7a" strokeWidth="32"/>
+                  <path id="line-s" d="M 304,28 C 304,8 288,0 272,0 C 256,0 240,10 240,32 C 240,56 260,66 280,72 C 296,78 312,88 312,104 C 312,126 296,128 276,128 C 260,128 244,118 240,100" stroke="#3da55c" strokeWidth="32"/>
+                  <path id="line-g" d="M 408,36 C 398,12 384,0 368,0 C 345,0 336,28.6 336,64 C 336,99.3 345,128 368,128 C 384,128 398,116 408,92 L 408,64 L 372,64" stroke="#3b3f8f" strokeWidth="32"/>
+                  <path id="line-o" d="M 496,0 C 522.5,0 544,28.6 544,64 C 544,99.3 522.5,128 496,128 C 469.5,128 448,99.3 448,64 C 448,28.6 469.5,0 496,0 Z" stroke="#1a8a7a" strokeWidth="32"/>
                 </g>
-
-                {/* ── GRADIENT FILLS (fade in) ── */}
                 <g id="splash-fills" transform="translate(24, 36)">
-                  {/* B */}
                   <path d="M 16,128 L 16,0" stroke="url(#rg-indigo)" strokeWidth="32" strokeLinecap="round" opacity="0"/>
                   <path d="M 16,0 C 58,0 58,64 16,64" stroke="url(#rg-indigo)" strokeWidth="32" fill="url(#rg-indigo)" opacity="0"/>
                   <path d="M 16,64 C 66,64 66,128 16,128" stroke="url(#rg-teal)" strokeWidth="32" fill="url(#rg-teal)" opacity="0"/>
-                  {/* U */}
                   <path d="M 112,0 L 112,80 C 112,106.5 133.5,128 160,128 C 186.5,128 208,106.5 208,80 L 208,0" stroke="url(#rg-teal)" strokeWidth="32" opacity="0"/>
-                  {/* S */}
                   <path d="M 304,28 C 304,8 288,0 272,0 C 256,0 240,10 240,32 C 240,56 260,66 280,72 C 296,78 312,88 312,104 C 312,126 296,128 276,128 C 260,128 244,118 240,100" stroke="url(#rg-green)" strokeWidth="32" opacity="0"/>
-                  {/* G */}
                   <path d="M 408,36 C 398,12 384,0 368,0 C 345,0 336,28.6 336,64 C 336,99.3 345,128 368,128 C 384,128 398,116 408,92 L 408,64 L 372,64" stroke="url(#rg-indigo)" strokeWidth="32" opacity="0"/>
-                  {/* O */}
                   <path d="M 496,0 C 522.5,0 544,28.6 544,64 C 544,99.3 522.5,128 496,128 C 469.5,128 448,99.3 448,64 C 448,28.6 469.5,0 496,0 Z" stroke="url(#rg-teal)" strokeWidth="32" fill="url(#rg-teal)" opacity="0"/>
                 </g>
               </g>
@@ -248,16 +350,6 @@ export default function Login() {
         <div className="login-form-area">
           <h1 className="login-title">Welcome back</h1>
           <p className="login-subtitle">Sign in to your admin console</p>
-
-          {error && (
-            <div className="login-error">
-              <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-                <circle cx="8" cy="8" r="7" stroke="currentColor" strokeWidth="1.5"/>
-                <path d="M8 5v3.5M8 10.5v.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
-              </svg>
-              <span>{error}</span>
-            </div>
-          )}
 
           <form onSubmit={handleSubmit} className="login-form">
             <div className="login-field">
@@ -312,6 +404,14 @@ export default function Login() {
         <div className="login-right-decor login-right-decor-1"></div>
         <div className="login-right-decor login-right-decor-2"></div>
       </div>
+
+      {/* Toast slide-down animation */}
+      <style>{`
+        @keyframes slideDown {
+          from { transform: translateY(-20px); opacity: 0; }
+          to { transform: translateY(0); opacity: 1; }
+        }
+      `}</style>
     </div>
   );
 }

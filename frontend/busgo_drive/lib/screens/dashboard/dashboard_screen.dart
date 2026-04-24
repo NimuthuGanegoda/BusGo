@@ -43,7 +43,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
         if (route138 != null) tp.startTrip(route138);
       }
 
-      // Always reset bus to inactive on app start
       await _setBusStatus('inactive');
       debugPrint('[Init] Bus reset to inactive on login');
     });
@@ -52,7 +51,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
   void _goToMapTab() =>
       context.findAncestorStateOfType<MainShellState>()?.switchToTab(1);
 
-  // ── Update bus status via backend API (bypasses RLS) ─────────────────────
   Future<void> _setBusStatus(String status, {double? lat, double? lng}) async {
     try {
       final token = await context.read<AuthProvider>().getToken();
@@ -60,7 +58,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
         debugPrint('[Toggle] No token found');
         return;
       }
-
       final response = await http.patch(
         Uri.parse('${ApiConfig.baseUrl}/driver/status'),
         headers: {
@@ -69,19 +66,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
         },
         body: jsonEncode({'status': status}),
       ).timeout(const Duration(seconds: 10));
-
       debugPrint('[Toggle] Status API: ${response.statusCode} ${response.body}');
     } catch (e) {
       debugPrint('[Toggle] Set bus status error: $e');
     }
   }
 
-  // ── Toggle online/offline ─────────────────────────────────────────────────
   Future<void> _toggleOnline(bool value) async {
     final tp = context.read<TripProvider>();
-
     if (value) {
-      // Start GPS FIRST to get coordinates
       final granted = await tp.initGps();
       if (!granted) {
         if (mounted) {
@@ -92,19 +85,35 @@ class _DashboardScreenState extends State<DashboardScreen> {
         }
         return;
       }
-      // Set active via backend
       await _setBusStatus('active',
           lat: tp.currentLocation.latitude,
           lng: tp.currentLocation.longitude);
       setState(() => _isOnline = true);
     } else {
-      // Stop GPS stream first
       context.read<TripProvider>().stopGpsStream();
-      // Set inactive via backend
       await _setBusStatus('inactive');
       setState(() => _isOnline = false);
     }
   }
+
+  // ── Dark glass decoration helper ──────────────────────────────────────
+  BoxDecoration _glassDeco({
+    Color? color,
+    Color? borderColor,
+    double radius = 14,
+    List<BoxShadow>? shadows,
+  }) => BoxDecoration(
+    color: color ?? AppColors.cardBg,
+    borderRadius: BorderRadius.circular(radius),
+    border: Border.all(color: borderColor ?? AppColors.border),
+    boxShadow: shadows ?? [
+      BoxShadow(
+        color: Colors.black.withOpacity(0.3),
+        blurRadius: 15,
+        offset: const Offset(0, 4),
+      ),
+    ],
+  );
 
   @override
   Widget build(BuildContext context) =>
@@ -114,7 +123,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         final fillPercent = (passengers / totalSeats).clamp(0.0, 1.0);
 
         return Scaffold(
-          backgroundColor: const Color(0xFFEDF1F7),
+          backgroundColor: AppColors.background,
           body: Column(children: [
             _buildTopBar(trip),
             Expanded(
@@ -125,13 +134,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   // ── Online / Offline toggle ───────────────────────────
                   Container(
                     margin: const EdgeInsets.only(bottom: 14),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(14),
-                      border: Border.all(
-                        color: _isOnline
-                            ? AppColors.success.withOpacity(0.4)
-                            : const Color(0xFFE0E8F0)),
+                    decoration: _glassDeco(
+                      borderColor: _isOnline
+                          ? AppColors.success.withOpacity(0.3)
+                          : AppColors.border,
                     ),
                     child: Padding(
                       padding: const EdgeInsets.symmetric(
@@ -141,8 +147,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
                           padding: const EdgeInsets.all(10),
                           decoration: BoxDecoration(
                             color: _isOnline
-                                ? AppColors.success.withOpacity(0.1)
-                                : Colors.grey.withOpacity(0.1),
+                                ? AppColors.success.withOpacity(0.15)
+                                : Colors.grey.withOpacity(0.15),
                             borderRadius: BorderRadius.circular(10)),
                           child: Icon(Icons.circle,
                               size: 18,
@@ -160,19 +166,53 @@ class _DashboardScreenState extends State<DashboardScreen> {
                               style: GoogleFonts.inter(
                                   fontSize: 14,
                                   fontWeight: FontWeight.w700,
-                                  color: AppColors.primary)),
+                                  color: AppColors.textPrimary)),
                             Text(
                               _isOnline
                                   ? 'GPS active — passengers can see your bus'
                                   : 'Toggle ON to share your location',
                               style: GoogleFonts.inter(
                                   fontSize: 11,
-                                  color: const Color(0xFF8094A8))),
+                                  color: AppColors.textSecondary)),
                           ])),
-                        Switch(
-                          value: _isOnline,
-                          onChanged: _toggleOnline,
-                          activeColor: AppColors.success,
+                        // Custom toggle matching CodePen style
+                        GestureDetector(
+                          onTap: () => _toggleOnline(!_isOnline),
+                          child: AnimatedContainer(
+                            duration: const Duration(milliseconds: 300),
+                            width: 60,
+                            height: 30,
+                            decoration: BoxDecoration(
+                              color: _isOnline
+                                  ? AppColors.success.withOpacity(0.2)
+                                  : const Color(0xFF2C3E50),
+                              borderRadius: BorderRadius.circular(15),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.black.withOpacity(0.5),
+                                  blurRadius: 10,
+                                  offset: const Offset(0, 0),
+                                ),
+                              ],
+                            ),
+                            child: AnimatedAlign(
+                              duration: const Duration(milliseconds: 300),
+                              alignment: _isOnline
+                                  ? Alignment.centerRight
+                                  : Alignment.centerLeft,
+                              child: Container(
+                                margin: const EdgeInsets.all(3),
+                                width: 24,
+                                height: 24,
+                                decoration: BoxDecoration(
+                                  color: _isOnline
+                                      ? AppColors.success
+                                      : const Color(0xFF3498DB),
+                                  shape: BoxShape.circle,
+                                ),
+                              ),
+                            ),
+                          ),
                         ),
                       ]),
                     ),
@@ -184,11 +224,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       margin: const EdgeInsets.only(bottom: 14),
                       padding: const EdgeInsets.symmetric(
                           horizontal: 16, vertical: 10),
-                      decoration: BoxDecoration(
+                      decoration: _glassDeco(
                         color: AppColors.success.withOpacity(0.08),
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(
-                            color: AppColors.success.withOpacity(0.3))),
+                        borderColor: AppColors.success.withOpacity(0.3),
+                        radius: 12,
+                      ),
                       child: Row(children: [
                         const Icon(Icons.gps_fixed,
                             color: AppColors.success, size: 16),
@@ -210,20 +250,20 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       margin: const EdgeInsets.only(bottom: 14),
                       padding: const EdgeInsets.symmetric(
                           horizontal: 16, vertical: 10),
-                      decoration: BoxDecoration(
-                        color: Colors.orange.withOpacity(0.08),
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(
-                            color: Colors.orange.withOpacity(0.3))),
+                      decoration: _glassDeco(
+                        color: AppColors.warning.withOpacity(0.08),
+                        borderColor: AppColors.warning.withOpacity(0.3),
+                        radius: 12,
+                      ),
                       child: Row(children: [
                         const SizedBox(
                           width: 14, height: 14,
                           child: CircularProgressIndicator(
-                              strokeWidth: 2, color: Colors.orange)),
+                              strokeWidth: 2, color: AppColors.warning)),
                         const SizedBox(width: 8),
                         Text('Acquiring GPS...',
                             style: GoogleFonts.inter(
-                                fontSize: 11, color: Colors.orange)),
+                                fontSize: 11, color: AppColors.warning)),
                       ]),
                     ),
 
@@ -250,11 +290,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
         '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}';
 
     return Container(
-      decoration: const BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [Color(0xFF0A2342), Color(0xFF123564)]),
+      decoration: BoxDecoration(
+        color: const Color(0xB3000000), // rgba(0,0,0,0.7)
+        border: Border(
+          bottom: BorderSide(color: Colors.white.withOpacity(0.1)),
+        ),
       ),
       padding: EdgeInsets.only(
           top: MediaQuery.of(context).padding.top + 12,
@@ -274,26 +314,38 @@ class _DashboardScreenState extends State<DashboardScreen> {
               Text(routeName,
                   style: GoogleFonts.inter(
                       fontSize: 12,
-                      color: const Color(0xFF90CAF9))),
+                      color: AppColors.accent)),
             ])),
           Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
             Container(
               padding: const EdgeInsets.symmetric(
                   horizontal: 10, vertical: 4),
               decoration: BoxDecoration(
-                color: _isOnline ? AppColors.success : Colors.grey,
-                borderRadius: BorderRadius.circular(20)),
+                color: _isOnline
+                    ? AppColors.success.withOpacity(0.2)
+                    : AppColors.danger.withOpacity(0.2),
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(
+                  color: _isOnline
+                      ? AppColors.success.withOpacity(0.5)
+                      : AppColors.danger.withOpacity(0.5),
+                ),
+              ),
               child: Row(mainAxisSize: MainAxisSize.min, children: [
                 Container(width: 6, height: 6,
-                    decoration: const BoxDecoration(
-                        color: Colors.white,
+                    decoration: BoxDecoration(
+                        color: _isOnline
+                            ? AppColors.success
+                            : AppColors.danger,
                         shape: BoxShape.circle)),
                 const SizedBox(width: 4),
                 Text(_isOnline ? 'ONLINE' : 'OFFLINE',
                     style: GoogleFonts.inter(
                         fontSize: 10,
                         fontWeight: FontWeight.w700,
-                        color: Colors.white,
+                        color: _isOnline
+                            ? AppColors.success
+                            : AppColors.danger,
                         letterSpacing: 0.5)),
               ])),
             const SizedBox(height: 4),
@@ -313,19 +365,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
     if (fillPercent < 0.5)       gaugeColor = AppColors.success;
     else if (fillPercent < 0.75) gaugeColor = AppColors.warning;
     else if (fillPercent < 0.95) gaugeColor = AppColors.danger;
-    else                         gaugeColor = const Color(0xFF212121);
+    else                         gaugeColor = Colors.white;
 
     return Container(
-      decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            Color(0xFF0B1A2E),
-            Color(0xFF132F54),
-            Color(0xFF1E5AA8),
-          ]),
-        borderRadius: BorderRadius.circular(18)),
+      decoration: _glassDeco(
+        color: const Color(0xCC1E1E1E),
+        borderColor: AppColors.accent.withOpacity(0.15),
+        radius: 18,
+      ),
       padding: const EdgeInsets.all(20),
       child: Column(children: [
         SizedBox(
@@ -334,7 +381,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
             painter: _GaugeRingPainter(
               fillPercent: fillPercent,
               fillColor:   gaugeColor,
-              bgColor:     Colors.white.withValues(alpha: 0.15)),
+              bgColor:     Colors.white.withValues(alpha: 0.1)),
             child: Center(child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
@@ -342,17 +389,17 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     style: GoogleFonts.inter(
                         fontSize: 34,
                         fontWeight: FontWeight.w800,
-                        color: Colors.white,
+                        color: AppColors.accent,
                         height: 1)),
                 const SizedBox(height: 2),
                 Text('/ $totalSeats seats',
                     style: GoogleFonts.inter(
                         fontSize: 12,
-                        color: const Color(0xFF90CAF9))),
+                        color: AppColors.textSecondary)),
                 Text('on board',
                     style: GoogleFonts.inter(
                         fontSize: 10,
-                        color: const Color(0xFF64B5F6))),
+                        color: AppColors.textMuted)),
               ])),
           )),
       ]),
@@ -367,23 +414,19 @@ class _DashboardScreenState extends State<DashboardScreen> {
     return GestureDetector(
       onTap: _goToMapTab,
       child: Container(
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: const Color(0xFFE0E8F0))),
+        decoration: _glassDeco(radius: 14),
         clipBehavior: Clip.antiAlias,
         child: Column(children: [
           Container(
-            decoration: const BoxDecoration(
-              gradient: LinearGradient(
-                colors: [Color(0xFF0A2342), Color(0xFF123564)])),
+            color: const Color(0xB3000000),
             padding: const EdgeInsets.symmetric(
                 horizontal: 14, vertical: 10),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Row(children: [
-                  const Icon(Icons.map_rounded,
-                      size: 16, color: Color(0xFF64B5F6)),
+                  Icon(Icons.map_rounded,
+                      size: 16, color: AppColors.accent),
                   const SizedBox(width: 6),
                   Text('Live Route Map',
                       style: GoogleFonts.inter(
@@ -394,7 +437,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 Text('Tap to expand',
                     style: GoogleFonts.inter(
                         fontSize: 10,
-                        color: const Color(0xFF90CAF9))),
+                        color: AppColors.textSecondary)),
               ])),
           SizedBox(height: 150, child: FlutterMap(
             options: MapOptions(
@@ -405,7 +448,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
             children: [
               TileLayer(
                 urlTemplate:
-                    'https://api.maptiler.com/maps/streets-v2/{z}/{x}/{y}.png'
+                    'https://api.maptiler.com/maps/streets-v2-dark/{z}/{x}/{y}.png'
                     '?key=fsVEp87wcHaGchb3gygh',
                 userAgentPackageName: 'com.busgo.drive'),
               if (route.polyline.isNotEmpty)
@@ -413,14 +456,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   Polyline(
                     points:      route.polyline,
                     strokeWidth: 4,
-                    color: AppColors.primaryLight
-                        .withValues(alpha: 0.35))]),
+                    color: AppColors.accent.withValues(alpha: 0.35))]),
               if (traveledPath.length >= 2)
                 PolylineLayer(polylines: [
                   Polyline(
                     points:      traveledPath,
                     strokeWidth: 5,
-                    color:       const Color(0xFF00C853))]),
+                    color:       AppColors.success)]),
               MarkerLayer(markers: [
                 Marker(
                   point:  busLocation,
@@ -428,10 +470,17 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   height: 30,
                   child: Container(
                     decoration: BoxDecoration(
-                      color: AppColors.primary,
+                      color: AppColors.accent,
                       shape: BoxShape.circle,
                       border: Border.all(
-                          color: Colors.white, width: 2.5)),
+                          color: Colors.white, width: 2.5),
+                      boxShadow: [
+                        BoxShadow(
+                          color: AppColors.accent.withOpacity(0.5),
+                          blurRadius: 10,
+                          spreadRadius: 2,
+                        ),
+                      ]),
                     child: const Icon(
                         Icons.directions_bus_rounded,
                         size: 14, color: Colors.white)))]),
@@ -449,10 +498,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     final totalStops     = trip.currentRoute?.stops.length ?? 7;
 
     return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: const Color(0xFFE0E8F0))),
+      decoration: _glassDeco(),
       padding: const EdgeInsets.all(16),
       child: Column(children: [
         Row(children: [
@@ -460,17 +506,17 @@ class _DashboardScreenState extends State<DashboardScreen> {
             padding: const EdgeInsets.symmetric(
                 horizontal: 8, vertical: 4),
             decoration: BoxDecoration(
-              color: AppColors.success.withValues(alpha: 0.1),
+              color: AppColors.accent.withOpacity(0.15),
               borderRadius: BorderRadius.circular(6)),
             child: Row(children: [
               Icon(Icons.navigation_rounded,
-                  size: 13, color: AppColors.success),
+                  size: 13, color: AppColors.accent),
               const SizedBox(width: 4),
               Text('NEXT STOP',
                   style: GoogleFonts.inter(
                       fontSize: 11,
                       fontWeight: FontWeight.w700,
-                      color: AppColors.success,
+                      color: AppColors.accent,
                       letterSpacing: 0.8)),
             ])),
           const Spacer(),
@@ -478,7 +524,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
               style: GoogleFonts.inter(
                   fontSize: 11,
                   fontWeight: FontWeight.w700,
-                  color: AppColors.primary)),
+                  color: AppColors.textSecondary)),
         ]),
         const SizedBox(height: 12),
         Row(children: [
@@ -487,12 +533,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
             style: GoogleFonts.inter(
                 fontSize: 15,
                 fontWeight: FontWeight.w700,
-                color: AppColors.primary))),
+                color: AppColors.textPrimary))),
           Text('$etaMin min',
               style: GoogleFonts.inter(
                   fontSize: 12,
                   fontWeight: FontWeight.w600,
-                  color: AppColors.success)),
+                  color: AppColors.accent)),
         ]),
         const SizedBox(height: 8),
         ClipRRect(
@@ -502,9 +548,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 ? stopsCompleted / totalStops
                 : 0,
             minHeight:       5,
-            backgroundColor: const Color(0xFFE4EAF0),
-            valueColor: AlwaysStoppedAnimation<Color>(
-                AppColors.primaryLight))),
+            backgroundColor: Colors.white.withOpacity(0.1),
+            valueColor: const AlwaysStoppedAnimation<Color>(
+                AppColors.accent))),
       ]),
     );
   }
@@ -524,7 +570,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           value: speed.toStringAsFixed(0),
           unit:  'km/h',
           label: 'Speed',
-          color: AppColors.primaryLight)),
+          color: AppColors.accent)),
       const SizedBox(width: 10),
       Expanded(child: _statTile(
           icon:  Icons.route_rounded,
@@ -545,7 +591,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           value: '$boarded',
           unit:  '',
           label: 'Boarded',
-          color: const Color(0xFF7B1FA2))),
+          color: const Color(0xFFAA66CC))),
     ]);
   }
 
@@ -558,15 +604,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }) =>
       Container(
         padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 4),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: const Color(0xFFE0E8F0))),
+        decoration: _glassDeco(radius: 12),
         child: Column(children: [
           Container(
             width: 32, height: 32,
             decoration: BoxDecoration(
-              color: color.withValues(alpha: 0.1),
+              color: color.withOpacity(0.15),
               borderRadius: BorderRadius.circular(8)),
             child: Icon(icon, size: 18, color: color)),
           const SizedBox(height: 6),
@@ -575,20 +618,20 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 style: GoogleFonts.inter(
                     fontSize: 15,
                     fontWeight: FontWeight.w800,
-                    color: AppColors.primary)),
+                    color: color)),
             if (unit.isNotEmpty)
               TextSpan(text: ' $unit',
                   style: GoogleFonts.inter(
                       fontSize: 9,
                       fontWeight: FontWeight.w600,
-                      color: const Color(0xFF8094A8))),
+                      color: AppColors.textSecondary)),
           ])),
           const SizedBox(height: 2),
           Text(label,
               style: GoogleFonts.inter(
                   fontSize: 10,
                   fontWeight: FontWeight.w600,
-                  color: const Color(0xFF6B7A8D))),
+                  color: AppColors.textMuted)),
         ]),
       );
 }

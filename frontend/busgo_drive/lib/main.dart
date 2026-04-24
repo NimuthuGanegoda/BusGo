@@ -9,19 +9,15 @@ import 'providers/route_provider.dart';
 import 'providers/trip_provider.dart';
 import 'providers/emergency_provider.dart';
 import 'routes/app_router.dart';
+import 'screens/driver_splash_wrapper.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-
-  // Load .env first
   await dotenv.load(fileName: '.env');
-
-  // Initialize Supabase for Realtime
   await Supabase.initialize(
     url:     dotenv.env['SUPABASE_URL']!,
     anonKey: dotenv.env['SUPABASE_ANON_KEY']!,
   );
-
   SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
   SystemChrome.setSystemUIOverlayStyle(
     const SystemUiOverlayStyle(
@@ -29,7 +25,6 @@ void main() async {
       statusBarIconBrightness: Brightness.light,
     ),
   );
-
   runApp(const BusGoDriveApp());
 }
 
@@ -45,12 +40,14 @@ class BusGoDriveApp extends StatelessWidget {
         ChangeNotifierProvider(create: (_) => TripProvider()),
         ChangeNotifierProvider(create: (_) => EmergencyProvider()),
       ],
-      child: MaterialApp.router(
-        title:                    'BusGo Drive',
-        debugShowCheckedModeBanner: false,
-        theme:                    AppTheme.light,
-        routerConfig:             appRouter,
-      ),
+      child: DriverSplashWrapper(                      // ← ADD THIS
+        child: MaterialApp.router(
+          title:                    'BusGo Drive',
+          debugShowCheckedModeBanner: false,
+          theme:                    AppTheme.light,
+          routerConfig:             appRouter,
+        ),
+      ),                                                // ← AND THIS
     );
   }
 }

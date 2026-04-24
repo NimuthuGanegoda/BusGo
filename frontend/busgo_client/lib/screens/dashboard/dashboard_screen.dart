@@ -25,7 +25,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   static const _defaultLocation = LatLng(6.9271, 79.8612);
 
   String get _tileUrl =>
-      'https://api.maptiler.com/maps/streets-v2/{z}/{x}/{y}.png'
+      'https://api.maptiler.com/maps/streets-v2-dark/{z}/{x}/{y}.png'
       '?key=${dotenv.env['MAPTILER_KEY'] ?? 'fsVEp87wcHaGchb3gygh'}';
 
   @override

@@ -152,7 +152,6 @@ class _MainShellState extends State<_MainShell> {
 
   @override
   Widget build(BuildContext context) {
-    _tryStartWatching();
 
     return Consumer<TripProvider>(
       builder: (context, tripProvider, child) {

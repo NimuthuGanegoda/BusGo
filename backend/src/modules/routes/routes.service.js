@@ -8,7 +8,7 @@ import { supabase } from '../../config/supabase.js';
 export async function getAllRoutes() {
   const { data, error } = await supabase
     .from('bus_routes')
-    .select('id, route_number, route_name, origin, destination, color, is_active, created_at')
+    .select('id, route_number, route_name, origin, destination, color, waypoints, is_active, created_at')
     .eq('is_active', true)
     .order('route_number');
 

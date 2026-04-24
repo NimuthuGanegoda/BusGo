@@ -32,7 +32,7 @@ class _LiveMapScreenState extends State<LiveMapScreen>
   bool _gotGps = false; // track whether we got a real GPS fix
 
   String get _tileUrl =>
-      'https://api.maptiler.com/maps/streets-v2/{z}/{x}/{y}.png'
+      'https://api.maptiler.com/maps/streets-v2-dark/{z}/{x}/{y}.png'
       '?key=${dotenv.env['MAPTILER_KEY'] ?? ''}';
 
   @override

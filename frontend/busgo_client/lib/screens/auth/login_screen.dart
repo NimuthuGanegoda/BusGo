@@ -6,6 +6,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/user_provider.dart';
+import '../../widgets/busgo_alert.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -91,6 +92,102 @@ class _LoginScreenState extends State<LoginScreen>
     _emailController.dispose();
     _passwordController.dispose();
     super.dispose();
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // LOGIN HANDLER — with BusgoAlert neon messages
+  // ═══════════════════════════════════════════════════════════════════════════
+  Future<void> _handleLogin() async {
+    final auth = context.read<AuthProvider>();
+    auth.clearError();
+    if (!_formKey.currentState!.validate()) return;
+
+    final success = await auth.login(
+      _emailController.text.trim(),
+      _passwordController.text,
+    );
+
+    if (!mounted) return;
+
+    if (success) {
+      // ── Success: show green neon alert ──
+      BusgoAlert.show(
+        context,
+        type: BusgoAlertType.success,
+        title: 'Welcome!',
+        message: 'You have been logged in successfully.',
+      );
+
+      // Stop animations before navigating
+      _cloudAnim.stop();
+      _busAnim.stop();
+      _wheelAnim.stop();
+      _roadAnim.stop();
+
+      context.read<UserProvider>().setUser(auth.currentUser!);
+      GoRouter.of(context).go('/home');
+    } else {
+      // ── Error: show red neon alert with appropriate message ──
+      final error = auth.errorMessage ?? '';
+
+      if (error == 'LOGIN_RESTRICTED') {
+        // Non-passenger tried to login — generic message (no info leak)
+        BusgoAlert.show(
+          context,
+          type: BusgoAlertType.error,
+          title: 'Access Denied',
+          message: 'This account is not authorized to use this app.',
+        );
+      } else if (error.toLowerCase().contains('invalid') ||
+                 error.toLowerCase().contains('credentials') ||
+                 error.toLowerCase().contains('password') ||
+                 error.toLowerCase().contains('401')) {
+        // Wrong email/password
+        BusgoAlert.show(
+          context,
+          type: BusgoAlertType.error,
+          title: 'Login Failed',
+          message: 'Invalid email or password. Please try again.',
+        );
+      } else if (error == 'ACCOUNT_LOCKED') {
+        BusgoAlert.show(
+          context,
+          type: BusgoAlertType.error,
+          title: 'Account Locked',
+          message: 'Too many failed attempts. Try again in 15 minutes.',
+        );
+      } else if (error == 'PENDING_APPROVAL') {
+        BusgoAlert.show(
+          context,
+          type: BusgoAlertType.warning,
+          title: 'Pending Approval',
+          message: 'Your account is awaiting admin approval.',
+        );
+        
+      } else if (error.toLowerCase().contains('socket') ||
+                 error.toLowerCase().contains('connection') ||
+                 error.toLowerCase().contains('no route') ||
+                 error.toLowerCase().contains('timeout')) {
+        // Network error
+        BusgoAlert.show(
+          context,
+          type: BusgoAlertType.warning,
+          title: 'Connection Error',
+          message: 'Could not reach the server. Check your connection.',
+        );
+      } else {
+        // Generic fallback
+        BusgoAlert.show(
+          context,
+          type: BusgoAlertType.error,
+          title: 'Login Failed',
+          message: error.isNotEmpty ? error : 'Something went wrong. Please try again.',
+        );
+      }
+
+      // Clear the error so it doesn't persist in the provider
+      auth.clearError();
+    }
   }
 
   @override
@@ -438,7 +535,7 @@ class _LoginScreenState extends State<LoginScreen>
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
-  // GLASSMORPHISM LOGIN FORM (from Codepen)
+  // GLASSMORPHISM LOGIN FORM
   // ═══════════════════════════════════════════════════════════════════════════
   Widget _buildGlassForm(BuildContext context) {
     return ClipRRect(
@@ -510,22 +607,6 @@ class _LoginScreenState extends State<LoginScreen>
                         },
                       ),
 
-                      // Server error
-                      if (auth.errorMessage != null) ...[
-                        const SizedBox(height: 10),
-                        Row(
-                          children: [
-                            const Icon(Icons.error_outline, size: 14, color: Color(0xFFFF6B6B)),
-                            const SizedBox(width: 6),
-                            Expanded(
-                              child: Text(
-                                auth.errorMessage!,
-                                style: _poppins(size: 11, color: const Color(0xFFFF6B6B)),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
                       const SizedBox(height: 14),
 
                       // ── Remember me + Forgot Password ──
@@ -583,25 +664,7 @@ class _LoginScreenState extends State<LoginScreen>
 
                       // ── White Login button (rounded pill) ──
                       GestureDetector(
-                        onTap: auth.isLoading
-                            ? null
-                            : () async {
-                                auth.clearError();
-                                if (!_formKey.currentState!.validate()) return;
-                                final success = await auth.login(
-                                  _emailController.text.trim(),
-                                  _passwordController.text,
-                                );
-                                if (success && mounted) {
-                                  // Stop all repeating animations before navigation
-                                  _cloudAnim.stop();
-                                  _busAnim.stop();
-                                  _wheelAnim.stop();
-                                  _roadAnim.stop();
-                                  context.read<UserProvider>().setUser(auth.currentUser!);
-                                  GoRouter.of(context).go('/home');
-                                }
-                              },
+                        onTap: auth.isLoading ? null : _handleLogin,
                         child: Container(
                           width: double.infinity,
                           height: 50,
@@ -658,11 +721,11 @@ class _LoginScreenState extends State<LoginScreen>
                         children: [
                           GestureDetector(
                             onTap: () {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(
-                                  content: Text('Google Sign-In coming soon!'),
-                                  duration: Duration(seconds: 2),
-                                ),
+                              BusgoAlert.show(
+                                context,
+                                type: BusgoAlertType.info,
+                                title: 'Coming Soon!',
+                                message: 'Google Sign-In will be available in a future update.',
                               );
                             },
                             child: Text.rich(
@@ -723,7 +786,7 @@ class _LoginScreenState extends State<LoginScreen>
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
-  // GLASS FIELD (rounded pill input from Codepen)
+  // GLASS FIELD (rounded pill input)
   // ═══════════════════════════════════════════════════════════════════════════
   Widget _buildGlassField({
     required TextEditingController controller,

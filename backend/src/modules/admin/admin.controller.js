@@ -1,5 +1,7 @@
 import * as adminService from './admin.service.js';
 import { sendSuccess, sendError } from '../../utils/response.utils.js';
+import { getRecentEvents } from '../../services/security-audit.service.js';
+import { supabase } from '../../config/supabase.js';
 
 // ── Dashboard ──────────────────────────────────────────────────────────────────
 export async function getDashboard(req, res, next) {
@@ -163,4 +165,42 @@ export async function getDriverLicenseUrl(req, res, next) {
     if (err.statusCode) return sendError(res, err.message, err.statusCode, err.code);
     next(err);
   }
+
 }
+
+export async function getSecurityLogs(req, res, next) {
+  try {
+    const { page = 1, page_size = 20, event_type, severity } = req.query;
+    const limit = Math.min(Number(page_size), 100);
+    const offset = (Number(page) - 1) * limit;
+
+    let query = supabase
+      .from('security_audit_log')
+      .select('*', { count: 'exact' })
+      .order('created_at', { ascending: false })
+      .range(offset, offset + limit - 1);
+
+    if (event_type && event_type !== 'all') query = query.eq('event_type', event_type);
+    if (severity && severity !== 'all') query = query.eq('severity', severity);
+
+    const { data, error, count } = await query;
+    if (error) throw error;
+
+    return sendSuccess(res, {
+      data: data || [],
+      pagination: { page: Number(page), page_size: limit, total: count || 0 },
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function deleteUser(req, res, next) {
+  try {
+    await adminService.deleteUser(req.params.id);
+    await adminService.logAdminAction(req.user.id, 'DELETE_USER', 'users', req.params.id, {});
+    return sendSuccess(res, {}, 'User deleted');
+  } catch (err) { next(err); }
+}
+
+

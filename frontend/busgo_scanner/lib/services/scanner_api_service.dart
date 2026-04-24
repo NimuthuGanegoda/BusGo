@@ -2,7 +2,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
-const String _kBaseUrlDev  = 'http://192.168.8.101:5000/api';
+const String _kBaseUrlDev  = 'http://192.168.126.1:5000/api';
 const String _kBaseUrlProd = 'https://your-api-domain.com/api';
 const String _kBaseUrl     = kDebugMode ? _kBaseUrlDev : _kBaseUrlProd;
 
@@ -99,7 +99,7 @@ class ScannerApiService {
     final d   = _unwrap(res) as Map<String, dynamic>;
     final user = d['user'] as Map<String, dynamic>;
     if (user['role'] != 'driver') {
-      throw Exception('Scanner is for drivers only.');
+      throw Exception('LOGIN_RESTRICTED');
     }
     await _tokens.save(d['access_token'] as String, d['refresh_token'] as String);
 
@@ -206,3 +206,5 @@ class ScanResult {
     );
   }
 }
+
+

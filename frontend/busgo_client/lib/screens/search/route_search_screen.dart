@@ -286,7 +286,7 @@ class _RouteSearchScreenState extends State<RouteSearchScreen> {
                     borderRadius: BorderRadius.circular(10),
                   ),
                   child: const Icon(Icons.directions_bus_rounded,
-                      color: Colors.white, size: 22),
+                      color: const Color(0xFF0A1628), size: 22),
                 ),
                 const SizedBox(width: 12),
                 const Column(
@@ -319,7 +319,7 @@ class _RouteSearchScreenState extends State<RouteSearchScreen> {
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: const Color(0xFF0A1628),
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
@@ -438,7 +438,7 @@ class _RouteSearchScreenState extends State<RouteSearchScreen> {
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: const Color(0xFF0A1628),
         borderRadius: BorderRadius.circular(12),
         boxShadow: [
           BoxShadow(
@@ -675,7 +675,7 @@ class _RouteSearchScreenState extends State<RouteSearchScreen> {
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: const Color(0xFF0A1628),
         borderRadius: BorderRadius.circular(14),
         border: Border.all(
           color: const Color(0xFF16A34A).withOpacity(0.25),
@@ -705,7 +705,7 @@ class _RouteSearchScreenState extends State<RouteSearchScreen> {
               alignment: Alignment.center,
               child: Text(entry.route.routeNumber,
                   style: const TextStyle(
-                      color: Colors.white,
+                      color: const Color(0xFF0A1628),
                       fontSize: 13,
                       fontWeight: FontWeight.w700)),
             ),
@@ -771,7 +771,7 @@ class _RouteSearchScreenState extends State<RouteSearchScreen> {
         margin: const EdgeInsets.only(bottom: 8),
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: const Color(0xFF0A1628),
           borderRadius: BorderRadius.circular(12),
           border: Border.all(color: AppColors.divider, width: 0.5),
           boxShadow: [
@@ -827,7 +827,7 @@ class _RouteSearchScreenState extends State<RouteSearchScreen> {
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: const Color(0xFF0A1628),
         borderRadius: BorderRadius.circular(14),
         border: Border.all(
           color: isExpanded
@@ -859,7 +859,7 @@ class _RouteSearchScreenState extends State<RouteSearchScreen> {
                 alignment: Alignment.center,
                 child: Text(route.routeNumber,
                     style: const TextStyle(
-                        color: Colors.white,
+                        color: const Color(0xFF0A1628),
                         fontSize: 13,
                         fontWeight: FontWeight.w700)),
               ),
@@ -1057,3 +1057,4 @@ class _StopRouteEntry {
   final BusRoute route;
   const _StopRouteEntry({required this.stop, required this.route});
 }
+

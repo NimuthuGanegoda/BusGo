@@ -129,8 +129,8 @@ export default function UserManagement() {
 
   const rejectDriver = async (id: string) => {
     try {
-      await fetch(`${API}/users/${id}/deactivate`, {
-        method: 'PATCH',
+      await fetch(`${API}/users/${id}`, {
+        method: 'DELETE',
         headers: { Authorization: `Bearer ${token()}` },
       });
       setUsers(prev => prev.filter(u => u.id !== id));
@@ -456,7 +456,7 @@ export default function UserManagement() {
                   <div style={{ fontSize: '11px', fontWeight: 700, letterSpacing: '1px',
                     opacity: 0.8, marginBottom: '6px' }}>
                     {selectedDriver.role === 'driver' && !selectedDriver.is_active
-                      ? '⏳ PENDING APPROVAL' : '👤 DRIVER PROFILE'}
+                      ? '⏳ PENDING APPROVAL' : selectedDriver.role === 'driver' ? '👤 DRIVER PROFILE' : '👤 USER PROFILE'}
                   </div>
                   <div style={{ fontSize: '18px', fontWeight: 800 }}>
                     {selectedDriver.full_name}
@@ -494,6 +494,7 @@ export default function UserManagement() {
             </div>
 
             {/* License image */}
+            {selectedDriver.role === 'driver' && (
             <div style={{ padding: '16px', borderBottom: '1px solid #f3f4f6' }}>
               <div style={{ fontSize: '11px', fontWeight: 700, color: '#6b7280',
                 letterSpacing: '0.8px', marginBottom: '10px', display: 'flex',
@@ -550,6 +551,7 @@ export default function UserManagement() {
                 </div>
               )}
             </div>
+            )}
 
             {/* Approve / Reject actions */}
             {selectedDriver.role === 'driver' && !selectedDriver.is_active && (

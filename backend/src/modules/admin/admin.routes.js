@@ -32,6 +32,7 @@ router.get('/users/:id',                   controller.getUserById);
 router.patch('/users/:id',                 controller.updateUser);
 router.patch('/users/:id/deactivate',      controller.deactivateUser);
 router.patch('/users/:id/reactivate',      controller.reactivateUser);
+router.delete('/users/:id',                controller.deleteUser);
 router.get('/users/:id/license-url',       controller.getDriverLicenseUrl);
 
 
@@ -82,4 +83,5 @@ router.get('/audit-logs',
   controller.getAuditLogs
 );
 
+router.get('/security-logs', controller.getSecurityLogs);
 export default router;

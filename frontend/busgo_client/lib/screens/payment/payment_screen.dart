@@ -17,7 +17,7 @@ class PaymentScreen extends StatefulWidget {
 }
 
 class _PaymentScreenState extends State<PaymentScreen> {
-  static const _baseUrl = 'http://192.168.8.101:5000';
+  static const _baseUrl = 'http://192.168.126.1:5000';
 
   List<dynamic> _routes = [];
   List<dynamic> _stops = [];
@@ -166,7 +166,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF0F4F8),
+      backgroundColor: const Color(0xFF040A14),
       appBar: AppBar(
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_ios, size: 18),
@@ -219,7 +219,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
           Container(
             padding: const EdgeInsets.all(20),
             decoration: BoxDecoration(
-              color: Colors.white,
+              color: const Color(0xFF0A1628),
               borderRadius: BorderRadius.circular(16),
               boxShadow: [
                 BoxShadow(color: Colors.black.withOpacity(0.06), blurRadius: 20, offset: const Offset(0, 4)),
@@ -333,9 +333,9 @@ class _PaymentScreenState extends State<PaymentScreen> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14),
       decoration: BoxDecoration(
-        border: Border.all(color: const Color(0xFFEEEEEE)),
+        border: Border.all(color: Colors.white.withOpacity(0.1)),
         borderRadius: BorderRadius.circular(10),
-        color: const Color(0xFFFAFAFA),
+        color: const Color(0xFF1A1E2E),
       ),
       child: DropdownButtonHideUnderline(
         child: DropdownButton<Map<String, dynamic>>(
@@ -353,7 +353,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
                     width: 32, height: 32,
                     decoration: BoxDecoration(color: _parseColor(route['color']), borderRadius: BorderRadius.circular(8)),
                     alignment: Alignment.center,
-                    child: Text(route['route_number'] ?? '', style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w700)),
+                    child: Text(route['route_number'] ?? '', style: const TextStyle(color: const Color(0xFF0A1628), fontSize: 11, fontWeight: FontWeight.w700)),
                   ),
                   const SizedBox(width: 10),
                   Expanded(child: Text('${route['origin']} → ${route['destination']}', style: const TextStyle(fontSize: 13), overflow: TextOverflow.ellipsis)),
@@ -380,9 +380,9 @@ class _PaymentScreenState extends State<PaymentScreen> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14),
       decoration: BoxDecoration(
-        border: Border.all(color: const Color(0xFFEEEEEE)),
+        border: Border.all(color: Colors.white.withOpacity(0.1)),
         borderRadius: BorderRadius.circular(10),
-        color: const Color(0xFFFAFAFA),
+        color: const Color(0xFF1A1E2E),
       ),
       child: DropdownButtonHideUnderline(
         child: DropdownButton<Map<String, dynamic>>(
@@ -434,7 +434,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
             children: [
               Text('LKR ', style: TextStyle(color: Colors.white.withOpacity(0.6), fontSize: 16, fontWeight: FontWeight.w400)),
               Text('${fare['amount']?.toStringAsFixed(2) ?? '0.00'}',
-                style: const TextStyle(color: Colors.white, fontSize: 40, fontWeight: FontWeight.w900)),
+                style: const TextStyle(color: const Color(0xFF0A1628), fontSize: 40, fontWeight: FontWeight.w900)),
             ],
           ),
           const SizedBox(height: 16),
@@ -454,9 +454,9 @@ class _PaymentScreenState extends State<PaymentScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(_boardingStop?['stop_name'] ?? '', style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w500)),
+                    Text(_boardingStop?['stop_name'] ?? '', style: const TextStyle(color: const Color(0xFF0A1628), fontSize: 13, fontWeight: FontWeight.w500)),
                     const SizedBox(height: 18),
-                    Text(_alightingStop?['stop_name'] ?? '', style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w500)),
+                    Text(_alightingStop?['stop_name'] ?? '', style: const TextStyle(color: const Color(0xFF0A1628), fontSize: 13, fontWeight: FontWeight.w500)),
                   ],
                 ),
               ),
@@ -483,7 +483,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
   Widget _fareDetail(String label, String value) {
     return Column(
       children: [
-        Text(value, style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w600)),
+        Text(value, style: const TextStyle(color: const Color(0xFF0A1628), fontSize: 14, fontWeight: FontWeight.w600)),
         const SizedBox(height: 2),
         Text(label, style: TextStyle(color: Colors.white.withOpacity(0.5), fontSize: 10)),
       ],
@@ -505,10 +505,10 @@ class _PaymentScreenState extends State<PaymentScreen> {
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(Icons.lock_rounded, color: Colors.white, size: 18),
+            const Icon(Icons.lock_rounded, color: const Color(0xFF0A1628), size: 18),
             const SizedBox(width: 8),
             Text('Pay LKR ${_fareResult?['amount']?.toStringAsFixed(2) ?? '0'} Securely',
-              style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w700)),
+              style: const TextStyle(color: const Color(0xFF0A1628), fontSize: 16, fontWeight: FontWeight.w700)),
           ],
         ),
       ),
@@ -548,7 +548,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
               margin: const EdgeInsets.only(bottom: 12),
               padding: const EdgeInsets.all(14),
               decoration: BoxDecoration(
-                color: Colors.white,
+                color: const Color(0xFF0A1628),
                 borderRadius: BorderRadius.circular(14),
                 border: Border.all(color: isPaid ? const Color(0xFF22C55E).withOpacity(0.3) : const Color(0xFFEEEEEE)),
                 boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 8, offset: const Offset(0, 2))],
@@ -558,7 +558,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
                   width: 42, height: 42,
                   decoration: BoxDecoration(color: _parseColor(routeData?['color']), borderRadius: BorderRadius.circular(10)),
                   alignment: Alignment.center,
-                  child: Text(routeData?['route_number'] ?? '?', style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w700)),
+                  child: Text(routeData?['route_number'] ?? '?', style: const TextStyle(color: const Color(0xFF0A1628), fontSize: 14, fontWeight: FontWeight.w700)),
                 ),
                 const SizedBox(width: 12),
                 Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -606,7 +606,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
         Container(
           padding: const EdgeInsets.all(24),
           decoration: BoxDecoration(
-            color: Colors.white,
+            color: const Color(0xFF0A1628),
             borderRadius: BorderRadius.circular(20),
             boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.08), blurRadius: 24, offset: const Offset(0, 8))],
           ),
@@ -630,9 +630,9 @@ class _PaymentScreenState extends State<PaymentScreen> {
             Container(
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
-                color: Colors.white,
+                color: const Color(0xFF0A1628),
                 borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: const Color(0xFFEEEEEE), width: 2),
+                border: Border.all(color: Colors.white.withOpacity(0.1), width: 2),
               ),
               child: QrImageView(data: ticket['qr_data'] ?? '', version: QrVersions.auto, size: 180, backgroundColor: Colors.white),
             ),
@@ -686,3 +686,8 @@ class _PaymentScreenState extends State<PaymentScreen> {
     catch (_) { return AppColors.secondary; }
   }
 }
+
+
+
+
+

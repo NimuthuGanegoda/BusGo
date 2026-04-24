@@ -40,10 +40,20 @@ class AuthProvider extends ChangeNotifier {
     try {
       _currentUser = await _authService.getMe();
       _accessToken = await _tokenService.getAccessToken();
+
+      // ── Role check on session restore ──
+      // If a non-passenger somehow has saved tokens, reject them
+      if (_currentUser != null && _currentUser!.role != 'passenger') {
+        await _authService.logout();
+        _isLoggedIn = false;
+        _currentUser = null;
+        _accessToken = null;
+        notifyListeners();
+        return;
+      }
+
       _isLoggedIn = true;
     } catch (_) {
-      // Token invalid or network error — try refresh inside ApiClient interceptor;
-      // if that also fails, tokens are cleared and user stays logged out.
       _isLoggedIn = false;
     }
     notifyListeners();
@@ -57,6 +67,21 @@ class AuthProvider extends ChangeNotifier {
     try {
       _currentUser = await _authService.login(email, password);
       _accessToken = await _tokenService.getAccessToken();
+
+      // ── Role restriction: only passengers can use this app ──
+      if (_currentUser != null && _currentUser!.role != 'passenger') {
+        // Immediately logout — don't keep tokens for unauthorized roles
+        await _authService.logout();
+        _currentUser = null;
+        _accessToken = null;
+        _isLoggedIn = false;
+        _isLoading = false;
+        // Generic message — does NOT reveal what type of account it is
+        _errorMessage = 'LOGIN_RESTRICTED';
+        notifyListeners();
+        return false;
+      }
+
       _isLoggedIn = true;
       _isLoading = false;
       notifyListeners();

@@ -4,7 +4,7 @@ import { sendSuccess, sendError } from '../../utils/response.utils.js';
 
 export async function register(req, res, next) {
   try {
-    const result = await authService.registerUser(req.body);
+    const result = await authService.registerUser(req.body, req);
     return sendSuccess(res, result, 'Registration successful', 201);
   } catch (err) {
     if (err.statusCode) return sendError(res, err.message, err.statusCode, err.code);
@@ -14,7 +14,7 @@ export async function register(req, res, next) {
 
 export async function login(req, res, next) {
   try {
-    const result = await authService.loginUser(req.body);
+    const result = await authService.loginUser(req.body, req);
     return sendSuccess(res, result, 'Login successful');
   } catch (err) {
     if (err.statusCode) return sendError(res, err.message, err.statusCode, err.code);
@@ -25,7 +25,7 @@ export async function login(req, res, next) {
 export async function logout(req, res, next) {
   try {
     const { refresh_token } = req.body;
-    if (refresh_token) await authService.logoutUser(refresh_token);
+    if (refresh_token) await authService.logoutUser(refresh_token, req, req.user?.id);
     return sendSuccess(res, {}, 'Logged out successfully');
   } catch (err) {
     next(err);
@@ -44,7 +44,7 @@ export async function refresh(req, res, next) {
 
 export async function forgotPasswordRequest(req, res, next) {
   try {
-    await authService.requestPasswordReset(req.body.email);
+    await authService.requestPasswordReset(req.body.email, req);
     return sendSuccess(res, {}, 'If that email exists, a reset PIN has been sent');
   } catch (err) {
     next(err);
@@ -63,7 +63,7 @@ export async function forgotPasswordVerify(req, res, next) {
 
 export async function forgotPasswordReset(req, res, next) {
   try {
-    await authService.resetPassword(req.body);
+    await authService.resetPassword(req.body, req);
     return sendSuccess(res, {}, 'Password reset successful. Please log in with your new password.');
   } catch (err) {
     if (err.statusCode) return sendError(res, err.message, err.statusCode, err.code);
@@ -71,7 +71,7 @@ export async function forgotPasswordReset(req, res, next) {
   }
 }
 
-// ── Public license upload (called right after registration, no token needed) ──
+// ── Public license upload ──
 export async function uploadLicense(req, res, next) {
   try {
     if (!req.file) {
@@ -81,7 +81,6 @@ export async function uploadLicense(req, res, next) {
       return sendError(res, 'Email is required', 400, 'NO_EMAIL');
     }
 
-    // Find the user by email
     const { data: user, error: userError } = await supabase
       .from('users')
       .select('id')
@@ -92,8 +91,6 @@ export async function uploadLicense(req, res, next) {
       return sendError(res, 'User not found', 404, 'USER_NOT_FOUND');
     }
 
-    // Upload to Supabase Storage
-    
     const ext      = req.file.originalname?.toLowerCase().endsWith('.png') ? 'png'
                     : req.file.originalname?.toLowerCase().endsWith('.webp') ? 'webp'
                     : 'jpg';
@@ -111,7 +108,6 @@ export async function uploadLicense(req, res, next) {
 
     if (uploadError) throw uploadError;
 
-    // Save path to users table
     await supabase
       .from('users')
       .update({ license_url: filePath })

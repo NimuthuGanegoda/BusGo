@@ -60,8 +60,18 @@ class ErrorHandler {
           serverMessage.isNotEmpty ? serverMessage : 'Authentication required.',
         );
       case 403:
+        final code = body is Map<String, dynamic> ? (body['code'] ?? '') : '';
+        if (code == 'PENDING_APPROVAL') {
+          return PendingApprovalException(
+            serverMessage.isNotEmpty ? serverMessage : 'Your account is awaiting admin approval.',
+          );
+        }
         return UnauthorizedException(
           serverMessage.isNotEmpty ? serverMessage : 'Access denied.',
+        );
+      case 423:
+        return AccountLockedException(
+          serverMessage.isNotEmpty ? serverMessage : 'Account temporarily locked. Try again in 15 minutes.',
         );
       case 404:
         return NotFoundException(
@@ -105,6 +115,8 @@ class ErrorHandler {
   /// User-facing message for any [AppException].
   static String userMessage(AppException e) {
     if (e is NetworkException)     return 'Please check your internet connection.';
+    if (e is AccountLockedException) return 'ACCOUNT_LOCKED';
+    if (e is PendingApprovalException) return 'PENDING_APPROVAL';
     if (e is SessionExpiredException) return 'Your session expired. Please log in again.';
     if (e is UnauthorizedException) return 'Authentication failed. Please log in again.';
     if (e is NotFoundException)    return 'The requested item was not found.';

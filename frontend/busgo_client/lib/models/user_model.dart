@@ -4,6 +4,7 @@ class UserModel {
   final String email;
   final String username;
   final String phone;
+  final String role;
   final String? dateOfBirth;
   final String? avatarUrl;
   final String membershipType;
@@ -24,6 +25,7 @@ class UserModel {
     required this.email,
     this.username = '',
     this.phone = '',
+    this.role = 'passenger',
     this.dateOfBirth,
     this.avatarUrl,
     this.membershipType = 'Standard Member',
@@ -60,6 +62,7 @@ class UserModel {
         'email':          email,
         'username':       username,
         'phone':          phone,
+        'role':           role,
         'date_of_birth':  dateOfBirth,
         'avatar_url':     avatarUrl,
         'membership_type': membershipType,
@@ -83,6 +86,7 @@ class UserModel {
       email:          json['email'] as String? ?? '',
       username:       (json['username']) as String? ?? '',
       phone:          (json['phone']) as String? ?? '',
+      role:           (json['role']) as String? ?? 'passenger',
       dateOfBirth:    (json['date_of_birth'] ?? json['dateOfBirth']) as String?,
       avatarUrl:      (json['avatar_url'] ?? json['avatarUrl']) as String?,
       membershipType: (json['membership_type'] ?? json['membershipType']) as String? ?? 'standard',
@@ -103,6 +107,7 @@ class UserModel {
     String? email,
     String? username,
     String? phone,
+    String? role,
     String? dateOfBirth,
     String? avatarUrl,
     String? membershipType,
@@ -121,6 +126,7 @@ class UserModel {
         email:          email          ?? this.email,
         username:       username       ?? this.username,
         phone:          phone          ?? this.phone,
+        role:           role           ?? this.role,
         dateOfBirth:    dateOfBirth    ?? this.dateOfBirth,
         avatarUrl:      avatarUrl      ?? this.avatarUrl,
         membershipType: membershipType ?? this.membershipType,
