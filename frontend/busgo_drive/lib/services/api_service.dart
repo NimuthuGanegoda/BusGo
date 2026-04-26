@@ -3,7 +3,7 @@ import 'package:flutter/foundation.dart';
 
 class ApiService {
   static const String _baseUrl = kDebugMode
-      ? 'http://10.0.2.2:5000/api'
+      ? 'http://192.168.1.2:5000/api'
       : 'https://your-api-domain.com/api';
 
   late final Dio _dio;

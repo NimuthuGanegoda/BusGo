@@ -1,6 +1,10 @@
+import 'dart:async';
+import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:http/http.dart' as http;
+import '../../core/constants/api_constants.dart';
+import '../../services/token_service.dart';
 
 class NotificationsScreen extends StatefulWidget {
   const NotificationsScreen({super.key});
@@ -12,19 +16,14 @@ class NotificationsScreen extends StatefulWidget {
 class _NotificationsScreenState extends State<NotificationsScreen>
     with SingleTickerProviderStateMixin {
   late AnimationController _animController;
-  int _selectedTab = 0;
 
-  final _tabs = const [
-    {'label': 'All', 'icon': null},
-    {'label': 'Bus Alerts', 'icon': Icons.directions_bus_rounded},
-    {'label': 'Trips', 'icon': Icons.receipt_long_rounded},
-    {'label': 'Emergency', 'icon': Icons.emergency_rounded},
-    {'label': 'Payments', 'icon': Icons.payment_rounded},
-  ];
-
-  late List<Map<String, dynamic>> _notifications;
+  List<Map<String, dynamic>> _notifications = [];
   Map<String, dynamic>? _lastDismissed;
   int? _lastDismissedIndex;
+  bool _loadingData = true;
+  String? _token;
+
+  Timer? _pollTimer;
 
   @override
   void initState() {
@@ -33,143 +32,230 @@ class _NotificationsScreenState extends State<NotificationsScreen>
       vsync: this,
       duration: const Duration(milliseconds: 1400),
     )..forward();
-    _notifications = _buildInitialData();
+
+    // Load token first, then fetch
+    TokenService().getAccessToken().then((t) {
+      _token = t;
+      _fetchFromBackend();
+    });
+
+    // Poll every 10 s for new alerts
+    _pollTimer = Timer.periodic(const Duration(seconds: 10), (_) {
+      _fetchFromBackend(silent: true);
+    });
   }
 
   @override
   void dispose() {
+    _pollTimer?.cancel();
     _animController.dispose();
     super.dispose();
   }
 
-  List<Map<String, dynamic>> _buildInitialData() {
-    return [
-      {'id': 1, 'type': 'bus_alert', 'title': 'Bus 138 arriving soon', 'body': 'Route 138 Nugegoda → Colombo is 2 stops away from your location. Get ready to board.', 'time': '2 min ago', 'isRead': false, 'group': 'TODAY'},
-      {'id': 2, 'type': 'trip', 'title': 'Trip completed successfully', 'body': 'Your trip on Route 163 Rajagiriya → Maharagama has been completed. Total fare: Rs 80.', 'time': '1 hour ago', 'isRead': false, 'group': 'TODAY'},
-      {'id': 3, 'type': 'payment', 'title': 'Payment confirmed', 'body': 'Rs 80 payment for Route 163 has been processed successfully.', 'time': '1 hour ago', 'isRead': false, 'group': 'TODAY'},
-      {'id': 4, 'type': 'bus_alert', 'title': 'Bus 163 is full', 'body': 'Route 163 Rajagiriya → Maharagama is at full capacity. Next bus in 18 min.', 'time': '3 hours ago', 'isRead': true, 'group': 'TODAY'},
-      {'id': 5, 'type': 'system', 'title': 'QR Card refreshed', 'body': 'Your BusGo QR boarding card has been refreshed and is ready to use.', 'time': '5 hours ago', 'isRead': true, 'group': 'TODAY'},
-      {'id': 6, 'type': 'emergency', 'title': 'Emergency alert resolved', 'body': 'The medical emergency reported on Bus 138 has been resolved by the driver.', 'time': 'Yesterday 14:32', 'isRead': true, 'group': 'YESTERDAY'},
-      {'id': 7, 'type': 'trip', 'title': 'Rate your trip', 'body': 'How was your experience with Driver Kamal Perera on Route 138? Tap to rate.', 'time': 'Yesterday 09:15', 'isRead': false, 'group': 'YESTERDAY'},
-      {'id': 8, 'type': 'payment', 'title': 'Monthly summary ready', 'body': 'You completed 24 trips and spent Rs 1,320 this month. View your full report.', 'time': 'Yesterday 08:00', 'isRead': true, 'group': 'YESTERDAY'},
-      {'id': 9, 'type': 'bus_alert', 'title': 'Service disruption', 'body': 'Route 171 is experiencing delays due to road works near Boralla.', 'time': 'Mon 17 Mar · 16:45', 'isRead': true, 'group': 'MONDAY 17 MAR'},
-      {'id': 10, 'type': 'system', 'title': 'Welcome to BusGo', 'body': 'Your account has been verified successfully. Start tracking buses in real time.', 'time': 'Mon 17 Mar · 09:00', 'isRead': true, 'group': 'MONDAY 17 MAR'},
-    ];
-  }
+  // ══════════════════════════════════════════════════════════════════════════
+  // FETCH — GET /api/notifications?category=bus_alert
+  // ══════════════════════════════════════════════════════════════════════════
+  Future<void> _fetchFromBackend({bool silent = false}) async {
+    if (!silent) setState(() => _loadingData = true);
 
-  int get _unreadCount => _notifications.where((n) => n['isRead'] == false).length;
+    final token = _token ?? await TokenService().getAccessToken();
+    if (token == null) {
+      if (mounted) setState(() => _loadingData = false);
+      return;
+    }
+    _token = token;
 
-  List<Map<String, dynamic>> get _filtered {
-    final typeMap = {1: 'bus_alert', 2: 'trip', 3: 'emergency', 4: 'payment'};
-    if (_selectedTab == 0) return _notifications;
-    final type = typeMap[_selectedTab];
-    return _notifications.where((n) => n['type'] == type).toList();
-  }
+    try {
+      final uri = Uri.parse('$kBaseUrlDev/notifications').replace(
+        queryParameters: {
+          'category':  'bus_alert',
+          'page':      '1',
+          'page_size': '100',
+        },
+      );
 
-  void _markAllRead() {
-    setState(() {
-      for (final n in _notifications) {
-        n['isRead'] = true;
+      final response = await http.get(
+        uri,
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type':  'application/json',
+        },
+      ).timeout(const Duration(seconds: 10));
+
+      if (response.statusCode == 200) {
+        final body = jsonDecode(response.body);
+        final list = (body['data']?['notifications'] as List?) ?? [];
+        final now  = DateTime.now();
+
+        final fetched = list.map((item) {
+          final m         = item as Map<String, dynamic>;
+          final createdAt =
+              DateTime.tryParse(m['created_at'] as String? ?? '')?.toLocal() ??
+                  now;
+          return {
+            'id':         m['id']      as String? ?? '',
+            'title':      m['title']   as String? ?? '',
+            'body':       m['body']    as String? ?? '',
+            'isRead':     m['is_read'] as bool?   ?? false,
+            'meta':       m['meta']    as Map<String, dynamic>? ?? {},
+            'time':       _formatTime(createdAt),
+            'group':      _groupLabel(createdAt, now),
+            '_createdAt': createdAt,
+          };
+        }).toList();
+
+        if (mounted) {
+          setState(() {
+            _notifications = fetched;
+            _loadingData   = false;
+          });
+          if (!silent) _animController..reset()..forward();
+        }
+      } else {
+        debugPrint('[NotificationsScreen] ${response.statusCode}: ${response.body}');
+        if (mounted) setState(() => _loadingData = false);
       }
-    });
+    } catch (e) {
+      debugPrint('[NotificationsScreen] fetch error: $e');
+      if (mounted) setState(() => _loadingData = false);
+    }
   }
 
-  Future<void> _onRefresh() async {
-    await Future.delayed(const Duration(milliseconds: 1500));
+  // ══════════════════════════════════════════════════════════════════════════
+  // MARK ALL READ
+  // ══════════════════════════════════════════════════════════════════════════
+  Future<void> _markAllRead() async {
     setState(() {
-      _notifications = _buildInitialData();
+      for (final n in _notifications) n['isRead'] = true;
     });
+    final token = _token;
+    if (token == null) return;
+    try {
+      await http.patch(
+        Uri.parse('$kBaseUrlDev/notifications/read-all'),
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type':  'application/json',
+        },
+      ).timeout(const Duration(seconds: 10));
+    } catch (e) {
+      debugPrint('[NotificationsScreen] markAllRead: $e');
+    }
   }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // MARK ONE READ
+  // ══════════════════════════════════════════════════════════════════════════
+  Future<void> _markOneRead(Map<String, dynamic> n) async {
+    if (n['isRead'] == true) return;
+    setState(() => n['isRead'] = true);
+    final token = _token;
+    if (token == null) return;
+    try {
+      await http.patch(
+        Uri.parse('$kBaseUrlDev/notifications/${n['id']}/read'),
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type':  'application/json',
+        },
+      ).timeout(const Duration(seconds: 10));
+    } catch (e) {
+      debugPrint('[NotificationsScreen] markOneRead: $e');
+    }
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // DELETE
+  // ══════════════════════════════════════════════════════════════════════════
+  Future<void> _deleteFromBackend(String id) async {
+    final token = _token;
+    if (token == null) return;
+    try {
+      await http.delete(
+        Uri.parse('$kBaseUrlDev/notifications/$id'),
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type':  'application/json',
+        },
+      ).timeout(const Duration(seconds: 10));
+    } catch (e) {
+      debugPrint('[NotificationsScreen] delete: $e');
+    }
+  }
+
+  Future<void> _onRefresh() async => _fetchFromBackend();
+
+  // ── Helpers ───────────────────────────────────────────────────────────────
+  String _formatTime(DateTime dt) {
+    final h    = dt.hour % 12 == 0 ? 12 : dt.hour % 12;
+    final m    = dt.minute.toString().padLeft(2, '0');
+    final ampm = dt.hour < 12 ? 'AM' : 'PM';
+    return '$h:$m $ampm';
+  }
+
+  String _groupLabel(DateTime dt, DateTime now) {
+    final today     = DateTime(now.year, now.month, now.day);
+    final yesterday = today.subtract(const Duration(days: 1));
+    final date      = DateTime(dt.year, dt.month, dt.day);
+    if (date == today)     return 'TODAY';
+    if (date == yesterday) return 'YESTERDAY';
+    return '${dt.day}/${dt.month}/${dt.year}';
+  }
+
+  int get _unreadCount =>
+      _notifications.where((n) => n['isRead'] == false).length;
 
   TextStyle _inter({
     double size = 14,
     FontWeight weight = FontWeight.w400,
     Color color = Colors.white,
     double? letterSpacing,
-  }) {
-    return GoogleFonts.inter(
-      fontSize: size, fontWeight: weight, color: color, letterSpacing: letterSpacing,
-    );
-  }
+  }) =>
+      GoogleFonts.inter(
+          fontSize: size,
+          fontWeight: weight,
+          color: color,
+          letterSpacing: letterSpacing);
 
   Animation<double> _fade(int i) {
     final s = (i * 0.04).clamp(0.0, 0.65);
     final e = (s + 0.22).clamp(0.0, 1.0);
-    return CurvedAnimation(parent: _animController, curve: Interval(s, e, curve: Curves.easeOut));
+    return CurvedAnimation(
+        parent: _animController,
+        curve: Interval(s, e, curve: Curves.easeOut));
   }
 
   Animation<Offset> _slide(int i) {
     final s = (i * 0.04).clamp(0.0, 0.65);
     final e = (s + 0.22).clamp(0.0, 1.0);
-    return Tween<Offset>(begin: const Offset(0, 12), end: Offset.zero)
-        .animate(CurvedAnimation(parent: _animController, curve: Interval(s, e, curve: Curves.easeOut)));
+    return Tween<Offset>(begin: const Offset(0, 12), end: Offset.zero).animate(
+        CurvedAnimation(
+            parent: _animController,
+            curve: Interval(s, e, curve: Curves.easeOut)));
   }
 
-  Widget _anim(int i, Widget child) {
-    return AnimatedBuilder(
-      animation: _animController,
-      builder: (_, __) => Opacity(
-        opacity: _fade(i).value,
-        child: Transform.translate(offset: _slide(i).value, child: child),
-      ),
-    );
-  }
+  Widget _anim(int i, Widget child) => AnimatedBuilder(
+        animation: _animController,
+        builder: (_, __) => Opacity(
+          opacity: _fade(i).value,
+          child: Transform.translate(offset: _slide(i).value, child: child),
+        ),
+      );
 
-  Color _iconBg(String type) {
-    switch (type) {
-      case 'bus_alert': return const Color(0xFF1A6FA8).withValues(alpha: 0.2);
-      case 'trip': return const Color(0xFF2E7D32).withValues(alpha: 0.2);
-      case 'emergency': return const Color(0xFFE53935).withValues(alpha: 0.2);
-      case 'payment': return const Color(0xFFF0C040).withValues(alpha: 0.2);
-      default: return const Color(0xFF5BB8F5).withValues(alpha: 0.2);
-    }
-  }
-
-  Color _iconColor(String type) {
-    switch (type) {
-      case 'bus_alert': return const Color(0xFF1A6FA8);
-      case 'trip': return const Color(0xFF2E7D32);
-      case 'emergency': return const Color(0xFFE53935);
-      case 'payment': return const Color(0xFFF0C040);
-      default: return const Color(0xFF5BB8F5);
-    }
-  }
-
-  IconData _iconData(String type) {
-    switch (type) {
-      case 'bus_alert': return Icons.directions_bus_rounded;
-      case 'trip': return Icons.receipt_long_rounded;
-      case 'emergency': return Icons.emergency_rounded;
-      case 'payment': return Icons.payment_rounded;
-      default: return Icons.info_rounded;
-    }
-  }
-
-  void _onTapNotification(Map<String, dynamic> n) {
-    setState(() => n['isRead'] = true);
-    final type = n['type'] as String;
-    if (type == 'bus_alert') {
-      context.go('/map');
-    } else if (type == 'trip' || type == 'payment') {
-      context.go('/history');
-    } else if (type == 'emergency') {
-      context.push('/emergency');
-    }
-  }
-
+  // ══════════════════════════════════════════════════════════════════════════
+  // BUILD
+  // ══════════════════════════════════════════════════════════════════════════
   @override
   Widget build(BuildContext context) {
-    final filtered = _filtered;
-
-    // Build grouped list items
     final List<dynamic> items = [];
     String? lastGroup;
-    for (final n in filtered) {
-      if (n['group'] != lastGroup) {
-        lastGroup = n['group'] as String;
-        items.add(lastGroup); // string = group header
+    for (final n in _notifications) {
+      final group = n['group'] as String? ?? '';
+      if (group != lastGroup) {
+        lastGroup = group;
+        items.add(lastGroup);
       }
-      items.add(n); // map = notification
+      items.add(n);
     }
 
     return Scaffold(
@@ -178,26 +264,43 @@ class _NotificationsScreenState extends State<NotificationsScreen>
         child: Column(
           children: [
             _anim(0, _buildHeader()),
-            _anim(1, _buildFilterTabs()),
             Expanded(
-              child: filtered.isEmpty
-                  ? _buildEmptyState()
+              child: _loadingData
+                  ? const Center(
+                      child: CircularProgressIndicator(
+                          color: Color(0xFF1A6FA8)))
                   : RefreshIndicator(
-                      color: const Color(0xFF1A6FA8),
+                      color:           const Color(0xFF1A6FA8),
                       backgroundColor: const Color(0xFF1A3A5C),
-                      onRefresh: _onRefresh,
-                      child: ListView.builder(
-                        padding: const EdgeInsets.symmetric(horizontal: 16),
-                        itemCount: items.length,
-                        itemBuilder: (context, index) {
-                          final item = items[index];
-                          if (item is String) {
-                            return _anim(2 + index, _buildGroupHeader(item));
-                          }
-                          final n = item as Map<String, dynamic>;
-                          return _anim(2 + index, _buildNotificationCard(n));
-                        },
-                      ),
+                      onRefresh:       _onRefresh,
+                      child: _notifications.isEmpty
+                          ? CustomScrollView(
+                              physics:
+                                  const AlwaysScrollableScrollPhysics(),
+                              slivers: [
+                                SliverFillRemaining(
+                                    child: _buildEmptyState()),
+                              ],
+                            )
+                          : ListView.builder(
+                              physics:
+                                  const AlwaysScrollableScrollPhysics(),
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 16),
+                              itemCount: items.length,
+                              itemBuilder: (context, index) {
+                                final item = items[index];
+                                if (item is String) {
+                                  return _anim(
+                                      1 + index,
+                                      _buildGroupHeader(item));
+                                }
+                                return _anim(
+                                    1 + index,
+                                    _buildNotificationCard(
+                                        item as Map<String, dynamic>));
+                              },
+                            ),
                     ),
             ),
           ],
@@ -217,93 +320,44 @@ class _NotificationsScreenState extends State<NotificationsScreen>
           GestureDetector(
             onTap: () => Navigator.pop(context),
             child: Container(
-              width: 36,
-              height: 36,
+              width: 36, height: 36,
               decoration: BoxDecoration(
                 color: const Color(0xFF1A3A5C),
                 borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: const Color(0xFF1A6FA8).withValues(alpha: 0.3)),
+                border: Border.all(
+                    color: const Color(0xFF1A6FA8).withValues(alpha: 0.3)),
               ),
               alignment: Alignment.center,
-              child: const Icon(Icons.arrow_back_ios_new_rounded, size: 18, color: Colors.white),
+              child: const Icon(Icons.arrow_back_ios_new_rounded,
+                  size: 18, color: Colors.white),
             ),
           ),
           const SizedBox(width: 12),
-          Text('Notifications', style: _inter(size: 18, weight: FontWeight.w700)),
+          Text('Bus Alerts',
+              style: _inter(size: 18, weight: FontWeight.w700)),
           if (_unreadCount > 0) ...[
             const SizedBox(width: 8),
             Container(
-              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
               decoration: BoxDecoration(
-                color: const Color(0xFFE53935),
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: Text('$_unreadCount', style: _inter(size: 10, weight: FontWeight.w700)),
+                  color: const Color(0xFFE53935),
+                  borderRadius: BorderRadius.circular(10)),
+              child: Text('$_unreadCount',
+                  style: _inter(size: 10, weight: FontWeight.w700)),
             ),
           ],
           const Spacer(),
-          GestureDetector(
-            onTap: _markAllRead,
-            child: Text('Mark all read', style: _inter(size: 11, weight: FontWeight.w600, color: const Color(0xFF5BB8F5))),
-          ),
+          if (_notifications.isNotEmpty)
+            GestureDetector(
+              onTap: _markAllRead,
+              child: Text('Mark all read',
+                  style: _inter(
+                      size: 11,
+                      weight: FontWeight.w600,
+                      color: const Color(0xFF5BB8F5))),
+            ),
         ],
-      ),
-    );
-  }
-
-  // ═════════════════════════════════════════════════
-  // FILTER TABS
-  // ═════════════════════════════════════════════════
-  Widget _buildFilterTabs() {
-    return SizedBox(
-      height: 40,
-      child: Padding(
-        padding: const EdgeInsets.only(bottom: 12),
-        child: ListView.builder(
-          scrollDirection: Axis.horizontal,
-          padding: const EdgeInsets.symmetric(horizontal: 16),
-          itemCount: _tabs.length,
-          itemBuilder: (context, i) {
-            final tab = _tabs[i];
-            final isActive = _selectedTab == i;
-            final isEmergency = i == 3 && isActive;
-
-            return Padding(
-              padding: const EdgeInsets.only(right: 8),
-              child: GestureDetector(
-                onTap: () => setState(() => _selectedTab = i),
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                  decoration: BoxDecoration(
-                    color: isEmergency
-                        ? const Color(0xFFE53935)
-                        : isActive
-                            ? const Color(0xFF1A6FA8)
-                            : const Color(0xFF1A3A5C),
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      if (tab['icon'] != null) ...[
-                        Icon(tab['icon'] as IconData, size: 12, color: isActive ? Colors.white : const Color(0xFF5BB8F5)),
-                        const SizedBox(width: 4),
-                      ],
-                      Text(
-                        tab['label'] as String,
-                        style: _inter(
-                          size: 12,
-                          weight: FontWeight.w600,
-                          color: isActive ? Colors.white : const Color(0xFF5BB8F5),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            );
-          },
-        ),
       ),
     );
   }
@@ -314,15 +368,12 @@ class _NotificationsScreenState extends State<NotificationsScreen>
   Widget _buildGroupHeader(String group) {
     return Padding(
       padding: const EdgeInsets.only(top: 8, bottom: 4),
-      child: Text(
-        group,
-        style: _inter(
-          size: 11,
-          weight: FontWeight.w700,
-          color: const Color(0xFF5BB8F5).withValues(alpha: 0.6),
-          letterSpacing: 0.6,
-        ),
-      ),
+      child: Text(group,
+          style: _inter(
+              size: 11,
+              weight: FontWeight.w700,
+              color: const Color(0xFF5BB8F5).withValues(alpha: 0.6),
+              letterSpacing: 0.6)),
     );
   }
 
@@ -331,7 +382,6 @@ class _NotificationsScreenState extends State<NotificationsScreen>
   // ═════════════════════════════════════════════════
   Widget _buildNotificationCard(Map<String, dynamic> n) {
     final isRead = n['isRead'] as bool;
-    final type = n['type'] as String;
 
     return Dismissible(
       key: Key(n['id'].toString()),
@@ -344,27 +394,48 @@ class _NotificationsScreenState extends State<NotificationsScreen>
           color: const Color(0xFFE53935).withValues(alpha: 0.8),
           borderRadius: BorderRadius.circular(16),
         ),
-        child: const Icon(Icons.delete_rounded, color: Colors.white, size: 24),
+        child: const Icon(Icons.delete_rounded,
+            color: Colors.white, size: 24),
       ),
       onDismissed: (_) {
+        final id    = n['id'] as String;
         final index = _notifications.indexOf(n);
         setState(() {
-          _lastDismissed = n;
+          _lastDismissed      = n;
           _lastDismissedIndex = index;
           _notifications.remove(n);
         });
+        _deleteFromBackend(id);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Notification removed', style: _inter(size: 13)),
+            content: Text('Alert dismissed', style: _inter(size: 13)),
             backgroundColor: const Color(0xFF1A3A5C),
             action: SnackBarAction(
               label: 'Undo',
               textColor: const Color(0xFFF0C040),
               onPressed: () {
                 if (_lastDismissed != null && _lastDismissedIndex != null) {
-                  setState(() {
-                    _notifications.insert(_lastDismissedIndex!, _lastDismissed!);
-                  });
+                  setState(() => _notifications.insert(
+                      _lastDismissedIndex!, _lastDismissed!));
+                  final token = _token;
+                  if (token != null) {
+                    http
+                        .post(
+                          Uri.parse('$kBaseUrlDev/notifications'),
+                          headers: {
+                            'Authorization': 'Bearer $token',
+                            'Content-Type':  'application/json',
+                          },
+                          body: jsonEncode({
+                            'category': 'bus_alert',
+                            'title':    _lastDismissed!['title'],
+                            'body':     _lastDismissed!['body'],
+                            'meta':     _lastDismissed!['meta'] ?? {},
+                          }),
+                        )
+                        .catchError((e) =>
+                            debugPrint('[NotificationsScreen] undo: $e'));
+                  }
                 }
               },
             ),
@@ -372,7 +443,7 @@ class _NotificationsScreenState extends State<NotificationsScreen>
         );
       },
       child: GestureDetector(
-        onTap: () => _onTapNotification(n),
+        onTap: () => _markOneRead(n),
         child: Container(
           margin: const EdgeInsets.only(bottom: 10),
           decoration: BoxDecoration(
@@ -398,14 +469,13 @@ class _NotificationsScreenState extends State<NotificationsScreen>
           child: IntrinsicHeight(
             child: Row(
               children: [
-                // Left accent bar for unread
                 if (!isRead)
                   Container(
                     width: 3,
                     decoration: BoxDecoration(
                       color: const Color(0xFF1A6FA8),
                       borderRadius: const BorderRadius.only(
-                        topLeft: Radius.circular(16),
+                        topLeft:    Radius.circular(16),
                         bottomLeft: Radius.circular(16),
                       ),
                     ),
@@ -415,79 +485,58 @@ class _NotificationsScreenState extends State<NotificationsScreen>
                     padding: const EdgeInsets.all(14),
                     child: Row(
                       children: [
-                        // Icon
                         Container(
-                          width: 46,
-                          height: 46,
+                          width: 46, height: 46,
                           decoration: BoxDecoration(
-                            color: _iconBg(type),
+                            color: const Color(0xFF1A6FA8)
+                                .withValues(alpha: 0.2),
                             borderRadius: BorderRadius.circular(14),
                           ),
                           alignment: Alignment.center,
-                          child: Icon(_iconData(type), size: 22, color: _iconColor(type)),
+                          child: const Icon(
+                              Icons.directions_bus_rounded,
+                              size: 22,
+                              color: Color(0xFF1A6FA8)),
                         ),
                         const SizedBox(width: 12),
-                        // Content
                         Expanded(
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Text(
-                                n['title'] as String,
-                                style: _inter(
-                                  size: 13,
-                                  weight: FontWeight.w700,
-                                  color: isRead ? const Color(0xFF8AAFD4) : Colors.white,
-                                ),
-                              ),
+                              Text(n['title'] as String,
+                                  style: _inter(
+                                      size: 13,
+                                      weight: FontWeight.w700,
+                                      color: isRead
+                                          ? const Color(0xFF8AAFD4)
+                                          : Colors.white)),
                               const SizedBox(height: 3),
-                              Text(
-                                n['body'] as String,
-                                maxLines: 2,
-                                overflow: TextOverflow.ellipsis,
-                                style: _inter(
-                                  size: 12,
-                                  color: isRead
-                                      ? const Color(0xFF5BB8F5).withValues(alpha: 0.6)
-                                      : const Color(0xFF8AAFD4),
-                                ),
-                              ),
+                              Text(n['body'] as String,
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: _inter(
+                                      size: 12,
+                                      color: isRead
+                                          ? const Color(0xFF5BB8F5)
+                                              .withValues(alpha: 0.6)
+                                          : const Color(0xFF8AAFD4))),
                               const SizedBox(height: 6),
-                              Text(
-                                n['time'] as String,
-                                style: _inter(
-                                  size: 10,
-                                  color: const Color(0xFF5BB8F5).withValues(alpha: 0.5),
-                                ),
-                              ),
+                              Text(n['time'] as String,
+                                  style: _inter(
+                                      size: 10,
+                                      color: const Color(0xFF5BB8F5)
+                                          .withValues(alpha: 0.5))),
                             ],
                           ),
                         ),
                         const SizedBox(width: 8),
-                        // Right side
-                        Column(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          crossAxisAlignment: CrossAxisAlignment.end,
-                          children: [
-                            if (!isRead)
-                              Container(
-                                width: 8,
-                                height: 8,
-                                decoration: BoxDecoration(
-                                  color: const Color(0xFFF0C040),
-                                  borderRadius: BorderRadius.circular(4),
-                                ),
-                              )
-                            else
-                              const SizedBox(height: 8),
-                            const SizedBox(height: 16),
-                            Icon(
-                              Icons.chevron_right_rounded,
-                              size: 16,
-                              color: const Color(0xFF5BB8F5).withValues(alpha: 0.4),
-                            ),
-                          ],
-                        ),
+                        if (!isRead)
+                          Container(
+                            width: 8, height: 8,
+                            decoration: BoxDecoration(
+                                color: const Color(0xFFF0C040),
+                                borderRadius: BorderRadius.circular(4)),
+                          ),
                       ],
                     ),
                   ),
@@ -508,14 +557,24 @@ class _NotificationsScreenState extends State<NotificationsScreen>
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const Icon(Icons.notifications_off_rounded, size: 64, color: Color(0xFF1A3A5C)),
+          const Icon(Icons.directions_bus_rounded,
+              size: 64, color: Color(0xFF1A3A5C)),
           const SizedBox(height: 16),
-          Text('No notifications', style: _inter(size: 16, weight: FontWeight.w600, color: const Color(0xFF5BB8F5))),
+          Text('No bus alerts yet',
+              style: _inter(
+                  size: 16,
+                  weight: FontWeight.w600,
+                  color: const Color(0xFF5BB8F5))),
           const SizedBox(height: 6),
-          Text(
-            'You are all caught up!',
-            style: _inter(size: 13, color: const Color(0xFF5BB8F5).withValues(alpha: 0.6)),
-          ),
+          Text("You'll be notified when your bus is near.",
+              style: _inter(
+                  size: 13,
+                  color: const Color(0xFF5BB8F5).withValues(alpha: 0.6))),
+          const SizedBox(height: 12),
+          Text('Pull down to refresh',
+              style: _inter(
+                  size: 11,
+                  color: const Color(0xFF5BB8F5).withValues(alpha: 0.4))),
         ],
       ),
     );

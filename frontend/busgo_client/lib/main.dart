@@ -16,6 +16,7 @@ import 'services/auth_service.dart';
 import 'services/bus_service.dart';
 import 'services/emergency_service.dart';
 import 'services/local_storage_service.dart';
+import 'services/notification_service.dart';
 import 'services/rating_service.dart';
 import 'services/token_service.dart';
 import 'services/trip_service.dart';
@@ -35,19 +36,22 @@ Future<void> _requestLocationPermission() async {
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await dotenv.load(fileName: ".env");
+  await dotenv.load(fileName: '.env');
 
-  // Request GPS permission at startup — before any screen loads
+  // Request GPS permission at startup
   await _requestLocationPermission();
 
-  // Local preferences (notification toggles only)
+  // Local preferences
   await LocalStorageService.init();
 
-  // Supabase — used only for Realtime bus-location broadcasts
+  // Supabase — used for Realtime bus-location broadcasts
   await Supabase.initialize(
     url:     AppConfig.supabaseUrl,
     anonKey: AppConfig.supabaseAnonKey,
   );
+
+  // ── Initialise local notifications ────────────────────────────────────────
+  await NotificationService.instance.init();
 
   SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
   SystemChrome.setSystemUIOverlayStyle(

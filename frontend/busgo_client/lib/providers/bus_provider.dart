@@ -7,45 +7,84 @@ import '../models/bus_model.dart';
 import '../models/route_model.dart';
 import '../models/stop_model.dart';
 import '../services/bus_service.dart';
+import '../services/notification_service.dart';
 
 class BusProvider extends ChangeNotifier {
   final BusService _busService;
 
-  List<BusModel> _nearbyBuses = [];
-  List<StopModel> _nearbyStops = [];
-  List<BusRoute> _allRoutes = [];
-  List<BusRoute> _searchResults = [];
-  BusModel? _selectedBus;
-  bool _isLoading = false;
-  String _searchQuery = '';
-  String? _errorMessage;
+  List<BusModel>  _nearbyBuses   = [];
+  List<StopModel> _nearbyStops   = [];
+  List<BusRoute>  _allRoutes     = [];
+  List<BusRoute>  _searchResults = [];
+  BusModel?       _selectedBus;
+  bool            _isLoading     = false;
+  String          _searchQuery   = '';
+  String?         _errorMessage;
 
   // ── Stop-based search state ─────────────────────────────────────────────
-  List<StopModel> _allStops = [];
-  List<StopModel> _stopMatches = [];
-  Map<String, List<BusRoute>> _routesViaStop = {};
-  bool _loadingStopRoutes = false;
+  List<StopModel>             _allStops        = [];
+  List<StopModel>             _stopMatches     = [];
+  Map<String, List<BusRoute>> _routesViaStop   = {};
+  bool                        _loadingStopRoutes = false;
+
+  // ── Stop arrival notification state ──────────────────────────────────────
+  // Set these when the passenger selects a route to watch.
+  StopModel?  _watchStartStop;
+  StopModel?  _watchEndStop;
+  String?     _watchRouteNumber; // e.g. "138" — shown in notification
+  bool        _startNotified = false; // prevent repeated notifications
+  bool        _endNotified   = false;
+
+  static const double _notifyThresholdMetres = 25.0; // 25 m for home testing
 
   RealtimeChannel? _locationChannel;
 
   BusProvider(this._busService);
 
-  List<BusModel> get nearbyBuses => _nearbyBuses;
-  List<StopModel> get nearbyStops => _nearbyStops;
-  List<BusRoute> get allRoutes => _allRoutes;
-  List<BusRoute> get searchResults => _searchResults;
-  BusModel? get selectedBus => _selectedBus;
-  bool get isLoading => _isLoading;
-  String get searchQuery => _searchQuery;
-  String? get errorMessage => _errorMessage;
+  List<BusModel>              get nearbyBuses      => _nearbyBuses;
+  List<StopModel>             get nearbyStops      => _nearbyStops;
+  List<BusRoute>              get allRoutes        => _allRoutes;
+  List<BusRoute>              get searchResults    => _searchResults;
+  BusModel?                   get selectedBus      => _selectedBus;
+  bool                        get isLoading        => _isLoading;
+  String                      get searchQuery      => _searchQuery;
+  String?                     get errorMessage     => _errorMessage;
+  List<StopModel>             get allStops         => _allStops;
+  List<StopModel>             get stopMatches      => _stopMatches;
+  Map<String, List<BusRoute>> get routesViaStop    => _routesViaStop;
+  bool                        get loadingStopRoutes => _loadingStopRoutes;
+  StopModel?                  get watchStartStop   => _watchStartStop;
+  StopModel?                  get watchEndStop     => _watchEndStop;
 
-  // ── Stop search getters ─────────────────────────────────────────────────
-  List<StopModel> get allStops => _allStops;
-  List<StopModel> get stopMatches => _stopMatches;
-  Map<String, List<BusRoute>> get routesViaStop => _routesViaStop;
-  bool get loadingStopRoutes => _loadingStopRoutes;
+  // ── Set which stops to watch ──────────────────────────────────────────────
+  /// Call this when the passenger taps a route to track.
+  /// [startStop] = nearest stop to passenger (boarding)
+  /// [endStop]   = stop nearest to their destination (alighting)
+  void setWatchedStops({
+    required StopModel startStop,
+    required StopModel endStop,
+    required String    routeNumber,
+  }) {
+    _watchStartStop  = startStop;
+    _watchEndStop    = endStop;
+    _watchRouteNumber = routeNumber;
+    _startNotified   = false;
+    _endNotified     = false;
+    debugPrint('[BusProvider] Watching stops: '
+        'START=${startStop.name}, END=${endStop.name}, Route=$routeNumber');
+    notifyListeners();
+  }
 
-  // ── Data loading ────────────────────────────────────────────────────────────
+  void clearWatchedStops() {
+    _watchStartStop   = null;
+    _watchEndStop     = null;
+    _watchRouteNumber = null;
+    _startNotified    = false;
+    _endNotified      = false;
+    notifyListeners();
+  }
+
+  // ── Data loading ──────────────────────────────────────────────────────────
 
   Future<void> loadNearbyBuses(double lat, double lng,
       {double radius = 20.0}) async {
@@ -58,6 +97,16 @@ class BusProvider extends ChangeNotifier {
       if (_selectedBus == null && _nearbyBuses.isNotEmpty) {
         _selectedBus = _nearbyBuses.first;
       }
+
+      // ── Check arrival notifications via polling ──────────────────────────
+      for (final bus in _nearbyBuses) {
+        final busLat = bus.currentLat;
+        final busLng = bus.currentLng;
+        if (busLat != null && busLng != null) {
+          _checkArrivalNotifications(busLat, busLng);
+        }
+      }
+
     } on AppException catch (e) {
       _errorMessage = ErrorHandler.userMessage(e);
     } catch (e) {
@@ -83,7 +132,7 @@ class BusProvider extends ChangeNotifier {
 
   Future<void> loadAllRoutes() async {
     try {
-      _allRoutes = await _busService.getAllRoutes();
+      _allRoutes     = await _busService.getAllRoutes();
       _searchResults = List.from(_allRoutes);
       notifyListeners();
     } on AppException catch (e) {
@@ -95,7 +144,6 @@ class BusProvider extends ChangeNotifier {
     }
   }
 
-  /// Load ALL bus stops from Supabase (for stop-based search)
   Future<void> loadAllStops() async {
     try {
       final res = await Supabase.instance.client
@@ -106,13 +154,13 @@ class BusProvider extends ChangeNotifier {
       _allStops = (res as List).map((s) {
         final json = s as Map<String, dynamic>;
         return StopModel(
-          id: json['id'] as String,
-          stopId: json['id'] as String,
-          name: json['stop_name'] as String? ?? '',
-          latitude: (json['latitude'] as num?)?.toDouble(),
+          id:        json['id']        as String,
+          stopId:    json['id']        as String,
+          name:      json['stop_name'] as String? ?? '',
+          latitude:  (json['latitude']  as num?)?.toDouble(),
           longitude: (json['longitude'] as num?)?.toDouble(),
-          distance: 0,
-          routes: [],
+          distance:  0,
+          routes:    [],
         );
       }).toList();
       notifyListeners();
@@ -122,7 +170,7 @@ class BusProvider extends ChangeNotifier {
   }
 
   Future<void> loadAll(double lat, double lng, {double radius = 20.0}) async {
-    _isLoading = true;
+    _isLoading    = true;
     _errorMessage = null;
     notifyListeners();
 
@@ -137,7 +185,7 @@ class BusProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  // ── Search (enhanced: routes + stops) ───────────────────────────────────
+  // ── Search ────────────────────────────────────────────────────────────────
 
   Future<void> searchByDestination(String query) async {
     _searchQuery = query;
@@ -145,13 +193,12 @@ class BusProvider extends ChangeNotifier {
 
     if (q.isEmpty) {
       _searchResults = List.from(_allRoutes);
-      _stopMatches = [];
+      _stopMatches   = [];
       _routesViaStop = {};
       notifyListeners();
       return;
     }
 
-    // 1) Search routes by origin/destination/number (existing logic)
     try {
       _searchResults = await _busService.searchRoutes(query);
     } catch (_) {
@@ -163,13 +210,11 @@ class BusProvider extends ChangeNotifier {
           .toList();
     }
 
-    // 2) Search bus stops by name (NEW)
     _stopMatches = _allStops
         .where((s) => s.name.toLowerCase().contains(q))
         .take(10)
         .toList();
 
-    // 3) Fetch routes for each matching stop (NEW)
     _loadingStopRoutes = _stopMatches.isNotEmpty;
     notifyListeners();
 
@@ -185,7 +230,6 @@ class BusProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Fetch routes that pass through a specific stop via Supabase
   Future<void> _fetchRoutesViaStop(String stopId) async {
     try {
       final res = await Supabase.instance.client
@@ -193,13 +237,8 @@ class BusProvider extends ChangeNotifier {
           .select('''
             stop_order,
             bus_routes (
-              id,
-              route_number,
-              route_name,
-              origin,
-              destination,
-              color,
-              is_active
+              id, route_number, route_name,
+              origin, destination, color, is_active
             )
           ''')
           .eq('stop_id', stopId);
@@ -211,7 +250,6 @@ class BusProvider extends ChangeNotifier {
           routes.add(BusRoute.fromJson(routeData));
         }
       }
-
       _routesViaStop[stopId] = routes;
       notifyListeners();
     } catch (e) {
@@ -220,19 +258,15 @@ class BusProvider extends ChangeNotifier {
     }
   }
 
-  /// Enhanced suggestions: includes both route destinations AND stop names
   List<String> getDestinationSuggestions(String query) {
     final q = query.trim().toLowerCase();
     if (q.isEmpty) return [];
     final suggestions = <String>{};
 
-    // Route origins/destinations
     for (final r in _allRoutes) {
       if (r.from.toLowerCase().contains(q)) suggestions.add(r.from);
       if (r.to.toLowerCase().contains(q)) suggestions.add(r.to);
     }
-
-    // Bus stop names
     for (final s in _allStops) {
       if (s.name.toLowerCase().contains(q)) suggestions.add(s.name);
     }
@@ -240,7 +274,7 @@ class BusProvider extends ChangeNotifier {
     return suggestions.take(8).toList();
   }
 
-  // ── Selection ───────────────────────────────────────────────────────────────
+  // ── Selection ──────────────────────────────────────────────────────────────
 
   void selectBus(BusModel bus) {
     _selectedBus = bus;
@@ -252,13 +286,13 @@ class BusProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  // ── Supabase Realtime — live bus location updates ───────────────────────────
+  // ── Supabase Realtime — live bus location + arrival notifications ──────────
 
   void subscribeToLiveLocations() {
     _locationChannel = Supabase.instance.client
         .channel(AppConfig.busLocationChannel)
         .onBroadcast(
-          event: AppConfig.busLocationEvent,
+          event:    AppConfig.busLocationEvent,
           callback: (payload) {
             _applyLocationUpdate(payload);
           },
@@ -272,22 +306,23 @@ class BusProvider extends ChangeNotifier {
   }
 
   void _applyLocationUpdate(Map<String, dynamic> payload) {
-    final busId = payload['bus_id'] as String?;
-    if (busId == null) return;
+    final busId  = payload['bus_id']    as String?;
+    final busLat = (payload['lat']  as num?)?.toDouble();
+    final busLng = (payload['lng']  as num?)?.toDouble();
 
-    final lat     = (payload['latitude']  as num?)?.toDouble();
-    final lng     = (payload['longitude'] as num?)?.toDouble();
+    if (busId == null || busLat == null || busLng == null) return;
+
+    // ── 1. Update bus position in lists ────────────────────────────────────
     final heading = (payload['heading']   as num?)?.toDouble();
     final speed   = (payload['speed_kmh'] as num?)?.toDouble();
-
-    bool changed = false;
+    bool changed  = false;
 
     _nearbyBuses = _nearbyBuses.map((bus) {
       if ((bus.busId ?? bus.stopId) == busId) {
         changed = true;
         return bus.copyWithLocation(
-          lat:      lat ?? bus.currentLat ?? 0,
-          lng:      lng ?? bus.currentLng ?? 0,
+          lat:      busLat,
+          lng:      busLng,
           heading:  heading,
           speedKmh: speed,
         );
@@ -298,14 +333,57 @@ class BusProvider extends ChangeNotifier {
     if (_selectedBus != null &&
         (_selectedBus!.busId ?? _selectedBus!.stopId) == busId) {
       _selectedBus = _selectedBus!.copyWithLocation(
-        lat:      lat ?? _selectedBus!.currentLat ?? 0,
-        lng:      lng ?? _selectedBus!.currentLng ?? 0,
+        lat:      busLat,
+        lng:      busLng,
         heading:  heading,
         speedKmh: speed,
       );
     }
 
+    // ── 2. Check proximity to watched stops ────────────────────────────────
+    _checkArrivalNotifications(busLat, busLng);
+
     if (changed) notifyListeners();
+  }
+
+  void _checkArrivalNotifications(double busLat, double busLng) {
+    final routeNum = _watchRouteNumber ?? '?';
+
+    // ── Start stop ─────────────────────────────────────────────────────────
+    if (!_startNotified && _watchStartStop != null) {
+      final sLat = _watchStartStop!.latitude;
+      final sLng = _watchStartStop!.longitude;
+      if (sLat != null && sLng != null) {
+        final dist = NotificationService.distanceMetres(
+            busLat, busLng, sLat, sLng);
+        debugPrint('[BusProvider] Bus → START stop: ${dist.toStringAsFixed(1)} m');
+        if (dist <= _notifyThresholdMetres) {
+          _startNotified = true;
+          NotificationService.instance.notifyBusArrivingAtStart(
+            _watchStartStop!.name,
+            routeNum,
+          );
+        }
+      }
+    }
+
+    // ── End stop ───────────────────────────────────────────────────────────
+    if (!_endNotified && _watchEndStop != null) {
+      final eLat = _watchEndStop!.latitude;
+      final eLng = _watchEndStop!.longitude;
+      if (eLat != null && eLng != null) {
+        final dist = NotificationService.distanceMetres(
+            busLat, busLng, eLat, eLng);
+        debugPrint('[BusProvider] Bus → END stop: ${dist.toStringAsFixed(1)} m');
+        if (dist <= _notifyThresholdMetres) {
+          _endNotified = true;
+          NotificationService.instance.notifyBusArrivingAtEnd(
+            _watchEndStop!.name,
+            routeNum,
+          );
+        }
+      }
+    }
   }
 
   @override

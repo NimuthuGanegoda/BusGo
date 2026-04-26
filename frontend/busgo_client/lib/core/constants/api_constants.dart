@@ -1,8 +1,8 @@
 /// Base URLs — switch by changing kBaseUrl
 /// Emulator:    http://10.0.2.2:5000/api
-/// Real device: http://192.168.126.1:5000/api
+/// Real device: http://192.168.1.2:5000/api
 /// Production:  https://api.busgo.lk/api
-const String kBaseUrlDev  = 'http://192.168.126.1:5000/api';
+const String kBaseUrlDev  = 'http://192.168.1.2:5000/api';
 const String kBaseUrlProd = 'https://your-api-domain.com/api';
 
 /// All API endpoint paths
@@ -35,7 +35,7 @@ class ApiEndpoints {
   static String busCrowd(String id)     => '/buses/$id/crowd';
 
   // Routes
-  static const busRoutes                 = '/routes';
+  static const busRoutes                 = '/routes?waypoints=false';
   static const routeSearch               = '/routes/search';
   static String routeById(String id)     => '/routes/$id';
   static String routeStops(String id)    => '/routes/$id/stops';

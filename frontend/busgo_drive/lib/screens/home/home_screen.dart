@@ -50,6 +50,7 @@ class _HomeScreenState extends State<HomeScreen> {
       debugPrint('[HomeScreen] Load error: $e');
     } finally {
       setState(() => _isLoading = false);
+      await _toggleOnline(true);
     }
   }
 

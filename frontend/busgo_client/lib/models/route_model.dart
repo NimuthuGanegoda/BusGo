@@ -30,8 +30,7 @@ class BusRoute {
   });
 
   String get displayRoute => '$from → $to';
-  String get info =>
-      stopCount > 0 ? '$stopCount stops · ~$durationMinutes min' : '~$durationMinutes min';
+  String get info => from.isNotEmpty && to.isNotEmpty ? '$from → $to' : '';
 
   factory BusRoute.fromJson(Map<String, dynamic> json) {
     final colorHex = json['color'] as String? ?? '#1565C0';

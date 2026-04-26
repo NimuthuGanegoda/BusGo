@@ -5,11 +5,13 @@ import { listNotificationsSchema } from './notifications.schema.js';
 import * as controller from './notifications.controller.js';
 
 const router = Router();
+
 router.use(authenticate);
 
-router.get('/',                  validate(listNotificationsSchema, 'query'), controller.listNotifications);
-router.patch('/read-all',        controller.markAllAsRead);
-router.patch('/:id/read',        controller.markAsRead);
-router.delete('/:id',            controller.deleteNotification);
+router.get('/',           validate(listNotificationsSchema, 'query'), controller.listNotifications);
+router.post('/',          controller.createNotification);   // ← NEW: app posts here instead of calling Supabase directly
+router.patch('/read-all', controller.markAllAsRead);
+router.patch('/:id/read', controller.markAsRead);
+router.delete('/:id',     controller.deleteNotification);
 
 export default router;

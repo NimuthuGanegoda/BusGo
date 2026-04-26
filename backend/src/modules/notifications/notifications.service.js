@@ -3,13 +3,9 @@ import { buildPagination } from '../../utils/response.utils.js';
 
 /**
  * Return paginated notifications for the user, optionally filtered by category.
- *
- * @param {string} userId
- * @param {{ category?, unread_only, page, page_size }} filters
- * @returns {{ notifications: Array<object>, pagination: object, unread_count: number }}
  */
 export async function listNotifications(userId, filters) {
-  const { category, unread_only, page, page_size } = filters;
+  const { category, unread_only, page = 1, page_size = 20 } = filters;
   const offset = (page - 1) * page_size;
 
   let query = supabase
@@ -19,13 +15,12 @@ export async function listNotifications(userId, filters) {
     .order('created_at', { ascending: false })
     .range(offset, offset + page_size - 1);
 
-  if (category) query = query.eq('category', category);
+  if (category)    query = query.eq('category', category);
   if (unread_only) query = query.eq('is_read', false);
 
   const { data, error, count } = await query;
   if (error) throw error;
 
-  // Total unread count (regardless of filter)
   const { count: unreadCount } = await supabase
     .from('notifications')
     .select('id', { count: 'exact', head: true })
@@ -34,17 +29,40 @@ export async function listNotifications(userId, filters) {
 
   return {
     notifications: data,
-    pagination: buildPagination(count, page, page_size),
-    unread_count: unreadCount || 0,
+    pagination:    buildPagination(count, page, page_size),
+    unread_count:  unreadCount || 0,
   };
 }
 
 /**
- * Mark a single notification as read.
+ * Create a notification row for a user.
+ * Called by the backend itself (e.g. from bus arrival logic)
+ * OR via POST /api/notifications from the mobile app.
  *
- * @param {string} notificationId
  * @param {string} userId
- * @returns {object} Updated notification
+ * @param {{ category: string, title: string, body: string, meta?: object }} payload
+ * @returns {object} Inserted notification row
+ */
+export async function createNotification(userId, { category, title, body, meta = {} }) {
+  const { data, error } = await supabase
+    .from('notifications')
+    .insert({
+      user_id:  userId,
+      category,
+      title,
+      body,
+      is_read:  false,
+      meta,
+    })
+    .select()
+    .single();
+
+  if (error) throw error;
+  return data;
+}
+
+/**
+ * Mark a single notification as read.
  */
 export async function markAsRead(notificationId, userId) {
   const { data, error } = await supabase
@@ -67,9 +85,6 @@ export async function markAsRead(notificationId, userId) {
 
 /**
  * Mark all unread notifications as read for the user.
- *
- * @param {string} userId
- * @returns {{ updated_count: number }}
  */
 export async function markAllAsRead(userId) {
   const { data, error } = await supabase
@@ -85,9 +100,6 @@ export async function markAllAsRead(userId) {
 
 /**
  * Delete a notification (must belong to the user).
- *
- * @param {string} notificationId
- * @param {string} userId
  */
 export async function deleteNotification(notificationId, userId) {
   const { data, error } = await supabase

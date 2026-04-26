@@ -3,7 +3,8 @@ import { sendSuccess, sendError } from '../../utils/response.utils.js';
 
 export async function getAll(req, res, next) {
   try {
-    const routes = await routesService.getAllRoutes();
+    const includeWaypoints = req.query.waypoints !== 'false';
+    const routes = await routesService.getAllRoutes(includeWaypoints);
     return sendSuccess(res, routes, 'Routes fetched');
   } catch (err) {
     next(err);

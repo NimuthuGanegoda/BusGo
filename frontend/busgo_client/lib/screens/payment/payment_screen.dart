@@ -17,7 +17,7 @@ class PaymentScreen extends StatefulWidget {
 }
 
 class _PaymentScreenState extends State<PaymentScreen> {
-  static const _baseUrl = 'http://192.168.126.1:5000';
+  static const _baseUrl = 'http://192.168.1.2:5000';
 
   List<dynamic> _routes = [];
   List<dynamic> _stops = [];

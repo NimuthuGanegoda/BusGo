@@ -9,6 +9,8 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+  flutter_local_notifications: ^17.2.2
+  
 
   # State management
   provider: ^6.1.2

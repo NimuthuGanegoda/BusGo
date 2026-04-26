@@ -24,7 +24,7 @@ class AppConfig {
       dotenv.env['SUPABASE_URL'] ?? '';
   static String get supabaseAnonKey => 
       dotenv.env['SUPABASE_ANON_KEY'] ?? '';
-  static const String apiBaseUrl = 'http://10.0.2.2:5000/api';
+  static const String apiBaseUrl = 'http://192.168.1.2:5000/api';
 
   // ── Realtime channel for live bus tracking ────────────────────────────────
   static const String busLocationChannel = 'bus-locations';

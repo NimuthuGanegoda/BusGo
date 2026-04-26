@@ -1,17 +1,20 @@
 import { supabase } from '../../config/supabase.js';
 
 /**
- * Return all active bus routes.
+ * 
  *
  * @returns {Array<object>}
  */
-export async function getAllRoutes() {
+export async function getAllRoutes(includeWaypoints = true) {
+  const fields = includeWaypoints
+    ? 'id, route_number, route_name, origin, destination, color, waypoints, is_active, created_at'
+    : 'id, route_number, route_name, origin, destination, color, is_active, created_at';
+
   const { data, error } = await supabase
     .from('bus_routes')
-    .select('id, route_number, route_name, origin, destination, color, waypoints, is_active, created_at')
+    .select(fields)
     .eq('is_active', true)
     .order('route_number');
-
   if (error) throw error;
   return data;
 }
