@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 
 class ApiService {
-  static const String baseUrl = 'http://192.168.1.2:5000';
+  static const String baseUrl = 'http://192.168.1.3:5000';
 
   Future<Map<String, dynamic>?> fetchETA({
     required String busId,
@@ -34,5 +34,8 @@ class ApiService {
     }
   }
 }
+
+
+
 
 

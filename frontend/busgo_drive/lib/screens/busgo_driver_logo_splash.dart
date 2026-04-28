@@ -520,3 +520,6 @@ class _ParticlePainter extends CustomPainter {
   @override
   bool shouldRepaint(_ParticlePainter old) => old.progress != progress;
 }
+
+
+

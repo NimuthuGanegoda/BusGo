@@ -1,210 +1,301 @@
-import 'package:dio/dio.dart';
-import 'package:flutter/foundation.dart';
+import 'dart:convert';
+import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:http/http.dart' as http;
 
-const String _kBaseUrlDev  = 'http://192.168.126.1:5000/api';
-const String _kBaseUrlProd = 'https://your-api-domain.com/api';
-const String _kBaseUrl     = kDebugMode ? _kBaseUrlDev : _kBaseUrlProd;
+const String _kBaseUrl = 'http://192.168.1.3:5000/api';
+const _storage = FlutterSecureStorage();
 
-// ── Token storage ─────────────────────────────────────────────────────────────
-class ScannerTokenService {
-  static const _kAccess  = 'busgo_scanner_access';
-  static const _kRefresh = 'busgo_scanner_refresh';
+// ══════════════════════════════════════════════════════════════════════════════
+// QR PAYLOAD — FR-34: supports destination stop encoded in QR
+// ══════════════════════════════════════════════════════════════════════════════
+class _QrPayload {
+  final String  token;
+  final String? alightingStopId;
+  final String? alightingStopName;
 
-  final _store = const FlutterSecureStorage(
-    aOptions: AndroidOptions(encryptedSharedPreferences: true),
-  );
+  const _QrPayload({
+    required this.token,
+    this.alightingStopId,
+    this.alightingStopName,
+  });
 
-  Future<void> save(String access, String refresh) => Future.wait([
-    _store.write(key: _kAccess,  value: access),
-    _store.write(key: _kRefresh, value: refresh),
-  ]);
-
-  Future<String?> getAccess()  => _store.read(key: _kAccess);
-  Future<String?> getRefresh() => _store.read(key: _kRefresh);
-  Future<bool>    hasSession() async => (await getAccess()) != null;
-
-  Future<void> clear() => Future.wait([
-    _store.delete(key: _kAccess),
-    _store.delete(key: _kRefresh),
-  ]);
-}
-
-// ── API client ────────────────────────────────────────────────────────────────
-class ScannerApiService {
-  late final Dio _dio;
-  final ScannerTokenService _tokens;
-  bool _refreshing = false;
-
-  /// Cached route ID from the driver's assigned bus
-  String? _driverRouteId;
-
-  ScannerApiService(this._tokens) {
-    _dio = Dio(BaseOptions(
-      baseUrl:        _kBaseUrl,
-      connectTimeout: const Duration(seconds: 10),
-      receiveTimeout: const Duration(seconds: 15),
-      headers:        {'Content-Type': 'application/json'},
-    ));
-
-    _dio.interceptors.add(QueuedInterceptorsWrapper(
-      onRequest: (opts, handler) async {
-        final t = await _tokens.getAccess();
-        if (t != null) opts.headers['Authorization'] = 'Bearer $t';
-        handler.next(opts);
-      },
-      onError: (err, handler) async {
-        if (err.response?.statusCode == 401 && err.requestOptions.extra['retried'] != true) {
-          if (!_refreshing) {
-            _refreshing = true;
-            try {
-              final ref = await _tokens.getRefresh();
-              if (ref == null) throw Exception('no refresh');
-              final res = await Dio(BaseOptions(baseUrl: _kBaseUrl))
-                  .post('/auth/refresh', data: {'refresh_token': ref});
-              final d = (res.data as Map)['data'] as Map;
-              await _tokens.save(d['access_token'] as String, d['refresh_token'] as String);
-            } catch (_) {
-              _refreshing = false;
-              await _tokens.clear();
-              return handler.reject(err);
-            }
-            _refreshing = false;
-          }
-          try {
-            final t    = await _tokens.getAccess();
-            final opts = err.requestOptions
-              ..headers['Authorization'] = 'Bearer $t'
-              ..extra['retried'] = true;
-            final res = await _dio.fetch(opts);
-            return handler.resolve(res);
-          } catch (_) { return handler.next(err); }
-        }
-        handler.next(err);
-      },
-    ));
-  }
-
-  dynamic _unwrap(Response res) {
-    final b = res.data;
-    return b is Map<String, dynamic> ? (b['data'] ?? b) : b;
-  }
-
-  // ── Auth ──────────────────────────────────────────────────────────────────
-
-  /// Login as a driver. Saves tokens and returns user map.
-  Future<Map<String, dynamic>> login(String email, String password) async {
-    final res = await _dio.post('/auth/login',
-        data: {'email': email, 'password': password});
-    final d   = _unwrap(res) as Map<String, dynamic>;
-    final user = d['user'] as Map<String, dynamic>;
-    if (user['role'] != 'driver') {
-      throw Exception('LOGIN_RESTRICTED');
+  /// Parse raw QR string.
+  /// New format: JSON {"t":"<uuid>","s":"<stopId>","n":"<stopName>"}
+  /// Old format: plain UUID string
+  factory _QrPayload.fromRaw(String raw) {
+    final trimmed = raw.trim();
+    if (trimmed.startsWith('{')) {
+      try {
+        final json = jsonDecode(trimmed) as Map<String, dynamic>;
+        return _QrPayload(
+          token:             json['t'] as String,
+          alightingStopId:   json['s'] as String?,
+          alightingStopName: json['n'] as String?,
+        );
+      } catch (_) {}
     }
-    await _tokens.save(d['access_token'] as String, d['refresh_token'] as String);
-
-    // Fetch and cache the driver's route ID after login
-    await _fetchDriverRouteId();
-
-    return user;
-  }
-
-  Future<void> logout() async {
-    final ref = await _tokens.getRefresh();
-    try {
-      await _dio.post('/auth/logout',
-        data: ref != null ? {'refresh_token': ref} : {},
-      );
-    } catch (_) {}
-    await _tokens.clear();
-    _driverRouteId = null;
-  }
-
-  // ── Driver info ───────────────────────────────────────────────────────────
-
-  /// Fetches the driver's assigned bus to get the route_id
-  Future<void> _fetchDriverRouteId() async {
-    try {
-      final res = await _dio.get('/driver/bus');
-      final d = _unwrap(res) as Map<String, dynamic>;
-      _driverRouteId = d['route_id'] as String?;
-    } catch (e) {
-      debugPrint('Failed to fetch driver route: $e');
-    }
-  }
-
-  // ── Ticket Verification (passenger boards) ────────────────────────────────
-
-  /// POST /payments/verify-scan
-  /// [scannedToken] is the UUID decoded from the passenger's QR code.
-  /// Returns scan result with ticket status: PAID, CASH, or UNKNOWN
-  Future<ScanResult> scanIn(String scannedToken) async {
-    // Ensure we have the route ID
-    if (_driverRouteId == null) {
-      await _fetchDriverRouteId();
-    }
-
-    final res = await _dio.post('/payments/verify-scan', data: {
-      'qr_token': scannedToken,
-      'route_id': _driverRouteId,
-    });
-    final d = _unwrap(res) as Map<String, dynamic>;
-    return ScanResult.fromJson(d);
-  }
-
-  // ── QR Scan-Exit (passenger alights) ─────────────────────────────────────
-
-  /// POST /qr/scan-exit
-  /// NOTE: Keep this if you still need scan-exit functionality,
-  /// otherwise remove it.
-  Future<ScanResult> scanExit(String scannedToken) async {
-    if (_driverRouteId == null) {
-      await _fetchDriverRouteId();
-    }
-
-    final res = await _dio.post('/payments/verify-scan', data: {
-      'qr_token': scannedToken,
-      'route_id': _driverRouteId,
-    });
-    final d = _unwrap(res) as Map<String, dynamic>;
-    return ScanResult.fromJson(d);
+    return _QrPayload(token: trimmed);
   }
 }
 
-// ── Data model returned after a scan ─────────────────────────────────────────
+// ══════════════════════════════════════════════════════════════════════════════
+// SCAN RESULT — all fields that screens depend on
+// ══════════════════════════════════════════════════════════════════════════════
 class ScanResult {
   final bool   success;
-  final String status;       // PAID, CASH, or UNKNOWN
-  final String message;
   final String passengerName;
-  final String routeName;
-  final String boardingStop;
-  final String alightingStop;
+  final String? passengerId;
+  final String  message;
+  final String? tripId;
+  final String? membershipType;
+
+  // Fields used by scan_success_screen.dart
+  final bool   isExit;         // true = alighting, false = boarding
+  final String status;         // 'PAID' | 'CASH' | 'ALIGHTED'
+  final String boardingStop;   // boarding stop name (may be empty)
+  final String alightingStop;  // alighting stop name (may be empty)
+
+  // FR-34 express mode info
+  final bool isExpressMode;
+  final int  activePassengers;
+  final int  busCapacity;
 
   const ScanResult({
     required this.success,
-    required this.status,
-    required this.message,
     required this.passengerName,
-    required this.routeName,
-    required this.boardingStop,
-    required this.alightingStop,
+    this.passengerId,
+    required this.message,
+    this.tripId,
+    this.membershipType,
+    this.isExit           = false,
+    this.status           = 'PAID',
+    this.boardingStop     = '',
+    this.alightingStop    = '',
+    this.isExpressMode    = false,
+    this.activePassengers = 0,
+    this.busCapacity      = 50,
   });
 
-  factory ScanResult.fromJson(Map<String, dynamic> json) {
-    final ticket = json['ticket'] as Map<String, dynamic>? ?? {};
-    final status = json['payment_status'] as String? ?? 'UNKNOWN';  // was json['status']
-
+  factory ScanResult.boarding(Map<String, dynamic> data, {String alightingStopName = ''}) {
+    final passenger = data['passenger'] as Map<String, dynamic>? ?? {};
     return ScanResult(
-      success:       status == 'PAID',
-      status:        status,
-      message:       json['message'] as String? ?? 'Scan complete',
-      passengerName: ticket['passenger_name'] as String? ?? 'Passenger',
-      routeName:     ticket['route_name'] as String? ?? '',
-      boardingStop:  ticket['from'] as String? ?? '',
-      alightingStop: ticket['to'] as String? ?? '',
+      success:           true,
+      passengerName:     passenger['full_name']       as String? ?? 'Passenger',
+      passengerId:       passenger['id']              as String?,
+      membershipType:    passenger['membership_type'] as String?,
+      message:           data['message']              as String? ?? 'Boarded successfully',
+      tripId:            data['trip_id']              as String?,
+      isExit:            false,
+      status:            'PAID',
+      boardingStop:      '',
+      alightingStop:     alightingStopName,
+      isExpressMode:     data['is_express_mode']    as bool? ?? false,
+      activePassengers:  data['active_passengers']  as int?  ?? 0,
+      busCapacity:       data['bus_capacity']       as int?  ?? 50,
+    );
+  }
+
+  factory ScanResult.alighting(Map<String, dynamic> data) {
+    final passenger = data['passenger'] as Map<String, dynamic>? ?? {};
+    return ScanResult(
+      success:           true,
+      passengerName:     passenger['full_name'] as String? ?? 'Passenger',
+      passengerId:       passenger['id']        as String?,
+      message:           data['message']        as String? ?? 'Alighted successfully',
+      tripId:            data['trip_id']        as String?,
+      isExit:            true,
+      status:            'ALIGHTED',
+      boardingStop:      '',
+      alightingStop:     '',
+      isExpressMode:     data['is_express_mode']   as bool? ?? false,
+      activePassengers:  data['active_passengers'] as int?  ?? 0,
+      busCapacity:       data['bus_capacity']      as int?  ?? 50,
     );
   }
 }
 
+// ══════════════════════════════════════════════════════════════════════════════
+// TOKEN SERVICE
+// ══════════════════════════════════════════════════════════════════════════════
+class ScannerTokenService {
+  Future<String?> getAccess() => _storage.read(key: 'scanner_access_token');
 
+  Future<void> saveAccess(String t) =>
+      _storage.write(key: 'scanner_access_token', value: t);
+
+  Future<void> clear() => _storage.delete(key: 'scanner_access_token');
+
+  /// Returns true if a saved token exists (used by login_screen to
+  /// restore session without re-login).
+  Future<bool> hasSession() async {
+    final token = await getAccess();
+    return token != null && token.isNotEmpty;
+  }
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// API SERVICE
+// ══════════════════════════════════════════════════════════════════════════════
+class ScannerApiService {
+  final ScannerTokenService _tokenSvc;
+
+  /// Constructor takes the token service — matches usage in login_screen.dart:
+  ///   _api = ScannerApiService(_tokenService);
+  ScannerApiService(this._tokenSvc);
+
+  Future<String?> _token() => _tokenSvc.getAccess();
+
+  // ── Driver route ID ────────────────────────────────────────────────────────
+  Future<String?> fetchDriverRouteId() async {
+    try {
+      final token = await _token();
+      if (token == null) return null;
+
+      final res = await http.get(
+        Uri.parse('$_kBaseUrl/driver/bus'),
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type':  'application/json',
+        },
+      ).timeout(const Duration(seconds: 8));
+
+      if (res.statusCode == 200) {
+        final body    = jsonDecode(res.body) as Map<String, dynamic>;
+        final data    = body['data']         as Map<String, dynamic>?;
+        final routeId = data?['bus_routes']?['id'] as String?
+                     ?? data?['route_id']          as String?;
+        debugPrint('[Scanner] Route ID: $routeId');
+        return routeId;
+      }
+      return null;
+    } catch (e) {
+      debugPrint('[Scanner] Route fetch error: $e');
+      return null;
+    }
+  }
+
+  // ── Scan IN (boarding) ─────────────────────────────────────────────────────
+  // Keeps original positional signature: scanIn(scannedToken)
+  // FR-34: internally parses JSON QR payload to extract alighting_stop_id
+  Future<ScanResult> scanIn(String rawQrContent, {String? routeId}) async {
+    final payload = _QrPayload.fromRaw(rawQrContent);
+
+    final token = await _token();
+    if (token == null) throw Exception('Not authenticated');
+
+    // Resolve route from driver bus if not provided
+    routeId ??= await fetchDriverRouteId();
+
+    final body = <String, dynamic>{
+      'scanned_token': payload.token,
+      if (routeId                 != null) 'route_id':          routeId,
+      if (payload.alightingStopId != null) 'alighting_stop_id': payload.alightingStopId,
+    };
+
+    debugPrint('[Scanner] ScanIn → '
+        'token=${payload.token.length > 8 ? payload.token.substring(0, 8) : payload.token}... '
+        'stop=${payload.alightingStopId ?? 'none'}');
+
+    final res = await http.post(
+      Uri.parse('$_kBaseUrl/qr/scan-in'),
+      headers: {
+        'Authorization': 'Bearer $token',
+        'Content-Type':  'application/json',
+      },
+      body: jsonEncode(body),
+    ).timeout(const Duration(seconds: 10));
+
+    final responseBody = jsonDecode(res.body) as Map<String, dynamic>;
+
+    if (res.statusCode == 200 || res.statusCode == 201) {
+      final data = responseBody['data'] as Map<String, dynamic>?
+                ?? responseBody;
+      return ScanResult.boarding(data,
+          alightingStopName: payload.alightingStopName ?? '');
+    }
+
+    // 409 = already on a trip → let caller switch to exit
+    throw Exception(responseBody['code']
+        ?? responseBody['message']
+        ?? 'Scan failed (${res.statusCode})');
+  }
+
+  // ── Scan EXIT (alighting) ──────────────────────────────────────────────────
+  // Keeps original positional signature: scanExit(scannedToken)
+  Future<ScanResult> scanExit(String rawQrContent) async {
+    final payload = _QrPayload.fromRaw(rawQrContent);
+
+    final token = await _token();
+    if (token == null) throw Exception('Not authenticated');
+
+    debugPrint('[Scanner] ScanExit → '
+        'token=${payload.token.length > 8 ? payload.token.substring(0, 8) : payload.token}...');
+
+    final res = await http.post(
+      Uri.parse('$_kBaseUrl/qr/scan-exit'),
+      headers: {
+        'Authorization': 'Bearer $token',
+        'Content-Type':  'application/json',
+      },
+      body: jsonEncode({'scanned_token': payload.token}),
+    ).timeout(const Duration(seconds: 10));
+
+    final responseBody = jsonDecode(res.body) as Map<String, dynamic>;
+
+    if (res.statusCode == 200 || res.statusCode == 201) {
+      final data = responseBody['data'] as Map<String, dynamic>?
+                ?? responseBody;
+      return ScanResult.alighting(data);
+    }
+
+    throw Exception(responseBody['message'] ?? 'Exit scan failed (${res.statusCode})');
+  }
+
+  // ── Login ──────────────────────────────────────────────────────────────────
+  Future<void> login(String email, String password) async {
+    final res = await http.post(
+      Uri.parse('$_kBaseUrl/auth/login'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({'email': email, 'password': password}),
+    ).timeout(const Duration(seconds: 10));
+
+    final body = jsonDecode(res.body) as Map<String, dynamic>;
+
+    if (res.statusCode != 200) {
+      throw Exception(body['code'] ?? body['message'] ?? 'Login failed (${res.statusCode})');
+    }
+
+    final data = body['data'] as Map<String, dynamic>?;
+    final role  = data?['user']?['role'] as String?;
+
+    if (role != 'driver') {
+      throw Exception('LOGIN_RESTRICTED');
+    }
+
+    final token = data?['access_token'] as String?;
+    if (token == null) throw Exception('No token received');
+    await _tokenSvc.saveAccess(token);
+  }
+
+  // ── Logout ─────────────────────────────────────────────────────────────────
+  // Used by scanner_profile_screen.dart: widget.api.logout()
+  Future<void> logout() async {
+    try {
+      final token = await _token();
+      if (token != null) {
+        await http.post(
+          Uri.parse('$_kBaseUrl/auth/logout'),
+          headers: {
+            'Authorization': 'Bearer $token',
+            'Content-Type':  'application/json',
+          },
+        ).timeout(const Duration(seconds: 5));
+      }
+    } catch (_) {
+      // Best-effort — always clear local token regardless
+    } finally {
+      await _tokenSvc.clear();
+    }
+  }
+}

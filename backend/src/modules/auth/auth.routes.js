@@ -11,6 +11,7 @@ import {
   forgotPasswordVerifySchema,
   forgotPasswordResetSchema,
 } from './auth.schema.js';
+import { z } from 'zod';
 
 const router = Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024 } });
@@ -18,15 +19,34 @@ const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 *
 // Apply strict rate limiting to all auth routes
 router.use(authLimiter);
 
-router.post('/register',                  validate(registerSchema),                controller.register);
-router.post('/login',                     validate(loginSchema),                   controller.login);
-router.post('/logout',                    controller.logout);
-router.post('/refresh',                   validate(refreshSchema),                 controller.refresh);
-router.post('/forgot-password/request',   validate(forgotPasswordRequestSchema),   controller.forgotPasswordRequest);
-router.post('/forgot-password/verify',    validate(forgotPasswordVerifySchema),    controller.forgotPasswordVerify);
-router.post('/forgot-password/reset',     validate(forgotPasswordResetSchema),     controller.forgotPasswordReset);
+router.post('/register',                validate(registerSchema),              controller.register);
+router.post('/login',                   validate(loginSchema),                 controller.login);
+router.post('/logout',                  controller.logout);
+router.post('/refresh',                 validate(refreshSchema),               controller.refresh);
 
-// ── Public license upload (no token needed — driver just registered) ──────────
+// ── Email verification (new) ──────────────────────────────────────────────────
+// Step 1: resend verification PIN (if needed)
+router.post('/verify-email/resend',
+  validate(z.object({ email: z.string().email() })),
+  controller.resendVerificationPin
+);
+// Step 2: verify the PIN and issue tokens
+router.post('/verify-email',
+  validate(z.object({
+    email: z.string().email(),
+    pin:   z.string().length(6),
+  })),
+  controller.verifyEmail
+);
+
+router.post('/forgot-password/request', validate(forgotPasswordRequestSchema), controller.forgotPasswordRequest);
+router.post('/forgot-password/verify',  validate(forgotPasswordVerifySchema),  controller.forgotPasswordVerify);
+router.post('/forgot-password/reset',   validate(forgotPasswordResetSchema),   controller.forgotPasswordReset);
+
+// Public license upload (no token needed — driver just registered)
 router.post('/upload-license', upload.single('license'), controller.uploadLicense);
 
 export default router;
+
+
+

@@ -13,7 +13,7 @@ import '../../providers/trip_provider.dart';
 import '../../providers/user_provider.dart';
 import '../../widgets/bus_card.dart';
 import '../../models/bus_model.dart';
-import '../../core/utils/helpers.dart';
+import 'package:geolocator/geolocator.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -23,21 +23,62 @@ class DashboardScreen extends StatefulWidget {
 
 class _DashboardScreenState extends State<DashboardScreen> {
   static const _defaultLocation = LatLng(6.9271, 79.8612);
+  LatLng _userLocation = _defaultLocation;
+  final MapController _mapController = MapController();
+  bool _mapReady = false;
 
   String get _tileUrl =>
       'https://api.maptiler.com/maps/streets-v2-dark/{z}/{x}/{y}.png'
-      '?key=${dotenv.env['MAPTILER_KEY'] ?? 'fsVEp87wcHaGchb3gygh'}';
+      '?key=${dotenv.env['MAPTILER_KEY'] ?? ''}';
 
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      context.read<BusProvider>().loadAll(
-          _defaultLocation.latitude, _defaultLocation.longitude);
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
       context.read<TripProvider>().loadTripHistory();
       final auth = context.read<AuthProvider>();
       if (auth.currentUser != null) {
         context.read<UserProvider>().setUser(auth.currentUser!);
+      }
+      // Load buses at default first so screen isn't empty
+      context.read<BusProvider>().loadAll(
+          _defaultLocation.latitude, _defaultLocation.longitude);
+
+      // Then get real GPS and reload
+      try {
+        LocationPermission permission = await Geolocator.checkPermission();
+        if (permission == LocationPermission.denied) {
+          permission = await Geolocator.requestPermission();
+        }
+        if (permission == LocationPermission.denied ||
+            permission == LocationPermission.deniedForever) return;
+
+        // Try last known first (instant)
+        final lastKnown = await Geolocator.getLastKnownPosition();
+        if (lastKnown != null && mounted) {
+          setState(() {
+            _userLocation = LatLng(lastKnown.latitude, lastKnown.longitude);
+          });
+          if (_mapReady) _mapController.move(_userLocation, 12.5);
+          context.read<BusProvider>().loadAll(
+              lastKnown.latitude, lastKnown.longitude);
+        }
+
+        // Then get accurate position
+        final position = await Geolocator.getCurrentPosition(
+          desiredAccuracy: LocationAccuracy.high,
+        ).timeout(const Duration(seconds: 10));
+
+        if (mounted) {
+          setState(() {
+            _userLocation = LatLng(position.latitude, position.longitude);
+          });
+          if (_mapReady) _mapController.move(_userLocation, 12.5);
+          context.read<BusProvider>().loadAll(
+              position.latitude, position.longitude);
+        }
+      } catch (e) {
+        debugPrint('[Dashboard] GPS error: $e');
       }
     });
   }
@@ -149,13 +190,17 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 child: SizedBox(
                   height: 180,
                   child: Stack(children: [
-                    // Real map with real buses
                     FlutterMap(
-                      options: const MapOptions(
-                        initialCenter: _defaultLocation,
+                      mapController: _mapController,
+                      options: MapOptions(
+                        initialCenter: _userLocation,
                         initialZoom: 12.5,
-                        interactionOptions: InteractionOptions(
-                          flags: InteractiveFlag.none),
+                        onMapReady: () {
+                          setState(() => _mapReady = true);
+                          _mapController.move(_userLocation, 12.5);
+                        },
+                        interactionOptions: const InteractionOptions(
+                            flags: InteractiveFlag.none),
                       ),
                       children: [
                         TileLayer(
@@ -165,7 +210,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         // User location dot
                         MarkerLayer(markers: [
                           Marker(
-                            point: _defaultLocation,
+                            point: _userLocation,
                             width: 16, height: 16,
                             child: Container(
                               decoration: BoxDecoration(
@@ -179,7 +224,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                     blurRadius: 6)]),
                             )),
                         ]),
-                        // Real bus markers from BusProvider
+                        // Live bus markers
                         MarkerLayer(
                           markers: liveBuses.map((bus) {
                             final pos = LatLng(
@@ -435,3 +480,5 @@ class _QuickAction extends StatelessWidget {
     );
   }
 }
+
+

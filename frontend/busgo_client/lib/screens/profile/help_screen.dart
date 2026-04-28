@@ -135,3 +135,6 @@ class _HelpScreenState extends State<HelpScreen> {
       enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: Colors.white.withOpacity(0.1))),
       focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: _cyan.withOpacity(0.4)))));
 }
+
+
+

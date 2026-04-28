@@ -157,3 +157,6 @@ class _EmergencyScreenState extends State<EmergencyScreen> with SingleTickerProv
         child: const Text('Close', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600)))),
     ]));
 }
+
+
+

@@ -14,3 +14,6 @@ final GoRouter appRouter = GoRouter(
     GoRoute(path: '/profile',   builder: (c, s) => const ProfileScreen()),
   ],
 );
+
+
+

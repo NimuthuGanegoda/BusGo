@@ -8,7 +8,7 @@ import '../services/token_service.dart';
 
 /// Handles local push notifications for bus arrival alerts.
 /// System tray notification works offline.
-/// DB insert goes via backend (192.168.1.2:5000) using the app's own JWT.
+/// DB insert goes via backend (192.168.1.3:5000) using the app's own JWT.
 class NotificationService {
   NotificationService._();
   static final NotificationService instance = NotificationService._();
@@ -166,3 +166,6 @@ class NotificationService {
     return R * 2 * asin(sqrt(a));
   }
 }
+
+
+

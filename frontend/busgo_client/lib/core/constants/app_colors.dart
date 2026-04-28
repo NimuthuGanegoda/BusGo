@@ -27,3 +27,6 @@ class AppColors {
   static const Color iconBg       = Color(0x1A4ECDC4);   // 10% teal
   static const Color textPrimary  = Color(0xFFFFFFFF);
 }
+
+
+

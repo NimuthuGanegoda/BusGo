@@ -39,3 +39,6 @@ export async function alightTrip(req, res, next) {
     next(err);
   }
 }
+
+
+

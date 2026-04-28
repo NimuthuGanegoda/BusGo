@@ -63,3 +63,6 @@ class StopModel {
         'longitude': longitude,
       };
 }
+
+
+

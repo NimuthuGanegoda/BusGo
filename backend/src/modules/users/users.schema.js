@@ -18,3 +18,6 @@ export const updatePreferencesSchema = z.object({
 }).refine((data) => Object.keys(data).length > 0, {
   message: 'At least one preference must be provided',
 });
+
+
+

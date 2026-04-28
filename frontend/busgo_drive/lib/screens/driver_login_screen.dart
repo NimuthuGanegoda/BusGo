@@ -277,3 +277,6 @@ class _BirdPainter extends CustomPainter {
   }
   @override bool shouldRepaint(_BirdPainter old) => old.wingFlap != wingFlap;
 }
+
+
+

@@ -85,3 +85,6 @@ router.get('/audit-logs',
 
 router.get('/security-logs', controller.getSecurityLogs);
 export default router;
+
+
+

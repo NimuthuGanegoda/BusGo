@@ -25,3 +25,5 @@ class AppColors {
   static const Color scannerBg      = Color(0xFF0A0F1E);
   static const Color scannerSurface = Color(0xFF0F1629);
 }
+
+

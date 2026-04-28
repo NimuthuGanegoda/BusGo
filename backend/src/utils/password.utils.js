@@ -22,3 +22,6 @@ export async function hashPassword(plainPassword) {
 export async function comparePassword(plainPassword, hash) {
   return bcrypt.compare(plainPassword, hash);
 }
+
+
+

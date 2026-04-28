@@ -2,10 +2,17 @@
 BUSGO ML Microservice
 =====================
 Flask service exposing 3 endpoints for the Node.js backend:
-  POST /ml/rating        — Driver rating prediction (Model 1)
-  POST /ml/eta           — Bus ETA prediction       (Model 2)
-  POST /ml/alert-priority — Alert prioritization    (Model 3)
+  POST /ml/rating         — Driver rating prediction (Model 1)
+                            Enhanced with VADER hybrid ensemble + cultural calibration
+  POST /ml/eta            — Bus ETA prediction       (Model 2)
+  POST /ml/alert-priority — Alert prioritization     (Model 3)
+
 Place all .pkl files in the ./models/ directory before starting.
+
+Model 1 Enhancement (v5.1):
+  LightGBM base prediction → VADER independent verifier →
+  Hybrid ensemble (agreement-weighted blend) →
+  Sri Lankan cultural calibration → Final score
 """
 import os
 import re
@@ -24,11 +31,14 @@ from nltk.corpus import stopwords
 from nltk.stem import WordNetLemmatizer
 from deep_translator import GoogleTranslator
 from langdetect import detect
+from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
+
 warnings.filterwarnings("ignore")
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger("busgo-ml")
 nltk.download("stopwords", quiet=True)
 nltk.download("wordnet", quiet=True)
+
 app = Flask(__name__)
 MODELS_DIR = os.path.join(os.path.dirname(__file__), "models")
 
@@ -36,6 +46,9 @@ MODELS_DIR = os.path.join(os.path.dirname(__file__), "models")
 rating_model = rating_vectorizer = rating_scaler = rating_meta_names = rating_calibrator = None
 eta_model = eta_driver_encoder = eta_feature_cols = None
 alert_fa_model = alert_prio_model = alert_tfidf = alert_features = alert_sbert = None
+
+# ── VADER analyser (initialised once at startup) ───────────────────────────────
+vader_analyser = SentimentIntensityAnalyzer()
 
 # ══════════════════════════════════════════════════════════════════════════════
 #  STARTUP — load all models once
@@ -95,7 +108,6 @@ SINHALA_MAP = {
     "බය":"scared frightened dangerous",
 }
 
-# ── Sentiment word lists ───────────────────────────────────────────────────────
 NEGATIVE_WORDS = [
     'rude','dirty','late','dangerous','drunk','reckless','aggressive','filthy',
     'bad','terrible','worst','horrible','awful','unacceptable','unsafe',
@@ -134,6 +146,29 @@ STRONG_POSITIVE = [
     'really happy','really satisfied','very impressed','very pleased',
 ]
 
+# ── Sri Lankan / informal English cultural signals ─────────────────────────────
+# These are positive informal expressions common in Sri Lankan English and
+# Singlish that the LightGBM model underweights due to training data bias.
+SL_INFORMAL_POSITIVE = [
+    # Singlish / Sri Lankan address terms used in positive context
+    'bro','machan','machi','nangi','aiya','ayya','akka',
+    # Romanised Sinhala positive words
+    'hoda','niyamai','hodai','bohoma hoda','supiri','lassanai',
+    # Informal positive expressions
+    'nice ride','nice bro','good bro','great bro','love it bro',
+    'again','ride again','go again','come again','use again',
+    'recommend','would go','will go','always use',
+    # Casual affirmations
+    'legit','lit','fire','goat','top','clean af','smooth af',
+]
+
+# Informal negative signals that may be missed
+SL_INFORMAL_NEGATIVE = [
+    'hora','naha','nehe','boru','chee','yako',
+    'worst bro','bad bro','never again','dont go',
+]
+
+# ── Language utilities ─────────────────────────────────────────────────────────
 def detect_lang(text):
     cleaned = str(text).strip()
     has_si  = bool(re.search(r"[\u0D80-\u0DFF]+", cleaned))
@@ -177,6 +212,126 @@ def process_comment(comment):
         except: pass
     return clean_comment(comment)
 
+# ══════════════════════════════════════════════════════════════════════════════
+#  VADER HYBRID ENSEMBLE (Model 1 Enhancement)
+# ══════════════════════════════════════════════════════════════════════════════
+
+def vader_to_scale(compound: float) -> float:
+    """
+    Convert VADER compound score (-1.0 to +1.0) to 1–10 rating scale.
+    Uses a linear mapping with a slight centre bias:
+      compound  1.0 → 10.0
+      compound  0.0 →  5.5  (neutral maps to slightly above midpoint)
+      compound -1.0 →  1.0
+    """
+    return round(float(np.clip(((compound + 1.0) / 2.0) * 9.0 + 1.0, 1.0, 10.0)), 1)
+
+
+def cultural_calibration(comment: str) -> float:
+    """
+    Calculate a cultural bias correction offset for Sri Lankan informal English.
+
+    LightGBM was trained predominantly on formal review corpora which
+    underrepresent casual Sri Lankan / Singlish expressions. This function
+    detects those signals and returns a small positive or negative offset
+    to compensate.
+
+    Returns:
+        float: offset in the range [-1.5, +2.0] to add to the blended score
+    """
+    lower   = comment.lower()
+    offset  = 0.0
+    reasons = []
+
+    # Positive informal signals
+    sl_pos_hits = sum(1 for phrase in SL_INFORMAL_POSITIVE if phrase in lower)
+    if sl_pos_hits > 0:
+        # Each informal positive signal adds 0.4, capped at +2.0
+        boost = min(sl_pos_hits * 0.4, 2.0)
+        offset += boost
+        reasons.append(f"sl_informal_positive_signals={sl_pos_hits} +{boost:.1f}")
+
+    # Negative informal signals
+    sl_neg_hits = sum(1 for phrase in SL_INFORMAL_NEGATIVE if phrase in lower)
+    if sl_neg_hits > 0:
+        penalty = min(sl_neg_hits * 0.5, 1.5)
+        offset -= penalty
+        reasons.append(f"sl_informal_negative_signals={sl_neg_hits} -{penalty:.1f}")
+
+    # Repeated words / enthusiasm (e.g. "very very nice", "so so good")
+    repeat_match = re.findall(r"\b(\w+)\s+\1\b", lower)
+    if repeat_match:
+        offset += 0.3
+        reasons.append("word_repetition_enthusiasm +0.3")
+
+    if reasons:
+        log.info(f"[Cultural calibration] {' | '.join(reasons)}")
+
+    return float(np.clip(offset, -1.5, 2.0))
+
+
+def hybrid_ensemble(
+    lgbm_score: float,
+    comment: str,
+    weight_lgbm_agree: float = 0.70,
+    weight_vader_agree: float = 0.30,
+    weight_lgbm_disagree: float = 0.50,
+    weight_vader_disagree: float = 0.50,
+    disagreement_threshold: float = 2.0,
+) -> dict:
+    """
+    Blend LightGBM prediction with VADER sentiment score.
+
+    Strategy:
+    - Run VADER independently on the original raw comment.
+    - Compare VADER score (on 1-10 scale) with LightGBM score.
+    - If gap < threshold → models agree → trust LightGBM more (70/30).
+    - If gap >= threshold → models disagree → likely informal language
+      that LightGBM underweights → use 50/50 blend.
+    - Apply Sri Lankan cultural calibration offset on top.
+
+    This preserves the LightGBM model's training while compensating
+    for its known pessimistic bias on informal local language.
+    """
+    # Independent VADER score
+    vader_scores  = vader_analyser.polarity_scores(comment)
+    vader_compound = vader_scores["compound"]
+    vader_score   = vader_to_scale(vader_compound)
+
+    gap     = abs(lgbm_score - vader_score)
+    agree   = gap < disagreement_threshold
+
+    if agree:
+        blended = lgbm_score * weight_lgbm_agree + vader_score * weight_vader_agree
+        blend_method = f"agreement (gap={gap:.1f}<{disagreement_threshold}) → 70% LightGBM / 30% VADER"
+    else:
+        blended = lgbm_score * weight_lgbm_disagree + vader_score * weight_vader_disagree
+        blend_method = f"disagreement (gap={gap:.1f}>={disagreement_threshold}) → 50% LightGBM / 50% VADER"
+
+    # Cultural calibration
+    cultural_offset = cultural_calibration(comment)
+    final = float(np.clip(blended + cultural_offset, 1.0, 10.0))
+
+    log.info(
+        f"[Hybrid Ensemble] LightGBM={lgbm_score:.1f} | "
+        f"VADER={vader_score:.1f} (compound={vader_compound:.3f}) | "
+        f"Gap={gap:.1f} | Blend={blended:.1f} | "
+        f"CulturalOffset={cultural_offset:+.1f} | Final={final:.1f}"
+    )
+
+    return {
+        "final":          round(final, 1),
+        "lgbm_score":     lgbm_score,
+        "vader_score":    vader_score,
+        "vader_compound": round(vader_compound, 3),
+        "gap":            round(gap, 2),
+        "models_agreed":  agree,
+        "blend_method":   blend_method,
+        "cultural_offset": round(cultural_offset, 2),
+    }
+
+
+# ── Feature extraction (unchanged) ────────────────────────────────────────────
 def extract_meta(comment_raw, hour=12, is_peak=0, is_weekend=0, is_night=0,
                  is_raining=0, driver_id=None, driver_history=None, specificity_score=None):
     raw   = str(comment_raw) if isinstance(comment_raw, str) else ""
@@ -301,24 +456,18 @@ def apply_sentiment_adjustment(comment, base_pred):
 
     adjusted = base_pred
 
-    # Neutral floor — non-negative comments don't score below 4.0
     if not has_negative and adjusted < 4.0:
         adjusted = 4.0
 
-    # Strong positive floor — "fantastic", "loved", "excellent" etc
-    # guarantee at least 7.0 regardless of base prediction
     if has_strong and not has_negative:
         adjusted = max(adjusted, 7.0)
 
-    # Additional boost per positive word
     if has_positive and not has_negative:
         boost    = min(pos_count * 0.8, 3.0)
         adjusted = min(adjusted + boost, 9.5)
 
-    # Mixed signal — has both positive and negative words
     if has_positive and has_negative:
         if pos_count > neg_count * 2:
-            # Mostly positive despite some negatives
             adjusted = min(adjusted + 0.8, 7.5)
         elif pos_count > neg_count:
             adjusted = min(adjusted + 0.5, 7.0)
@@ -328,7 +477,7 @@ def apply_sentiment_adjustment(comment, base_pred):
     return round(float(np.clip(adjusted, 1.0, 10.0)), 1)
 
 # ══════════════════════════════════════════════════════════════════════════════
-#  MODEL 3 — ALERT PRIORITY HELPERS
+#  MODEL 3 — ALERT PRIORITY HELPERS  (unchanged)
 # ══════════════════════════════════════════════════════════════════════════════
 CRITICAL_KW = ["unconscious","not breathing","cardiac","heart attack","seizure",
                "bleeding","collapsed","knife","gun","weapon","armed","shooting",
@@ -400,6 +549,7 @@ def build_alert_features(etype, comment):
 def health():
     return jsonify({"status": "ok", "models": ["rating", "eta", "alert-priority"]})
 
+# ── Model 1: Rating prediction (enhanced with hybrid ensemble) ─────────────────
 @app.route("/ml/rating", methods=["POST"])
 def predict_rating():
     try:
@@ -442,24 +592,30 @@ def predict_rating():
         meta_vec = csr_matrix(rating_scaler.transform(meta_row))
         combined = hstack([text_vec, meta_vec])
 
-        # ── Model prediction ──────────────────────────────────────────────────
+        # ── LightGBM prediction ───────────────────────────────────────────────
         raw_pred = rating_model.predict(combined.toarray())[0]
         if rating_calibrator:
             base_pred = float(np.clip(rating_calibrator.predict([raw_pred])[0], 1, 10))
         else:
             base_pred = float(np.clip(raw_pred, 1, 10))
 
-        # ── Sentiment adjustment (compensates for training data imbalance) ────
+        # ── Existing sentiment adjustment (training data bias correction) ─────
         base_pred = apply_sentiment_adjustment(comment, base_pred)
 
         # ── Context adjustment ────────────────────────────────────────────────
-        adjusted, reason, confidence = apply_context(
+        context_adjusted, reason, confidence = apply_context(
             comment, base_pred,
             is_raining=bool(is_raining),
             is_peak=bool(peak_v),
             is_weekend=bool(wkend_v),
             is_night=bool(night_v),
         )
+
+        # ── Hybrid ensemble: blend LightGBM with VADER + cultural calibration ─
+        # This is the new enhancement that corrects for pessimistic scoring
+        # on informal Sri Lankan English that LightGBM underweights.
+        ensemble = hybrid_ensemble(context_adjusted, comment)
+        final_score = ensemble["final"]
 
         ctx = []
         if peak_v:     ctx.append("PEAK")
@@ -468,17 +624,24 @@ def predict_rating():
         if is_raining: ctx.append("RAIN")
 
         return jsonify({
-            "rating":     adjusted,
-            "confidence": confidence,
-            "base_pred":  round(base_pred, 1),
-            "adjustment": reason,
-            "context":    "+".join(ctx) if ctx else "NORMAL",
-            "cleaned":    cleaned,
+            "rating":          final_score,
+            "confidence":      confidence,
+            "base_pred":       round(base_pred, 1),
+            "lgbm_score":      ensemble["lgbm_score"],
+            "vader_score":     ensemble["vader_score"],
+            "vader_compound":  ensemble["vader_compound"],
+            "models_agreed":   ensemble["models_agreed"],
+            "cultural_offset": ensemble["cultural_offset"],
+            "blend_method":    ensemble["blend_method"],
+            "adjustment":      reason,
+            "context":         "+".join(ctx) if ctx else "NORMAL",
+            "cleaned":         cleaned,
         })
     except Exception as e:
         log.exception("Rating prediction error")
         return jsonify({"error": str(e)}), 500
 
+# ── Model 2: ETA prediction (unchanged) ───────────────────────────────────────
 @app.route("/ml/eta", methods=["POST"])
 def predict_eta():
     try:
@@ -539,6 +702,7 @@ def predict_eta():
         log.exception("ETA prediction error")
         return jsonify({"error": str(e)}), 500
 
+# ── Model 3: Alert priority (unchanged) ───────────────────────────────────────
 @app.route("/ml/alert-priority", methods=["POST"])
 def predict_alert_priority():
     try:
@@ -548,7 +712,7 @@ def predict_alert_priority():
 
         X_struct, cleaned = build_alert_features(etype, comment)
 
-        # ── Stage 1: False alert detection ────────────────────────────────────
+        # Stage 1: False alert detection
         false_prob = None
         try:
             X_tfidf    = alert_tfidf.transform([cleaned])
@@ -570,7 +734,7 @@ def predict_alert_priority():
 
         is_false = (false_prob > 0.50)
 
-        # ── Stage 2: Priority scoring ─────────────────────────────────────────
+        # Stage 2: Priority scoring
         embedding = alert_sbert.encode([cleaned])
         X_prio    = np.hstack([X_struct.values, embedding])
 

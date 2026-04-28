@@ -15,3 +15,6 @@ router.patch('/:id/location', authenticate, validate(updateLocationSchema), cont
 router.patch('/:id/crowd',    authenticate, validate(updateCrowdSchema),    controller.updateCrowd);
 
 export default router;
+
+
+

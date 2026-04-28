@@ -118,3 +118,6 @@ export async function deleteNotification(notificationId, userId) {
   }
   if (error) throw error;
 }
+
+
+

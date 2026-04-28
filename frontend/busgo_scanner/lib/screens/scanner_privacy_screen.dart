@@ -173,3 +173,5 @@ class ScannerPrivacyScreen extends StatelessWidget {
     );
   }
 }
+
+

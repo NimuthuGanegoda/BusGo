@@ -57,3 +57,6 @@ class AppColors {
   static const Color starFilled    = Color(0xFFF39C12);
   static const Color starEmpty     = Color(0xFF333333);
 }
+
+
+

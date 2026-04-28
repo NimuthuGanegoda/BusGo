@@ -182,3 +182,5 @@ class ScanErrorScreen extends StatelessWidget {
     ];
   }
 }
+
+

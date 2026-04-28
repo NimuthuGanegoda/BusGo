@@ -87,3 +87,6 @@ export async function getStopRoutes(stopId) {
   if (error) throw error;
   return data.map((r) => ({ stop_order: r.stop_order, ...r.bus_routes }));
 }
+
+
+

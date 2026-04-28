@@ -118,3 +118,6 @@ class AppStyles {
     border: Border.all(color: AppColors.danger, width: 1.5),
   );
 }
+
+
+

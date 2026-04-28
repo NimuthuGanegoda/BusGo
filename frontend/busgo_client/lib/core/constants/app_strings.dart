@@ -118,3 +118,6 @@ class AppStrings {
   static const String promotionsDesc = 'Special offers & deals';
   static const String logout = '↩ Logout';
 }
+
+
+

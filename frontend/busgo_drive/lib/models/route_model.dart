@@ -47,3 +47,6 @@ class RouteStop {
     required this.sequence, this.isCompleted = false,
   });
 }
+
+
+

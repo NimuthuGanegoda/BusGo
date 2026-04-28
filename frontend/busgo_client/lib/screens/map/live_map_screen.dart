@@ -46,7 +46,7 @@ class _LiveMapScreenState extends State<LiveMapScreen>
       await _getUserLocation();
       await _loadBuses();
       context.read<BusProvider>().subscribeToLiveLocations();
-      _pollTimer = Timer.periodic(const Duration(seconds: 10), (_) {
+      _pollTimer = Timer.periodic(const Duration(seconds: 5), (_) {
         _loadBuses(silent: true);
       });
     });
@@ -604,3 +604,6 @@ class _LiveMapScreenState extends State<LiveMapScreen>
     }
   }
 }
+
+
+

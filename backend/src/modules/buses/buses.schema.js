@@ -17,3 +17,6 @@ export const updateLocationSchema = z.object({
 export const updateCrowdSchema = z.object({
   crowd_level: z.enum(['low', 'medium', 'high', 'full']),
 });
+
+
+

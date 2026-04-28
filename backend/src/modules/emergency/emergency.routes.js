@@ -12,3 +12,6 @@ router.post('/',              validate(createEmergencySchema),       controller.
 router.patch('/:id/status',   validate(updateEmergencyStatusSchema), controller.updateStatus);
 
 export default router;
+
+
+

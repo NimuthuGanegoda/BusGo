@@ -334,3 +334,5 @@ class _RadarPainter extends CustomPainter {
   @override
   bool shouldRepaint(_RadarPainter old) => old.sweepAngle != sweepAngle || old.pulseProgress != pulseProgress;
 }
+
+

@@ -406,3 +406,6 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
         borderSide: const BorderSide(color: Color(0xFF1A6FA8), width: 2)),
   );
 }
+
+
+

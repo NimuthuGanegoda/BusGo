@@ -168,3 +168,6 @@ export async function alightTrip(tripId, userId, dto) {
   if (error) throw error;
   return data;
 }
+
+
+

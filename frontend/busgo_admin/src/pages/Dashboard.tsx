@@ -242,7 +242,7 @@ export default function Dashboard() {
               style={{ height: '100%', width: '100%', borderRadius: '10px' }}
               zoomControl={false} scrollWheelZoom={false}>
               <TileLayer
-                url="https://api.maptiler.com/maps/streets-v2-dark/{z}/{x}/{y}.png?key=fsVEp87wcHaGchb3gygh"
+                url={`https://api.maptiler.com/maps/streets-v2-dark/{z}/{x}/{y}.png?key=${import.meta.env.VITE_MAPTILER_KEY ?? ''}`}
                 attribution='&copy; OpenStreetMap contributors'
               />
               {/* Only active buses on the map */}

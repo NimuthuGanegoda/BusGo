@@ -159,3 +159,6 @@ class TripModel {
     return '${d.inMinutes} min';
   }
 }
+
+
+

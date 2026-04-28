@@ -63,17 +63,20 @@ export async function createRating(userId, dto) {
     err.statusCode = 409; err.code = 'TRIP_NOT_COMPLETED'; throw err;
   }
 
+  // Use bus_id from trip record if client did not send it
+  const busId = dto.bus_id || trip.bus_id;
+
   // Get driver history for ML context
   const { data: driverStats } = await supabase
     .from('ratings')
     .select('ml_rating')
-    .eq('bus_id', dto.bus_id)
+    .eq('bus_id', busId)
     .not('ml_rating', 'is', null);
 
   let driver_history = null;
   if (driverStats?.length) {
     const avg = driverStats.reduce((s, r) => s + r.ml_rating, 0) / driverStats.length;
-    driver_history = { [dto.bus_id]: { avg_rating: avg, count: driverStats.length } };
+    driver_history = { [busId]: { avg_rating: avg, count: driverStats.length } };
   }
 
   // Call ML rating model if comment provided
@@ -82,7 +85,7 @@ export async function createRating(userId, dto) {
     mlResult = await predictRating({
       comment:        dto.comment,
       timestamp:      new Date().toISOString(),
-      driver_id:      dto.bus_id,
+      driver_id:      busId,
       driver_history,
     });
   }
@@ -93,7 +96,7 @@ export async function createRating(userId, dto) {
     .insert({
       trip_id:       dto.trip_id,
       user_id:       userId,
-      bus_id:        dto.bus_id,
+      bus_id:        busId,
       stars:         dto.stars ?? 3,
       tags:          dto.tags || [],
       comment:       dto.comment || null,
@@ -113,7 +116,7 @@ export async function createRating(userId, dto) {
   }
 
   // Update rating aggregates after new rating
-  await updateRatingAggregate(dto.bus_id).catch(e =>
+  await updateRatingAggregate(busId).catch(e =>
     console.warn('Aggregate update failed:', e.message));
 
   return { ...data, ml_prediction: mlResult };
@@ -142,14 +145,13 @@ export async function getBusRatingStats(busId) {
     bus_id:               busId,
     total_ratings:        total,
     average_stars:        avg_stars,
-    average_ml_rating:    weightedRating, // ← now time-weighted
+    average_ml_rating:    weightedRating,
     star_breakdown:       breakdown,
   };
 }
 
 // ── Get weighted rating for driver screen ──────────────────────────────────
 export async function getWeightedDriverRating(busId) {
-  // Active ratings (last 30 days) — full weight
   const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
 
   const { data: activeRatings } = await supabase
@@ -159,23 +161,18 @@ export async function getWeightedDriverRating(busId) {
     .gte('created_at', thirtyDaysAgo)
     .order('created_at', { ascending: false });
 
-  // Archived aggregates (older than 30 days)
   const { data: aggregates } = await supabase
     .from('rating_aggregates')
     .select('avg_ml_rating, comment_count, weighted_score, period_start, period_end')
     .eq('bus_id', busId)
     .order('period_end', { ascending: false });
 
-  // Calculate weighted score from active ratings
   const activeWeighted = calcWeightedRating(activeRatings ?? []);
 
-  // Blend active + archived aggregate scores
   let finalScore = activeWeighted;
   if (aggregates?.length && activeRatings?.length === 0) {
-    // Only archived data available
     finalScore = aggregates[0].weighted_score;
   } else if (aggregates?.length && activeWeighted != null) {
-    // Blend: active gets 80% weight, archives get 20%
     const archiveScore = aggregates[0].weighted_score;
     finalScore = Math.round((activeWeighted * 0.8 + archiveScore * 0.2) * 10) / 10;
   }
@@ -193,7 +190,6 @@ export async function archiveOldRatings(busId) {
   const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
   const ninetyDaysAgo = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString();
 
-  // Get ratings between 30-90 days old
   const { data: toArchive } = await supabase
     .from('ratings')
     .select('id, ml_rating, created_at')
@@ -204,11 +200,9 @@ export async function archiveOldRatings(busId) {
 
   if (!toArchive?.length) return { archived: 0 };
 
-  // Calculate weighted score for this period
   const weightedScore = calcWeightedRating(toArchive);
   const avgMl = toArchive.reduce((s, r) => s + r.ml_rating, 0) / toArchive.length;
 
-  // Store aggregate
   await supabase.from('rating_aggregates').insert({
     bus_id:        busId,
     period_start:  ninetyDaysAgo,
@@ -218,7 +212,6 @@ export async function archiveOldRatings(busId) {
     weighted_score: weightedScore,
   });
 
-  // Delete individual comments older than 90 days to save space
   await supabase
     .from('ratings')
     .delete()
@@ -243,7 +236,6 @@ async function updateRatingAggregate(busId) {
 
   const weighted = calcWeightedRating(recent);
 
-  // Upsert current month aggregate
   const now = new Date();
   const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
   const monthEnd   = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString();

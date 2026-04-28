@@ -73,3 +73,6 @@ class _StatChip extends StatelessWidget {
     Text(label, style: GoogleFonts.inter(fontSize: 12, color: AppColors.textSecondary)),
   ]);
 }
+
+
+

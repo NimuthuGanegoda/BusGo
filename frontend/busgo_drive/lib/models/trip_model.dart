@@ -55,3 +55,6 @@ class Trip {
     status: status ?? this.status,
   );
 }
+
+
+

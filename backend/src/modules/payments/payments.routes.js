@@ -18,3 +18,6 @@ router.get('/ticket/:id',           controller.getTicket);
 router.post('/verify-scan',         controller.verifyScan);
 
 export default router;
+
+
+

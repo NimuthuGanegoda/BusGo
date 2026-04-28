@@ -35,3 +35,6 @@ class EmergencyService {
     return EmergencyAlertModel.fromJson(data as Map<String, dynamic>);
   }
 }
+
+
+

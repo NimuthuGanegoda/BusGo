@@ -51,3 +51,6 @@ export const CONSTANTS = {
   AVATAR_MAX_SIZE_BYTES: 5 * 1024 * 1024, // 5 MB
   AVATAR_ALLOWED_MIME_TYPES: ['image/jpeg', 'image/png', 'image/webp'],
 };
+
+
+

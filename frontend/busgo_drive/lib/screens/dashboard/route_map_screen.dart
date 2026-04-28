@@ -8,6 +8,8 @@ import '../../core/constants/app_colors.dart';
 import '../../providers/trip_provider.dart';
 import '../../services/mock_data_service.dart';
 import 'main_shell.dart';
+import '../../core/config/api_config.dart';
+import '../../providers/route_provider.dart';
 
 class RouteMapScreen extends StatefulWidget {
   const RouteMapScreen({super.key});
@@ -61,9 +63,31 @@ class _RouteMapScreenState extends State<RouteMapScreen>
   @override
   Widget build(BuildContext context) =>
       Consumer<TripProvider>(builder: (context, trip, _) {
-        final route       = trip.currentRoute ?? MockDataService.routes.first;
+        final routeProvider = context.read<RouteProvider>();
+        final route = trip.currentRoute ?? routeProvider.assignedRoute;
+
+        if (route == null) {
+          // Route not loaded yet — trigger load and show spinner
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (routeProvider.assignedRoute == null && !routeProvider.isLoading) {
+              routeProvider.loadDriverAssignedRoute();
+            }
+          });
+          return const Scaffold(
+            backgroundColor: Color(0xFF040A14),
+            body: Center(child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                CircularProgressIndicator(color: Colors.cyan),
+                SizedBox(height: 16),
+                Text('Loading your route...',
+                    style: TextStyle(color: Colors.white54, fontSize: 13)),
+              ],
+            )),
+          );
+        }
         final busLocation = trip.currentLocation;
-        final nextStop    = trip.nextStop ?? route.stops.first;
+        final nextStop = trip.nextStop ?? (route.stops.isNotEmpty ? route.stops.first : null);
         final traveledPath = trip.traveledPath;
 
         // Build remaining route polyline ahead of bus
@@ -80,10 +104,10 @@ class _RouteMapScreenState extends State<RouteMapScreen>
           }
         }
 
-        final origin         = route.stops.first;
-        final distToOrigin   = _calcDistanceKm(busLocation, origin.location);
+        final origin = route.stops.isNotEmpty ? route.stops.first : null;
+        final distToOrigin   = origin != null ? _calcDistanceKm(busLocation, origin.location) : 0.0;
         final etaToOrigin    = (distToOrigin / 0.5).round();
-        final distToNext     = _calcDistanceKm(busLocation, nextStop.location);
+        final distToNext     = nextStop != null ? _calcDistanceKm(busLocation, nextStop.location) : 0.0;
         final etaToNext      = (distToNext / 0.5).round();
 
         return Scaffold(body: Stack(children: [
@@ -109,7 +133,7 @@ class _RouteMapScreenState extends State<RouteMapScreen>
             ),
             children: [
               TileLayer(
-                urlTemplate: 'https://api.maptiler.com/maps/streets-v2-dark/{z}/{x}/{y}.png?key=fsVEp87wcHaGchb3gygh',
+                urlTemplate: 'https://api.maptiler.com/maps/streets-v2-dark/{z}/{x}/{y}.png?key=${ApiConfig.mapTilerKey}',
                 userAgentPackageName: 'com.busgo.drive',
               ),
               // Remaining route ahead — faded blue
@@ -291,18 +315,19 @@ class _RouteMapScreenState extends State<RouteMapScreen>
                             fontWeight: FontWeight.w600,
                             color: AppColors.primaryLight)),
                     ])),
-                  _stopInfoRow(
-                    icon: Icons.flag_rounded, iconColor: AppColors.primaryLight,
-                    name: origin.name, etaMin: etaToOrigin,
-                    distKm: distToOrigin, label: 'ORIGIN'),
-                  if (nextStop.id != origin.id) ...[
+                  if (origin != null)
+                    _stopInfoRow(
+                      icon: Icons.flag_rounded, iconColor: AppColors.primaryLight,
+                      name: origin.name, etaMin: etaToOrigin,
+                      distKm: distToOrigin, label: 'ORIGIN'),
+                  if (nextStop?.id != origin?.id) ...[
                     Padding(padding: const EdgeInsets.symmetric(vertical: 8),
                         child: Divider(height: 1,
                             color: const Color(0xFFEEEEEE))),
                     _stopInfoRow(
                       icon: Icons.navigation_rounded,
                       iconColor: AppColors.success,
-                      name: nextStop.name, etaMin: etaToNext,
+                      name: nextStop?.name ?? '', etaMin: etaToNext,
                       distKm: distToNext, label: 'NEXT STOP'),
                   ],
                 ]),
@@ -355,3 +380,8 @@ class _RouteMapScreenState extends State<RouteMapScreen>
                   blurRadius: 8, offset: const Offset(0, 2))]),
           child: Icon(icon, size: 20, color: AppColors.primary)));
 }
+
+
+
+
+

@@ -84,3 +84,6 @@ class RatingModel {
         'date':           date,
       };
 }
+
+
+

@@ -10,7 +10,7 @@ class MockDataService {
     id: 'DRV-2841', employeeId: 'EMP-4521', name: 'Kamal Perera',
     email: 'kamal.perera@busgo.lk', phone: '+94 77 123 4567',
     licenseNumber: 'B-2847561', licenseExpiry: '2027-08-15',
-    rating: 4.2, tripsCompleted: 487, hoursLogged: 1248, status: 'active',
+    rating: 0.0, tripsCompleted: 0, hoursLogged: 1248, status: 'active',
     vehicleId: 'VH-2841', vehiclePlate: 'WP-KA-5523',
     vehicleModel: 'Ashok Leyland Viking',
   );
@@ -60,3 +60,6 @@ class MockDataService {
     ),
   ];
 }
+
+
+

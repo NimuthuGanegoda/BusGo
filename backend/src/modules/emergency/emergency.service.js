@@ -100,3 +100,6 @@ export async function updateAlertStatus(alertId, userId, status) {
   if (error) throw error;
   return data;
 }
+
+
+

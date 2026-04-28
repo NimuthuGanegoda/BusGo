@@ -15,3 +15,6 @@ router.patch('/:id/read', controller.markAsRead);
 router.delete('/:id',     controller.deleteNotification);
 
 export default router;
+
+
+

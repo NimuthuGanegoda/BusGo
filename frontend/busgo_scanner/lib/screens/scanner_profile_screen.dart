@@ -259,3 +259,5 @@ class _ScannerProfileScreenState extends State<ScannerProfileScreen> {
     ),
   );
 }
+
+

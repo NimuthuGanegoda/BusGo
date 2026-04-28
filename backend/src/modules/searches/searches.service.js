@@ -62,3 +62,6 @@ export async function clearRecentSearches(userId) {
   if (error) throw error;
   return { deleted_count: data?.length || 0 };
 }
+
+
+

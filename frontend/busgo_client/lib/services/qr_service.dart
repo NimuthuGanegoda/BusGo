@@ -20,3 +20,6 @@ class QrService {
     return data as Map<String, dynamic>;
   }
 }
+
+
+

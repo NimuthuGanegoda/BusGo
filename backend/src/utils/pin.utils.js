@@ -35,3 +35,6 @@ export async function hashPin(pin) {
 export async function verifyPin(pin, hash) {
   return bcrypt.compare(pin, hash);
 }
+
+
+

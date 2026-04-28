@@ -5,11 +5,8 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 import '../constants/app_colors.dart';
 import '../services/scanner_api_service.dart';
-import '../widgets/scanner_topbar.dart';
 import 'scan_success_screen.dart';
 import 'scan_error_screen.dart';
-
-enum ScanMode { boarding, alighting }
 
 class ActiveScannerScreen extends StatefulWidget {
   final ScannerApiService api;
@@ -23,32 +20,28 @@ class _ActiveScannerScreenState extends State<ActiveScannerScreen>
 
   final MobileScannerController _cameraCtrl = MobileScannerController();
 
-  ScanMode  _mode       = ScanMode.boarding;
   bool      _isScanning = false;
   int       _scanCount  = 0;
+
+  // Tracks last scan per token for auto boarding/alighting:
+  // token → 'boarding' or 'alighting'
+  final Map<String, String> _tokenScanHistory = {};
 
   Timer?    _debounceTimer;
   String?   _lastScannedValue;
   DateTime? _lastScanTime;
 
-  // Fingerprint-style scan line
   late AnimationController _scanLineCtrl;
   late Animation<double>   _scanLineAnim;
-
-  // Pulse glow on corners
   late AnimationController _pulseCtrl;
   late Animation<double>   _pulseAnim;
-
-  // Corner glow rotation
   late AnimationController _glowCtrl;
 
-  // Accent color for the scanner
   static const _cyan = Color(0xFF3FEFEF);
 
   @override
   void initState() {
     super.initState();
-    // Fingerprint-style scan line (sweeps up and down)
     _scanLineCtrl = AnimationController(
         vsync: this, duration: const Duration(milliseconds: 4000))
       ..repeat(reverse: true);
@@ -91,83 +84,123 @@ class _ActiveScannerScreenState extends State<ActiveScannerScreen>
     if (_lastScannedValue == scannedToken && _lastScanTime != null &&
         now.difference(_lastScanTime!).inSeconds < 2) return;
     _lastScannedValue = scannedToken;
-    _lastScanTime = now;
+    _lastScanTime     = now;
     _debounceTimer?.cancel();
     _debounceTimer = Timer(const Duration(milliseconds: 500), () async {
       await _processScan(scannedToken);
     });
   }
 
+  // ══════════════════════════════════════════════════════════════════════════
+  // AUTO BOARDING / ALIGHTING DETECTION
+  //
+  // How it works:
+  //   1. First scan of a token → Boarding  (POST /payments/verify-scan)
+  //   2. Same token scanned again → Alighting  (POST /qr/scan-exit)
+  //   3. After alighting, token is reset — next scan of same token = boarding
+  //
+  // This means the driver NEVER needs to manually switch modes.
+  // The scanner automatically knows whether the passenger is boarding or
+  // alighting based on their scan history in this session.
+  // ══════════════════════════════════════════════════════════════════════════
   Future<void> _processScan(String scannedToken) async {
     if (_isScanning) return;
+
+    // Accept either plain UUID or JSON QR payload (FR-34 destination encoding)
     final uuidPattern = RegExp(
         r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$',
         caseSensitive: false);
-    if (!uuidPattern.hasMatch(scannedToken)) {
-      await _navigateError('Invalid QR code format.\nPlease ask the passenger to show their BUSGO card.');
+    final isJsonPayload = scannedToken.trim().startsWith('{');
+    if (!uuidPattern.hasMatch(scannedToken) && !isJsonPayload) {
+      await _navigateError(
+          'Invalid QR code format.\nPlease ask the passenger to show their BUSGO card.');
       return;
     }
+
     setState(() => _isScanning = true);
     await _cameraCtrl.stop();
+
+    // Determine if this is boarding or alighting
+    final previousScan = _tokenScanHistory[scannedToken];
+    final isExit       = previousScan == 'boarding';
+
     try {
       final ScanResult result;
-      if (_mode == ScanMode.boarding) {
-        result = await widget.api.scanIn(scannedToken);
-      } else {
+      if (isExit) {
         result = await widget.api.scanExit(scannedToken);
+        // After alighting, reset so next scan of same token = boarding
+        _tokenScanHistory.remove(scannedToken);
+      } else {
+        result = await widget.api.scanIn(scannedToken);
+        // Mark as boarded so next scan = alighting
+        _tokenScanHistory[scannedToken] = 'boarding';
       }
+
       setState(() { _scanCount++; });
       if (!mounted) return;
+
       await Navigator.push<bool>(context,
-        MaterialPageRoute(builder: (_) => ScanSuccessScreen(result: result)));
+          MaterialPageRoute(builder: (_) => ScanSuccessScreen(result: result)));
+
       if (mounted) {
         setState(() { _isScanning = false; _lastScannedValue = null; });
         await _restartCamera();
       }
     } catch (e) {
-      final msg = e.toString().replaceFirst('Exception: ', '').replaceFirst('DioException: ', '');
+      final msg = e.toString()
+          .replaceFirst('Exception: ', '')
+          .replaceFirst('DioException: ', '');
+
+      // 409 = passenger already on board → auto-switch to alighting
       final is409 = msg.contains('409') || msg.contains('TRIP_ALREADY_ONGOING');
-      final is410 = msg.contains('410') || msg.contains('QR_EXPIRED');
       if (is409) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-            content: const Row(children: [
-              Icon(Icons.info_rounded, color: Colors.white, size: 18),
-              SizedBox(width: 10),
-              Expanded(child: Text('Passenger already on board.\nSwitch to Alighting mode.',
-                style: TextStyle(color: Colors.white, fontSize: 13, height: 1.4))),
-            ]),
-            backgroundColor: const Color(0xFFD97706),
-            behavior: SnackBarBehavior.floating,
-            margin: const EdgeInsets.fromLTRB(16, 0, 16, 24),
-            duration: const Duration(seconds: 4),
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-          ));
-          setState(() { _isScanning = false; _lastScannedValue = null; });
-          await _restartCamera();
+        // Automatically try exit scan
+        try {
+          final result = await widget.api.scanExit(scannedToken);
+          _tokenScanHistory.remove(scannedToken);
+          setState(() { _scanCount++; });
+          if (!mounted) return;
+          await Navigator.push<bool>(context,
+              MaterialPageRoute(
+                  builder: (_) => ScanSuccessScreen(result: result)));
+          if (mounted) {
+            setState(() { _isScanning = false; _lastScannedValue = null; });
+            await _restartCamera();
+          }
+        } catch (exitErr) {
+          await _navigateError(
+              'Passenger already on board but exit scan also failed.\n'
+              'Please check the system.');
         }
         return;
       }
+
+      // 410 = QR expired
+      final is410 = msg.contains('410') || msg.contains('QR_EXPIRED');
       if (is410) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(SnackBar(
             content: const Row(children: [
               Icon(Icons.refresh_rounded, color: Colors.white, size: 18),
               SizedBox(width: 10),
-              Expanded(child: Text('QR expired.\nAsk passenger to refresh their QR card.',
-                style: TextStyle(color: Colors.white, fontSize: 13, height: 1.4))),
+              Expanded(child: Text(
+                  'QR expired.\nAsk passenger to refresh their QR card.',
+                  style: TextStyle(
+                      color: Colors.white, fontSize: 13, height: 1.4))),
             ]),
             backgroundColor: const Color(0xFF1A6FA8),
-            behavior: SnackBarBehavior.floating,
-            margin: const EdgeInsets.fromLTRB(16, 0, 16, 24),
-            duration: const Duration(seconds: 4),
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            behavior:        SnackBarBehavior.floating,
+            margin:          const EdgeInsets.fromLTRB(16, 0, 16, 24),
+            duration:        const Duration(seconds: 4),
+            shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(10)),
           ));
           setState(() { _isScanning = false; _lastScannedValue = null; });
           await _restartCamera();
         }
         return;
       }
+
       await _navigateError(msg);
     }
   }
@@ -176,7 +209,7 @@ class _ActiveScannerScreenState extends State<ActiveScannerScreen>
     if (!mounted) return;
     try { await _cameraCtrl.stop(); } catch (_) {}
     await Navigator.push<bool>(context,
-      MaterialPageRoute(builder: (_) => ScanErrorScreen(errorMessage: message)));
+        MaterialPageRoute(builder: (_) => ScanErrorScreen(errorMessage: message)));
     if (!mounted) return;
     setState(() { _isScanning = false; _lastScannedValue = null; });
     await _restartCamera();
@@ -189,7 +222,6 @@ class _ActiveScannerScreenState extends State<ActiveScannerScreen>
       body: SafeArea(
         child: Column(children: [
           _buildTopBar(),
-          _buildModeToggle(),
           Expanded(child: _buildViewfinder()),
           _buildBottomPanel(),
         ]),
@@ -197,9 +229,9 @@ class _ActiveScannerScreenState extends State<ActiveScannerScreen>
     );
   }
 
-  // ═══════════════════════════════════════════════════════════════════════
-  // TOP BAR
-  // ═══════════════════════════════════════════════════════════════════════
+  // ═══════════════════════════════════════════════════════════════════════════
+  // TOP BAR — no mode toggle needed anymore
+  // ═══════════════════════════════════════════════════════════════════════════
   Widget _buildTopBar() {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
@@ -215,15 +247,19 @@ class _ActiveScannerScreenState extends State<ActiveScannerScreen>
             decoration: BoxDecoration(
               color: Colors.white.withOpacity(0.08),
               borderRadius: BorderRadius.circular(10)),
-            child: const Icon(Icons.arrow_back_ios_new, size: 16, color: Colors.white70),
+            child: const Icon(Icons.arrow_back_ios_new,
+                size: 16, color: Colors.white70),
           ),
         ),
         const SizedBox(width: 14),
-        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Expanded(child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
           Text('BUSGO Scanner', style: GoogleFonts.inter(
               fontSize: 16, fontWeight: FontWeight.w700, color: Colors.white)),
-          Text('${_mode == ScanMode.boarding ? "Board" : "Alight"} Mode',
-              style: GoogleFonts.inter(fontSize: 12, color: _cyan.withOpacity(0.7))),
+          Text('Auto-detects boarding & alighting',
+              style: GoogleFonts.inter(
+                  fontSize: 12, color: _cyan.withOpacity(0.7))),
         ])),
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
@@ -243,63 +279,18 @@ class _ActiveScannerScreenState extends State<ActiveScannerScreen>
     );
   }
 
-  // ═══════════════════════════════════════════════════════════════════════
-  // MODE TOGGLE
-  // ═══════════════════════════════════════════════════════════════════════
-  Widget _buildModeToggle() {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-      color: const Color(0xFF0A1628).withOpacity(0.9),
-      child: Row(children: [
-        Expanded(child: _modeBtn('Boarding', ScanMode.boarding, const Color(0xFF2ECC71))),
-        const SizedBox(width: 10),
-        Expanded(child: _modeBtn('Alighting', ScanMode.alighting, const Color(0xFFE74C3C))),
-      ]),
-    );
-  }
-
-  Widget _modeBtn(String label, ScanMode mode, Color dotColor) {
-    final active = _mode == mode;
-    return GestureDetector(
-      onTap: () { if (!_isScanning) setState(() => _mode = mode); },
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 300),
-        padding: const EdgeInsets.symmetric(vertical: 12),
-        decoration: BoxDecoration(
-          color: active ? _cyan.withOpacity(0.12) : Colors.white.withOpacity(0.04),
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: active ? _cyan.withOpacity(0.4) : Colors.white.withOpacity(0.08)),
-        ),
-        child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-          Container(width: 8, height: 8, decoration: BoxDecoration(
-            color: dotColor, shape: BoxShape.circle,
-            boxShadow: active ? [BoxShadow(color: dotColor.withOpacity(0.6), blurRadius: 6)] : [],
-          )),
-          const SizedBox(width: 8),
-          Text(label, style: GoogleFonts.inter(
-              fontSize: 14, fontWeight: FontWeight.w700,
-              color: active ? Colors.white : Colors.white38)),
-        ]),
-      ),
-    );
-  }
-
-  // ═══════════════════════════════════════════════════════════════════════
-  // VIEWFINDER with fingerprint-style scan line
-  // ═══════════════════════════════════════════════════════════════════════
+  // ═══════════════════════════════════════════════════════════════════════════
+  // VIEWFINDER
+  // ═══════════════════════════════════════════════════════════════════════════
   Widget _buildViewfinder() {
     return Stack(fit: StackFit.expand, children: [
-      // Camera
       MobileScanner(controller: _cameraCtrl, onDetect: _onDetect),
-
-      // Dark overlay with cutout + scan line
       LayoutBuilder(builder: (ctx, constraints) {
         const boxSize = 260.0;
         final left = (constraints.maxWidth - boxSize) / 2;
-        final top = (constraints.maxHeight - boxSize) / 2;
+        final top  = (constraints.maxHeight - boxSize) / 2;
 
         return Stack(children: [
-          // Dark overlay areas
           Positioned(top: 0, left: 0, right: 0, height: top,
               child: Container(color: const Color(0xDD040A14))),
           Positioned(bottom: 0, left: 0, right: 0,
@@ -310,21 +301,21 @@ class _ActiveScannerScreenState extends State<ActiveScannerScreen>
           Positioned(top: top, right: 0, width: left, height: boxSize,
               child: Container(color: const Color(0xDD040A14))),
 
-          // Glowing corners
           AnimatedBuilder(
             animation: _pulseAnim,
             builder: (_, __) {
               final glow = _pulseAnim.value;
               return Stack(children: [
-                Positioned(top: top, left: left, child: _glowCorner(0, glow)),
-                Positioned(top: top, right: left, child: _glowCorner(1, glow)),
-                Positioned(bottom: constraints.maxHeight - top - boxSize, left: left, child: _glowCorner(2, glow)),
-                Positioned(bottom: constraints.maxHeight - top - boxSize, right: left, child: _glowCorner(3, glow)),
+                Positioned(top: top,  left:  left,  child: _glowCorner(0, glow)),
+                Positioned(top: top,  right: left,  child: _glowCorner(1, glow)),
+                Positioned(bottom: constraints.maxHeight - top - boxSize,
+                    left: left,  child: _glowCorner(2, glow)),
+                Positioned(bottom: constraints.maxHeight - top - boxSize,
+                    right: left, child: _glowCorner(3, glow)),
               ]);
             },
           ),
 
-          // Fingerprint-style scan line (cyan glow sweeping up and down)
           Positioned(
             top: top, left: left, width: boxSize, height: boxSize,
             child: AnimatedBuilder(
@@ -333,15 +324,12 @@ class _ActiveScannerScreenState extends State<ActiveScannerScreen>
                 final lineY = _scanLineAnim.value * boxSize;
                 return ClipRect(
                   child: Stack(children: [
-                    // Reveal overlay (like fingerprint being revealed)
-                    Positioned(
-                      top: 0, left: 0, right: 0,
-                      height: lineY,
+                    Positioned(top: 0, left: 0, right: 0, height: lineY,
                       child: Container(
                         decoration: BoxDecoration(
                           gradient: LinearGradient(
                             begin: Alignment.topCenter,
-                            end: Alignment.bottomCenter,
+                            end:   Alignment.bottomCenter,
                             colors: [
                               _cyan.withOpacity(0.02),
                               _cyan.withOpacity(0.06),
@@ -350,9 +338,7 @@ class _ActiveScannerScreenState extends State<ActiveScannerScreen>
                         ),
                       ),
                     ),
-                    // Scan line with glow
-                    Positioned(
-                      top: lineY - 4, left: 0, right: 0,
+                    Positioned(top: lineY - 4, left: 0, right: 0,
                       child: Container(
                         height: 8,
                         decoration: BoxDecoration(
@@ -365,8 +351,10 @@ class _ActiveScannerScreenState extends State<ActiveScannerScreen>
                             Colors.transparent,
                           ]),
                           boxShadow: [
-                            BoxShadow(color: _cyan.withOpacity(0.5), blurRadius: 20, spreadRadius: 4),
-                            BoxShadow(color: _cyan.withOpacity(0.3), blurRadius: 40, spreadRadius: 8),
+                            BoxShadow(color: _cyan.withOpacity(0.5),
+                                blurRadius: 20, spreadRadius: 4),
+                            BoxShadow(color: _cyan.withOpacity(0.3),
+                                blurRadius: 40, spreadRadius: 8),
                           ],
                         ),
                       ),
@@ -377,45 +365,31 @@ class _ActiveScannerScreenState extends State<ActiveScannerScreen>
             ),
           ),
 
-          // Subtle grid lines inside the box
-          Positioned(
-            top: top, left: left, width: boxSize, height: boxSize,
-            child: CustomPaint(painter: _GridPainter()),
-          ),
+          Positioned(top: top, left: left, width: boxSize, height: boxSize,
+              child: CustomPaint(painter: _GridPainter())),
+
+          // Info badge — shows auto-detect hint
+          Positioned(bottom: 20, left: 0, right: 0,
+            child: Center(child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 8),
+              decoration: BoxDecoration(
+                color: const Color(0xFF0A1628).withOpacity(0.9),
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(color: _cyan.withOpacity(0.3)),
+              ),
+              child: Row(mainAxisSize: MainAxisSize.min, children: [
+                Icon(Icons.auto_awesome, size: 14, color: _cyan),
+                const SizedBox(width: 8),
+                Text('Auto: 1st scan boards · 2nd scan alights',
+                    style: GoogleFonts.inter(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.white70,
+                        letterSpacing: 0.3)),
+              ]),
+            ))),
         ]);
       }),
-
-      // Mode badge
-      Positioned(bottom: 20, left: 0, right: 0,
-        child: Center(child: AnimatedContainer(
-          duration: const Duration(milliseconds: 300),
-          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 8),
-          decoration: BoxDecoration(
-            color: _mode == ScanMode.boarding
-                ? const Color(0xFF166534).withOpacity(0.9)
-                : const Color(0xFF991B1B).withOpacity(0.9),
-            borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: _mode == ScanMode.boarding
-                ? const Color(0xFF2ECC71).withOpacity(0.4)
-                : const Color(0xFFE74C3C).withOpacity(0.4)),
-            boxShadow: [BoxShadow(
-              color: (_mode == ScanMode.boarding
-                  ? const Color(0xFF2ECC71)
-                  : const Color(0xFFE74C3C)).withOpacity(0.3),
-              blurRadius: 12,
-            )],
-          ),
-          child: Row(mainAxisSize: MainAxisSize.min, children: [
-            Container(width: 8, height: 8, decoration: BoxDecoration(
-              color: _mode == ScanMode.boarding ? const Color(0xFF2ECC71) : const Color(0xFFE74C3C),
-              shape: BoxShape.circle,
-            )),
-            const SizedBox(width: 8),
-            Text(_mode == ScanMode.boarding ? 'BOARDING MODE' : 'ALIGHTING MODE',
-                style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w700,
-                    color: Colors.white, letterSpacing: 1)),
-          ]),
-        ))),
     ]);
   }
 
@@ -426,9 +400,9 @@ class _ActiveScannerScreenState extends State<ActiveScannerScreen>
             pos: pos, glow: glow, color: _cyan)));
   }
 
-  // ═══════════════════════════════════════════════════════════════════════
+  // ═══════════════════════════════════════════════════════════════════════════
   // BOTTOM PANEL
-  // ═══════════════════════════════════════════════════════════════════════
+  // ═══════════════════════════════════════════════════════════════════════════
   Widget _buildBottomPanel() {
     return Container(
       padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
@@ -437,10 +411,14 @@ class _ActiveScannerScreenState extends State<ActiveScannerScreen>
         border: Border(top: BorderSide(color: _cyan.withOpacity(0.1))),
       ),
       child: Row(children: [
-        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Expanded(child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
           Text(_isScanning ? 'Processing...' : 'Ready to scan',
-              style: GoogleFonts.inter(fontSize: 15,
-                  fontWeight: FontWeight.w700, color: Colors.white)),
+              style: GoogleFonts.inter(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w700,
+                  color: Colors.white)),
           Text('Point camera at passenger\'s QR card',
               style: GoogleFonts.inter(fontSize: 13, color: Colors.white38)),
         ])),
@@ -449,13 +427,16 @@ class _ActiveScannerScreenState extends State<ActiveScannerScreen>
           builder: (_, __) => Container(
             width: 48, height: 48,
             decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: _cyan.withOpacity(_pulseAnim.value * 0.15),
-              border: Border.all(color: _cyan.withOpacity(0.3)),
-              boxShadow: [BoxShadow(color: _cyan.withOpacity(0.2), blurRadius: 12)],
+              shape:    BoxShape.circle,
+              color:    _cyan.withOpacity(_pulseAnim.value * 0.15),
+              border:   Border.all(color: _cyan.withOpacity(0.3)),
+              boxShadow: [BoxShadow(
+                  color: _cyan.withOpacity(0.2), blurRadius: 12)],
             ),
             child: Icon(
-              _isScanning ? Icons.hourglass_top_rounded : Icons.qr_code_scanner,
+              _isScanning
+                  ? Icons.hourglass_top_rounded
+                  : Icons.qr_code_scanner,
               color: _cyan, size: 24),
           ),
         ),
@@ -464,43 +445,35 @@ class _ActiveScannerScreenState extends State<ActiveScannerScreen>
   }
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
-// GLOW CORNER PAINTER — corners with neon glow effect
-// ═══════════════════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════════════════════
 class _GlowCornerPainter extends CustomPainter {
-  final int pos;
+  final int    pos;
   final double glow;
-  final Color color;
-  const _GlowCornerPainter({required this.pos, required this.glow, required this.color});
+  final Color  color;
+  const _GlowCornerPainter(
+      {required this.pos, required this.glow, required this.color});
 
   @override
   void paint(Canvas canvas, Size size) {
-    final top = pos < 2;
+    final top    = pos < 2;
     final isLeft = pos == 0 || pos == 2;
-
-    final paint = Paint()
-      ..color = color.withOpacity(0.5 + glow * 0.5)
+    final paint  = Paint()
+      ..color       = color.withOpacity(0.5 + glow * 0.5)
       ..strokeWidth = 3
-      ..style = PaintingStyle.stroke
-      ..strokeCap = StrokeCap.round;
-
-    // Glow
+      ..style       = PaintingStyle.stroke
+      ..strokeCap   = StrokeCap.round;
     final glowPaint = Paint()
-      ..color = color.withOpacity(glow * 0.3)
+      ..color       = color.withOpacity(glow * 0.3)
       ..strokeWidth = 6
-      ..style = PaintingStyle.stroke
-      ..strokeCap = StrokeCap.round
-      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 4);
-
+      ..style       = PaintingStyle.stroke
+      ..strokeCap   = StrokeCap.round
+      ..maskFilter  = const MaskFilter.blur(BlurStyle.normal, 4);
     final l = isLeft ? 0.0 : size.width;
-    final t = top ? 0.0 : size.height;
-    final r = isLeft ? size.width * 0.6 : size.width * 0.4;
-    final b = top ? size.height * 0.6 : size.height * 0.4;
-
-    // Draw glow first
+    final t = top   ? 0.0 : size.height;
+    final r = isLeft ? size.width  * 0.6 : size.width  * 0.4;
+    final b = top   ? size.height * 0.6 : size.height * 0.4;
     canvas.drawLine(Offset(l, t), Offset(r, t), glowPaint);
     canvas.drawLine(Offset(l, t), Offset(l, b), glowPaint);
-    // Then sharp line
     canvas.drawLine(Offset(l, t), Offset(r, t), paint);
     canvas.drawLine(Offset(l, t), Offset(l, b), paint);
   }
@@ -509,17 +482,14 @@ class _GlowCornerPainter extends CustomPainter {
   bool shouldRepaint(_GlowCornerPainter old) => old.glow != glow;
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
-// GRID PAINTER — subtle grid inside scan area
-// ═══════════════════════════════════════════════════════════════════════════
 class _GridPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final paint = Paint()
-      ..color = const Color(0xFF3FEFEF).withOpacity(0.04)
+      ..color       = const Color(0xFF3FEFEF).withOpacity(0.04)
       ..strokeWidth = 0.5;
     const spacing = 26.0;
-    for (double x = spacing; x < size.width; x += spacing) {
+    for (double x = spacing; x < size.width;  x += spacing) {
       canvas.drawLine(Offset(x, 0), Offset(x, size.height), paint);
     }
     for (double y = spacing; y < size.height; y += spacing) {
@@ -530,3 +500,5 @@ class _GridPainter extends CustomPainter {
   @override
   bool shouldRepaint(_GridPainter old) => false;
 }
+
+

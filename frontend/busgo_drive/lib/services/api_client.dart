@@ -4,7 +4,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:pretty_dio_logger/pretty_dio_logger.dart';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
-const String _kBaseUrlDev  = 'http://192.168.1.2:5000/api';
+const String _kBaseUrlDev  = 'http://192.168.1.3:5000/api';
 const String _kBaseUrlProd = 'https://your-api-domain.com/api';
 const String _kBaseUrl = kDebugMode ? _kBaseUrlDev : _kBaseUrlProd;
 
@@ -160,3 +160,6 @@ class DriveApiClient {
     return _unwrap(r);
   }
 }
+
+
+

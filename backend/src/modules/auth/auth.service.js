@@ -12,12 +12,11 @@ import {
   verifyResetToken,
 } from '../../utils/jwt.utils.js';
 import { logger } from '../../utils/logger.js';
-import { sendPasswordResetPin } from '../../utils/email.utils.js';
+import { sendPasswordResetPin, sendEmailVerificationPin } from '../../utils/email.utils.js';
 import { logSecurityEvent, SECURITY_EVENTS } from '../../services/security-audit.service.js';
 
-// ── Security constants ─────────────────────────────────────────────────
-const MAX_FAILED_ATTEMPTS = 5;      // Lock after 5 failed attempts
-const LOCKOUT_DURATION_MS = 15 * 60 * 1000; // 15 minutes
+const MAX_FAILED_ATTEMPTS  = 5;
+const LOCKOUT_DURATION_MS  = 15 * 60 * 1000;
 
 function hashToken(token) {
   return crypto.createHash('sha256').update(token).digest('hex');
@@ -25,47 +24,40 @@ function hashToken(token) {
 
 /**
  * Register a new user.
+ * Instead of issuing tokens immediately, we send a 6-digit PIN
+ * to the provided email. The user must verify the PIN before
+ * they are fully logged in.
  */
 export async function registerUser(dto, req = null) {
   const email = dto.email.toLowerCase().trim();
 
   // Check email uniqueness
   const { data: existing } = await supabase
-    .from('users')
-    .select('id')
-    .eq('email', email)
-    .maybeSingle();
-
+    .from('users').select('id').eq('email', email).maybeSingle();
   if (existing) {
     const err = new Error('Email already registered');
-    err.statusCode = 409;
-    err.code = 'EMAIL_TAKEN';
-    throw err;
+    err.statusCode = 409; err.code = 'EMAIL_TAKEN'; throw err;
   }
 
-  // Check username uniqueness if provided
+  // Check username uniqueness
   if (dto.username) {
     const { data: existingUsername } = await supabase
-      .from('users')
-      .select('id')
-      .eq('username', dto.username)
-      .maybeSingle();
-
+      .from('users').select('id').eq('username', dto.username).maybeSingle();
     if (existingUsername) {
       const err = new Error('Username already taken');
-      err.statusCode = 409;
-      err.code = 'USERNAME_TAKEN';
-      throw err;
+      err.statusCode = 409; err.code = 'USERNAME_TAKEN'; throw err;
     }
   }
 
-  // ── Password strength check ─────────────────────────────────────────
   validatePasswordStrength(dto.password);
-
   const password_hash = await hashPassword(dto.password);
+  const role          = dto.role === 'driver' ? 'driver' : 'passenger';
+  const is_active     = role === 'driver' ? false : true;
 
-  const role      = dto.role === 'driver' ? 'driver' : 'passenger';
-  const is_active = role === 'driver' ? false : true;
+  // ── Generate verification PIN ─────────────────────────────────────────────
+  const pin       = generatePin();
+  const pinHash   = await hashPin(pin);
+  const expiresAt = new Date(Date.now() + CONSTANTS.RESET_PIN_EXPIRES_MS).toISOString();
 
   const { data: user, error } = await supabase
     .from('users')
@@ -73,12 +65,15 @@ export async function registerUser(dto, req = null) {
       email,
       password_hash,
       full_name:       dto.full_name,
-      username:        dto.username        || null,
-      phone:           dto.phone           || null,
-      date_of_birth:   dto.date_of_birth   || null,
+      username:        dto.username      || null,
+      phone:           dto.phone         || null,
+      date_of_birth:   dto.date_of_birth || null,
       membership_type: dto.membership_type || 'standard',
       role,
       is_active,
+      // Store verification PIN in the same columns used for password reset
+      reset_pin:            pinHash,
+      reset_pin_expires_at: expiresAt,
     })
     .select('id, email, full_name, username, phone, avatar_url, membership_type, role, is_active, qr_token, created_at')
     .single();
@@ -88,178 +83,230 @@ export async function registerUser(dto, req = null) {
   // Create default notification preferences
   await supabase.from('notification_preferences').insert({ user_id: user.id });
 
-  // ── Audit log: registration ─────────────────────────────────────────
   await logSecurityEvent({
     eventType: SECURITY_EVENTS.REGISTRATION,
-    userId: user.id,
+    userId:    user.id,
     email,
     req,
-    details: { role, is_active },
-    severity: 'info',
+    details:   { role, is_active },
+    severity:  'info',
   });
 
+  // ── Send verification PIN email ───────────────────────────────────────────
+  try {
+    await sendEmailVerificationPin(email, pin, user.full_name);
+    logger.info(`Email verification PIN sent to ${email}`);
+  } catch (emailErr) {
+    // Log to console as fallback so you can still test locally
+    logger.error(`Failed to send verification email to ${email}: ${emailErr.message}`);
+    console.log(`\n==============================`);
+    console.log(`  BusGo Email Verification PIN`);
+    console.log(`  Email : ${email}`);
+    console.log(`  PIN   : ${pin}`);
+    console.log(`==============================\n`);
+  }
+
   if (role === 'driver') {
-    logger.info(`New driver registration pending approval: ${email}`);
     return {
-      user,
-      pending_approval: true,
-      message: 'Registration submitted. Please wait for admin approval before logging in.',
+      pending_verification: true,
+      pending_approval:     true,
+      email,
+      message: 'Registration submitted. Please verify your email, then wait for admin approval.',
     };
   }
 
+  // ── Return pending state — tokens issued only after PIN verified ──────────
+  return {
+    pending_verification: true,
+    email,
+    message: 'Registration successful. Please check your email for a 6-digit verification PIN.',
+  };
+}
+
+/**
+ * Verify the email PIN entered after registration.
+ * On success, issues tokens so the user is immediately logged in.
+ */
+export async function verifyEmailPin(email, pin) {
+  const { data: user, error } = await supabase
+    .from('users')
+    .select('id, email, full_name, username, phone, avatar_url, membership_type, role, is_active, reset_pin, reset_pin_expires_at, qr_token, created_at')
+    .eq('email', email.toLowerCase().trim())
+    .maybeSingle();
+
+  if (error || !user) {
+    const err = new Error('Invalid or expired PIN');
+    err.statusCode = 400; err.code = 'INVALID_PIN'; throw err;
+  }
+
+  if (!user.reset_pin) {
+    const err = new Error('No verification PIN found. Please register again or request a new PIN.');
+    err.statusCode = 400; err.code = 'INVALID_PIN'; throw err;
+  }
+
+  if (new Date(user.reset_pin_expires_at) < new Date()) {
+    const err = new Error('PIN has expired. Please request a new one.');
+    err.statusCode = 400; err.code = 'PIN_EXPIRED'; throw err;
+  }
+
+  const valid = await verifyPin(pin, user.reset_pin);
+  if (!valid) {
+    const err = new Error('Incorrect PIN. Please try again.');
+    err.statusCode = 400; err.code = 'INVALID_PIN'; throw err;
+  }
+
+  // ── Clear the PIN and issue tokens ────────────────────────────────────────
+  await supabase
+    .from('users')
+    .update({ reset_pin: null, reset_pin_expires_at: null })
+    .eq('id', user.id);
+
   const { access_token, refresh_token } = await issueTokenPair(user.id, user.email);
-  return { user, access_token, refresh_token };
+
+  const { reset_pin: _, reset_pin_expires_at: __, ...safeUser } = user;
+  return { user: safeUser, access_token, refresh_token };
+}
+
+/**
+ * Resend a fresh verification PIN to the email.
+ */
+export async function resendVerificationPin(email) {
+  const { data: user } = await supabase
+    .from('users')
+    .select('id, full_name, reset_pin')
+    .eq('email', email.toLowerCase().trim())
+    .maybeSingle();
+
+  // Silent if not found — don't reveal if email exists
+  if (!user) return;
+
+  const pin       = generatePin();
+  const pinHash   = await hashPin(pin);
+  const expiresAt = new Date(Date.now() + CONSTANTS.RESET_PIN_EXPIRES_MS).toISOString();
+
+  await supabase
+    .from('users')
+    .update({ reset_pin: pinHash, reset_pin_expires_at: expiresAt })
+    .eq('id', user.id);
+
+  try {
+    await sendEmailVerificationPin(email.toLowerCase().trim(), pin, user.full_name);
+  } catch (emailErr) {
+    logger.error(`Failed to resend verification PIN: ${emailErr.message}`);
+    console.log(`\n==============================`);
+    console.log(`  BusGo Verification PIN (resend)`);
+    console.log(`  Email : ${email}`);
+    console.log(`  PIN   : ${pin}`);
+    console.log(`==============================\n`);
+  }
 }
 
 /**
  * Authenticate a user with email & password.
- * Includes account lockout after MAX_FAILED_ATTEMPTS.
  */
 export async function loginUser(dto, req = null) {
   const email = dto.email.toLowerCase().trim();
 
   const { data: user, error } = await supabase
     .from('users')
-    .select('id, email, password_hash, full_name, username, phone, avatar_url, membership_type, role, is_active, failed_login_attempts, locked_until')
+    .select('id, email, password_hash, full_name, username, phone, avatar_url, membership_type, role, is_active, failed_login_attempts, locked_until, reset_pin')
     .eq('email', email)
     .maybeSingle();
 
-  // ── User not found ──────────────────────────────────────────────────
   if (error || !user) {
     await logSecurityEvent({
       eventType: SECURITY_EVENTS.LOGIN_FAILED,
-      email,
-      req,
+      email, req,
       details: { reason: 'USER_NOT_FOUND' },
       severity: 'warning',
     });
-
     const err = new Error('Invalid email or password');
-    err.statusCode = 401;
-    err.code = 'INVALID_CREDENTIALS';
-    throw err;
+    err.statusCode = 401; err.code = 'INVALID_CREDENTIALS'; throw err;
   }
 
-  // ── Account lockout check ───────────────────────────────────────────
+  // ── Check if email is still unverified ────────────────────────────────────
+  if (user.reset_pin) {
+    const err = new Error('Please verify your email first. Check your inbox for the PIN.');
+    err.statusCode = 403; err.code = 'EMAIL_NOT_VERIFIED'; throw err;
+  }
+
   if (user.locked_until && new Date(user.locked_until) > new Date()) {
     const minutesLeft = Math.ceil((new Date(user.locked_until) - new Date()) / 60000);
-
     await logSecurityEvent({
       eventType: SECURITY_EVENTS.LOGIN_FAILED,
-      userId: user.id,
-      email,
-      req,
+      userId: user.id, email, req,
       details: { reason: 'ACCOUNT_LOCKED', minutes_remaining: minutesLeft },
       severity: 'warning',
     });
-
     const err = new Error(`Account temporarily locked. Try again in ${minutesLeft} minute${minutesLeft === 1 ? '' : 's'}.`);
-    err.statusCode = 423;
-    err.code = 'ACCOUNT_LOCKED';
-    throw err;
+    err.statusCode = 423; err.code = 'ACCOUNT_LOCKED'; throw err;
   }
 
-  // ── Clear expired lockout ───────────────────────────────────────────
   if (user.locked_until && new Date(user.locked_until) <= new Date()) {
-    await supabase
-      .from('users')
-      .update({ failed_login_attempts: 0, locked_until: null })
-      .eq('id', user.id);
+    await supabase.from('users')
+      .update({ failed_login_attempts: 0, locked_until: null }).eq('id', user.id);
     user.failed_login_attempts = 0;
-    user.locked_until = null;
+    user.locked_until          = null;
   }
 
-  // ── Account inactive check ──────────────────────────────────────────
   if (!user.is_active) {
     await logSecurityEvent({
       eventType: SECURITY_EVENTS.LOGIN_FAILED,
-      userId: user.id,
-      email,
-      req,
+      userId: user.id, email, req,
       details: { reason: user.role === 'driver' ? 'PENDING_APPROVAL' : 'ACCOUNT_INACTIVE' },
       severity: 'info',
     });
-
     const err = new Error(
       user.role === 'driver'
         ? 'Your driver account is pending admin approval. Please wait.'
         : 'Account is deactivated. Contact support.'
     );
     err.statusCode = 403;
-    err.code = user.role === 'driver' ? 'PENDING_APPROVAL' : 'ACCOUNT_INACTIVE';
+    err.code       = user.role === 'driver' ? 'PENDING_APPROVAL' : 'ACCOUNT_INACTIVE';
     throw err;
   }
 
-  // ── Password verification ───────────────────────────────────────────
   const valid = await comparePassword(dto.password, user.password_hash);
-
   if (!valid) {
-    const attempts = (user.failed_login_attempts || 0) + 1;
-    const updateData = {
-      failed_login_attempts: attempts,
-      last_failed_login: new Date().toISOString(),
-    };
-
-    // Lock account if max attempts reached
+    const attempts    = (user.failed_login_attempts || 0) + 1;
+    const updateData  = { failed_login_attempts: attempts, last_failed_login: new Date().toISOString() };
     if (attempts >= MAX_FAILED_ATTEMPTS) {
       updateData.locked_until = new Date(Date.now() + LOCKOUT_DURATION_MS).toISOString();
-
       await logSecurityEvent({
         eventType: SECURITY_EVENTS.ACCOUNT_LOCKED,
-        userId: user.id,
-        email,
-        req,
+        userId: user.id, email, req,
         details: { attempts, lockout_minutes: LOCKOUT_DURATION_MS / 60000 },
         severity: 'critical',
       });
     }
-
     await supabase.from('users').update(updateData).eq('id', user.id);
-
     await logSecurityEvent({
       eventType: SECURITY_EVENTS.LOGIN_FAILED,
-      userId: user.id,
-      email,
-      req,
-      details: {
-        reason: 'WRONG_PASSWORD',
-        attempts,
-        max_attempts: MAX_FAILED_ATTEMPTS,
-        locked: attempts >= MAX_FAILED_ATTEMPTS,
-      },
+      userId: user.id, email, req,
+      details: { reason: 'WRONG_PASSWORD', attempts, max_attempts: MAX_FAILED_ATTEMPTS, locked: attempts >= MAX_FAILED_ATTEMPTS },
       severity: attempts >= MAX_FAILED_ATTEMPTS - 1 ? 'warning' : 'info',
     });
-
     const err = new Error('Invalid email or password');
-    err.statusCode = 401;
-    err.code = 'INVALID_CREDENTIALS';
-    throw err;
+    err.statusCode = 401; err.code = 'INVALID_CREDENTIALS'; throw err;
   }
 
-  // ── Login successful — reset lockout counters ───────────────────────
   const ipAddress = req
     ? req.headers?.['x-forwarded-for']?.split(',')[0]?.trim() || req.ip
     : null;
 
-  await supabase
-    .from('users')
-    .update({
-      failed_login_attempts: 0,
-      locked_until: null,
-      last_successful_login: new Date().toISOString(),
-      last_login_ip: ipAddress,
-    })
-    .eq('id', user.id);
+  await supabase.from('users').update({
+    failed_login_attempts:  0,
+    locked_until:           null,
+    last_successful_login:  new Date().toISOString(),
+    last_login_ip:          ipAddress,
+  }).eq('id', user.id);
 
   const { access_token, refresh_token } = await issueTokenPair(user.id, user.email);
-  const { password_hash: _, failed_login_attempts: __, locked_until: ___, ...safeUser } = user;
+  const { password_hash: _, failed_login_attempts: __, locked_until: ___, reset_pin: ____, ...safeUser } = user;
 
-  // ── Audit log: successful login ─────────────────────────────────────
   await logSecurityEvent({
     eventType: SECURITY_EVENTS.LOGIN_SUCCESS,
-    userId: user.id,
-    email,
-    req,
+    userId: user.id, email, req,
     details: { role: user.role },
     severity: 'info',
   });
@@ -269,84 +316,45 @@ export async function loginUser(dto, req = null) {
 
 export async function logoutUser(refreshToken, req = null, userId = null) {
   const tokenHash = hashToken(refreshToken);
-  await supabase
-    .from('refresh_tokens')
-    .update({ revoked: true })
-    .eq('token_hash', tokenHash);
-
-  await logSecurityEvent({
-    eventType: SECURITY_EVENTS.LOGOUT,
-    userId,
-    req,
-    severity: 'info',
-  });
+  await supabase.from('refresh_tokens').update({ revoked: true }).eq('token_hash', tokenHash);
+  await logSecurityEvent({ eventType: SECURITY_EVENTS.LOGOUT, userId, req, severity: 'info' });
 }
 
 export async function refreshTokens(refreshToken) {
   let decoded;
-  try {
-    decoded = verifyRefreshToken(refreshToken);
-  } catch {
+  try { decoded = verifyRefreshToken(refreshToken); }
+  catch {
     const err = new Error('Invalid or expired refresh token');
-    err.statusCode = 401;
-    err.code = 'INVALID_REFRESH_TOKEN';
-    throw err;
+    err.statusCode = 401; err.code = 'INVALID_REFRESH_TOKEN'; throw err;
   }
-
   const tokenHash = hashToken(refreshToken);
   const { data: storedToken } = await supabase
-    .from('refresh_tokens')
-    .select('id, revoked, expires_at')
-    .eq('token_hash', tokenHash)
-    .maybeSingle();
-
+    .from('refresh_tokens').select('id, revoked, expires_at')
+    .eq('token_hash', tokenHash).maybeSingle();
   if (!storedToken || storedToken.revoked || new Date(storedToken.expires_at) < new Date()) {
     const err = new Error('Refresh token revoked or expired');
-    err.statusCode = 401;
-    err.code = 'REFRESH_TOKEN_INVALID';
-    throw err;
+    err.statusCode = 401; err.code = 'REFRESH_TOKEN_INVALID'; throw err;
   }
-
-  // Revoke old token (rotation)
   await supabase.from('refresh_tokens').update({ revoked: true }).eq('id', storedToken.id);
-
-  const { data: user } = await supabase
-    .from('users')
-    .select('email')
-    .eq('id', decoded.id)
-    .single();
-
+  const { data: user } = await supabase.from('users').select('email').eq('id', decoded.id).single();
   return issueTokenPair(decoded.id, user.email);
 }
 
 export async function requestPasswordReset(email, req = null) {
   const emailLower = email.toLowerCase().trim();
   const { data: user } = await supabase
-    .from('users')
-    .select('id, full_name')
-    .eq('email', emailLower)
-    .maybeSingle();
-
-  if (!user) return; // silent — don't reveal if email exists
-
-  const pin = generatePin();
-  const pinHash = await hashPin(pin);
+    .from('users').select('id, full_name').eq('email', emailLower).maybeSingle();
+  if (!user) return;
+  const pin       = generatePin();
+  const pinHash   = await hashPin(pin);
   const expiresAt = new Date(Date.now() + CONSTANTS.RESET_PIN_EXPIRES_MS).toISOString();
-
-  await supabase
-    .from('users')
-    .update({ reset_pin: pinHash, reset_pin_expires_at: expiresAt })
-    .eq('id', user.id);
-
+  await supabase.from('users')
+    .update({ reset_pin: pinHash, reset_pin_expires_at: expiresAt }).eq('id', user.id);
   await logSecurityEvent({
     eventType: SECURITY_EVENTS.PASSWORD_RESET,
-    userId: user.id,
-    email: emailLower,
-    req,
-    details: { stage: 'PIN_REQUESTED' },
-    severity: 'info',
+    userId: user.id, email: emailLower, req,
+    details: { stage: 'PIN_REQUESTED' }, severity: 'info',
   });
-
   try {
     await sendPasswordResetPin(emailLower, pin, user.full_name);
     logger.info(`Password reset PIN sent to ${emailLower}`);
@@ -362,76 +370,51 @@ export async function requestPasswordReset(email, req = null) {
 
 export async function verifyResetPin(email, pin) {
   const { data: user } = await supabase
-    .from('users')
-    .select('id, reset_pin, reset_pin_expires_at')
-    .eq('email', email.toLowerCase().trim())
-    .maybeSingle();
-
+    .from('users').select('id, reset_pin, reset_pin_expires_at')
+    .eq('email', email.toLowerCase().trim()).maybeSingle();
   if (!user || !user.reset_pin) {
     const err = new Error('Invalid or expired PIN');
     err.statusCode = 400; err.code = 'INVALID_PIN'; throw err;
   }
-
   if (new Date(user.reset_pin_expires_at) < new Date()) {
     const err = new Error('PIN has expired. Please request a new one.');
     err.statusCode = 400; err.code = 'PIN_EXPIRED'; throw err;
   }
-
   const valid = await verifyPin(pin, user.reset_pin);
   if (!valid) {
     const err = new Error('Invalid or expired PIN');
     err.statusCode = 400; err.code = 'INVALID_PIN'; throw err;
   }
-
   const reset_token = signResetToken({ id: user.id, email });
   return { reset_token };
 }
 
 export async function resetPassword(dto, req = null) {
   let decoded;
-  try {
-    decoded = verifyResetToken(dto.reset_token);
-  } catch {
+  try { decoded = verifyResetToken(dto.reset_token); }
+  catch {
     const err = new Error('Invalid or expired reset token');
     err.statusCode = 400; err.code = 'INVALID_RESET_TOKEN'; throw err;
   }
-
-  // ── Validate new password strength ──────────────────────────────────
   validatePasswordStrength(dto.new_password);
-
   const password_hash = await hashPassword(dto.new_password);
-
-  const { error } = await supabase
-    .from('users')
-    .update({
-      password_hash,
-      reset_pin: null,
-      reset_pin_expires_at: null,
-      failed_login_attempts: 0,  // Reset lockout on password change
-      locked_until: null,
-    })
-    .eq('id', decoded.id);
-
+  const { error } = await supabase.from('users').update({
+    password_hash,
+    reset_pin:             null,
+    reset_pin_expires_at:  null,
+    failed_login_attempts: 0,
+    locked_until:          null,
+  }).eq('id', decoded.id);
   if (error) throw error;
-
-  // Revoke all refresh tokens for this user (force re-login)
-  await supabase
-    .from('refresh_tokens')
-    .update({ revoked: true })
-    .eq('user_id', decoded.id)
-    .eq('revoked', false);
-
+  await supabase.from('refresh_tokens')
+    .update({ revoked: true }).eq('user_id', decoded.id).eq('revoked', false);
   await logSecurityEvent({
     eventType: SECURITY_EVENTS.PASSWORD_CHANGE,
-    userId: decoded.id,
-    email: decoded.email,
-    req,
-    details: { stage: 'PASSWORD_RESET_COMPLETE' },
-    severity: 'info',
+    userId: decoded.id, email: decoded.email, req,
+    details: { stage: 'PASSWORD_RESET_COMPLETE' }, severity: 'info',
   });
 }
 
-// ── Password strength validation ──────────────────────────────────────
 function validatePasswordStrength(password) {
   if (!password || password.length < 8) {
     const err = new Error('Password must be at least 8 characters');
@@ -460,12 +443,11 @@ async function issueTokenPair(userId, email) {
   const refresh_token = signRefreshToken({ id: userId });
   const tokenHash     = hashToken(refresh_token);
   const expiresAt     = new Date(Date.now() + env.JWT_REFRESH_EXPIRES_IN * 1000).toISOString();
-
   await supabase.from('refresh_tokens').insert({
-    user_id:    userId,
-    token_hash: tokenHash,
-    expires_at: expiresAt,
+    user_id: userId, token_hash: tokenHash, expires_at: expiresAt,
   });
-
   return { access_token, refresh_token };
 }
+
+
+

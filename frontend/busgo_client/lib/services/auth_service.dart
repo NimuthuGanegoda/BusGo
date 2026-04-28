@@ -5,14 +5,15 @@ import 'token_service.dart';
 
 /// Handles all authentication API calls and token lifecycle.
 class AuthService {
-  final ApiClient _api;
+  final ApiClient    _api;
   final TokenService _tokenService;
 
   AuthService(this._api, this._tokenService);
 
   /// POST /auth/register
-  /// Returns the created [UserModel] and saves tokens.
-  Future<UserModel> register({
+  /// No longer returns tokens — backend sends a verification PIN to email.
+  /// Returns void. The caller navigates to the verify-email screen.
+  Future<void> register({
     required String fullName,
     required String email,
     required String username,
@@ -21,35 +22,54 @@ class AuthService {
     String? dateOfBirth,
     String membershipType = 'standard',
   }) async {
-    final data = await _api.post(ApiEndpoints.register, data: {
-      'full_name': fullName,
-      'email': email,
-      'username': username,
-      'phone': phone,
-      'password': password,
+    await _api.post(ApiEndpoints.register, data: {
+      'full_name':        fullName,
+      'email':            email,
+      'username':         username,
+      'phone':            phone,
+      'password':         password,
       if (dateOfBirth != null) 'date_of_birth': dateOfBirth,
-      'membership_type': membershipType,
+      'membership_type':  membershipType,
     });
+    // Backend returns { pending_verification: true, email, message }
+    // Tokens are NOT issued yet — issued after email PIN is verified.
+  }
 
+  /// POST /auth/verify-email
+  /// Verifies the 6-digit PIN sent after registration.
+  /// On success, saves tokens and returns the logged-in [UserModel].
+  Future<UserModel> verifyEmail(String email, String pin) async {
+    final data = await _api.post(
+      '/auth/verify-email',
+      data: {'email': email, 'pin': pin},
+    );
     final map = data as Map<String, dynamic>;
     await _tokenService.saveTokens(
-      map['access_token'] as String,
+      map['access_token']  as String,
       map['refresh_token'] as String,
     );
     return UserModel.fromJson(map['user'] as Map<String, dynamic>);
+  }
+
+  /// POST /auth/verify-email/resend
+  /// Sends a fresh verification PIN to the given email.
+  Future<void> resendVerificationPin(String email) async {
+    await _api.post(
+      '/auth/verify-email/resend',
+      data: {'email': email},
+    );
   }
 
   /// POST /auth/login
   /// Returns the authenticated [UserModel] and saves tokens.
   Future<UserModel> login(String email, String password) async {
     final data = await _api.post(ApiEndpoints.login, data: {
-      'email': email,
+      'email':    email,
       'password': password,
     });
-
     final map = data as Map<String, dynamic>;
     await _tokenService.saveTokens(
-      map['access_token'] as String,
+      map['access_token']  as String,
       map['refresh_token'] as String,
     );
     return UserModel.fromJson(map['user'] as Map<String, dynamic>);
@@ -70,7 +90,6 @@ class AuthService {
   }
 
   /// GET /users/me — validates the stored token and returns the current user.
-  /// Throws [UnauthorizedException] if the token is invalid.
   Future<UserModel> getMe() async {
     final data = await _api.get(ApiEndpoints.me);
     return UserModel.fromJson(data as Map<String, dynamic>);
@@ -86,7 +105,7 @@ class AuthService {
   Future<String> verifyResetPin(String email, String pin) async {
     final data = await _api.post(ApiEndpoints.forgotVerify, data: {
       'email': email,
-      'pin': pin,
+      'pin':   pin,
     });
     return (data as Map<String, dynamic>)['reset_token'] as String;
   }
@@ -98,9 +117,12 @@ class AuthService {
     required String confirmPassword,
   }) async {
     await _api.post(ApiEndpoints.forgotReset, data: {
-      'reset_token': resetToken,
-      'new_password': newPassword,
+      'reset_token':      resetToken,
+      'new_password':     newPassword,
       'confirm_password': confirmPassword,
     });
   }
 }
+
+
+

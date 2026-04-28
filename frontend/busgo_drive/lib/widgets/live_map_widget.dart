@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import '../core/constants/app_colors.dart';
+import '../core/config/api_config.dart';
 
 class LiveMapWidget extends StatelessWidget {
   final LatLng center;
@@ -24,7 +25,7 @@ class LiveMapWidget extends StatelessWidget {
       interactionOptions: const InteractionOptions(
           flags: InteractiveFlag.all & ~InteractiveFlag.rotate)),
     children: [
-      TileLayer(urlTemplate: 'https://api.maptiler.com/maps/streets-v2/{z}/{x}/{y}.png?key=fsVEp87wcHaGchb3gygh',
+      TileLayer(urlTemplate: 'https://api.maptiler.com/maps/streets-v2-dark/{z}/{x}/{y}.png?key=${ApiConfig.mapTilerKey}',
           userAgentPackageName: 'com.busgo.drive'),
       if (routePolyline.isNotEmpty) PolylineLayer(polylines: [
         Polyline(points: routePolyline, strokeWidth: 4, color: AppColors.mapRoute),
@@ -50,3 +51,9 @@ class LiveMapWidget extends StatelessWidget {
     ],
   );
 }
+
+
+
+
+
+

@@ -84,3 +84,5 @@ class ScannerTopbar extends StatelessWidget {
     );
   }
 }
+
+

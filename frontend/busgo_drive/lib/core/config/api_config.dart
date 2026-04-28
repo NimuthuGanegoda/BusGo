@@ -17,4 +17,11 @@ class ApiConfig {
   /// Full MapTiler tile URL — use this in every TileLayer
   static String get tileUrl =>
       'https://api.maptiler.com/maps/streets-v2/{z}/{x}/{y}.png?key=${mapTilerKey}';
+
+
 }
+
+ 
+
+
+

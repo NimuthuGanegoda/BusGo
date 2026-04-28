@@ -54,3 +54,6 @@ class Pagination {
         hasPrev:    json['hasPrev']   as bool? ?? false,
       );
 }
+
+
+

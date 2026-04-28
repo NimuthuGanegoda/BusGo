@@ -13,3 +13,6 @@ router.post('/',             validate(createTripSchema),         controller.crea
 router.patch('/:id/alight',  validate(alightTripSchema),         controller.alightTrip);
 
 export default router;
+
+
+

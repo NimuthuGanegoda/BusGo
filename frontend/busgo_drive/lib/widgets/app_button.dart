@@ -59,3 +59,6 @@ class AppButton extends StatelessWidget {
     return Text(text, style: GoogleFonts.inter(fontSize: 16, fontWeight: FontWeight.w600));
   }
 }
+
+
+

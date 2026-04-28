@@ -26,6 +26,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       context.read<UserProvider>().loadPreferences();
+      context.read<UserProvider>().fetchProfile();
     });
   }
 
@@ -171,3 +172,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
             decoration: BoxDecoration(color: value ? _cyan : const Color(0xFF555555), shape: BoxShape.circle))))),
     ]));
 }
+
+
+

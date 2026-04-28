@@ -12,3 +12,6 @@ router.post('/',              validate(createRatingSchema), controller.createRat
 router.get('/bus/:busId',     controller.getBusStats);
 
 export default router;
+
+
+

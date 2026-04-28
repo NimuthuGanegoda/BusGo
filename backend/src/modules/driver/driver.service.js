@@ -22,14 +22,17 @@ export async function getAssignedBus(userId) {
     .select(`
       id, bus_number, driver_name, driver_phone, current_lat, current_lng,
       heading, speed_kmh, crowd_level, status, last_location_update,
-      bus_routes ( id, route_number, route_name, origin, destination, color, waypoints ),
-      bus_routes ( bus_stop_routes ( stop_order, bus_stops ( id, stop_name, latitude, longitude ) ) )
+      capacity, express_mode,
+      bus_routes (
+        id, route_number, route_name, origin, destination, color, waypoints,
+        bus_stop_routes ( stop_order, bus_stops ( id, stop_name, latitude, longitude ) )
+      )
     `)
     .eq('driver_user_id', userId)
-    .eq('status', 'active')
     .maybeSingle();
 
   if (error) throw error;
+  console.log('[Bus Debug]', JSON.stringify(data)?.substring(0, 300));
   return data;
 }
 
@@ -49,9 +52,10 @@ export async function updateDriverLocation(userId, dto) {
   const { data, error } = await supabase
     .from('buses')
     .update({
-      current_lat: dto.lat, current_lng: dto.lng,
-      heading: dto.heading ?? null,
-      speed_kmh: dto.speed_kmh ?? null,
+      current_lat:          dto.lat,
+      current_lng:          dto.lng,
+      heading:              dto.heading ?? null,
+      speed_kmh:            dto.speed_kmh ?? null,
       last_location_update: now,
     })
     .eq('id', bus.id)
@@ -98,16 +102,14 @@ export async function updateDriverBusStatus(userId, status) {
   }
 
   const updateData = status === 'active'
-    ? {
-        status: 'active',
-        last_location_update: new Date().toISOString(),
-      }
+    ? { status: 'active', last_location_update: new Date().toISOString() }
     : {
-        status: 'inactive',
-        current_lat: null,
-        current_lng: null,
+        status:               'inactive',
+        current_lat:          null,
+        current_lng:          null,
         last_location_update: null,
-        speed_kmh: 0,
+        speed_kmh:            0,
+        express_mode:         false,
       };
 
   const { data, error } = await supabase
@@ -121,26 +123,83 @@ export async function updateDriverBusStatus(userId, status) {
   return data;
 }
 
+// ── FR-34: Get current trip with express mode info ─────────────────────────
 export async function getDriverCurrentTrip(userId) {
+  // Get bus with capacity and current express_mode
   const { data: bus } = await supabase
-    .from('buses').select('id').eq('driver_user_id', userId).maybeSingle();
+    .from('buses')
+    .select('id, capacity, express_mode, crowd_level')
+    .eq('driver_user_id', userId)
+    .maybeSingle();
 
   if (!bus) return null;
 
+  const capacity = bus.capacity || 50;
+
+  // Get all ongoing trips on this bus
   const { data, error } = await supabase
     .from('trips')
     .select(`
-      id, status, boarded_at,
+      id, status, boarded_at, alighting_stop_id,
       users ( id, full_name, username ),
       bus_routes ( route_number, route_name ),
-      boarding_stop:boarding_stop_id ( stop_name )
+      boarding_stop:boarding_stop_id ( stop_name ),
+      alighting_stop:alighting_stop_id ( id, stop_name )
     `)
     .eq('bus_id', bus.id)
     .eq('status', 'ongoing')
     .order('boarded_at', { ascending: false });
 
   if (error) throw error;
-  return { bus_id: bus.id, active_passengers: data?.length || 0, trips: data };
+
+  const activePassengers = data?.length || 0;
+
+  // Express mode: active when bus is at or over capacity
+  const shouldBeExpress = activePassengers >= capacity;
+
+  // Auto-sync express_mode in DB if it changed
+  if (bus.express_mode !== shouldBeExpress) {
+    await supabase
+      .from('buses')
+      .update({
+        express_mode: shouldBeExpress,
+        crowd_level:  shouldBeExpress ? 'full'
+                    : activePassengers >= capacity * 0.75 ? 'high'
+                    : activePassengers >= capacity * 0.5  ? 'medium'
+                    : 'low',
+      })
+      .eq('id', bus.id);
+  }
+
+  // Collect unique stop IDs where passengers need to alight
+  // Bus MUST stop at these stops even in express mode
+  const mustStopAtIds = [
+    ...new Set(
+      (data || [])
+        .filter(t => t.alighting_stop_id)
+        .map(t => t.alighting_stop_id)
+    ),
+  ];
+
+  // Build must-stop list with names for the driver app
+  const mustStopAt = (data || [])
+    .filter(t => t.alighting_stop_id && t.alighting_stop?.stop_name)
+    .reduce((acc, t) => {
+      const id   = t.alighting_stop_id;
+      const name = t.alighting_stop?.stop_name;
+      if (!acc.find(s => s.id === id)) acc.push({ id, name });
+      return acc;
+    }, []);
+
+  return {
+    bus_id:            bus.id,
+    active_passengers: activePassengers,
+    bus_capacity:      capacity,
+    is_express_mode:   shouldBeExpress,
+    must_stop_at:      mustStopAt,       // [{ id, name }] — stops with alighting passengers
+    must_stop_at_ids:  mustStopAtIds,    // just IDs for quick lookup
+    trips:             data,
+  };
 }
 
 export async function getDriverRating(driverUserId) {
@@ -166,7 +225,7 @@ export async function getDriverRating(driverUserId) {
 
   if (error) throw error;
 
-  const total = ratings?.length ?? 0;
+  const total         = ratings?.length ?? 0;
   const star_breakdown = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
   let starSum = 0, mlSum = 0, mlCount = 0;
 
@@ -179,7 +238,7 @@ export async function getDriverRating(driverUserId) {
   return {
     bus_number:     bus.bus_number,
     overall_rating: total   > 0 ? Math.round((starSum / total)  * 10) / 10 : 0,
-    ml_rating:      mlCount > 0 ? Math.round((mlSum / mlCount)  * 10) / 10 : 0,
+    ml_rating:      mlCount > 0 ? Math.round((mlSum  / mlCount) * 10) / 10 : 0,
     total_reviews:  total,
     star_breakdown,
     recent_ratings: (ratings ?? []).slice(0, 20),
@@ -192,10 +251,7 @@ export async function uploadDriverLicense(userId, fileBuffer, mimeType) {
 
   const { error: uploadError } = await supabase.storage
     .from('driver-licenses')
-    .upload(filePath, fileBuffer, {
-      contentType: mimeType,
-      upsert:      true,
-    });
+    .upload(filePath, fileBuffer, { contentType: mimeType, upsert: true });
 
   if (uploadError) throw uploadError;
 

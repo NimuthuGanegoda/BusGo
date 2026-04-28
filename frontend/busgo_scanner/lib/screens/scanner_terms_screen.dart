@@ -122,3 +122,5 @@ class ScannerTermsScreen extends StatelessWidget {
     );
   }
 }
+
+

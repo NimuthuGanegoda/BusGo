@@ -18,3 +18,6 @@ export const alightTripSchema = z.object({
   alighting_stop_id: z.string().uuid().optional(),
   fare_lkr: z.number().positive().optional(),
 });
+
+
+

@@ -53,3 +53,5 @@ class AccountLockedException extends AppException {
 class PendingApprovalException extends AppException {
   const PendingApprovalException([super.message = 'Your account is awaiting admin approval.']);
 }
+
+

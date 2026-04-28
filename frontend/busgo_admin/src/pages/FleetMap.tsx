@@ -7,7 +7,7 @@ import type { Stop, Route } from '../services/api';
 import './FleetMap.css';
 
 const API          = 'http://localhost:5000/api/admin';
-const MAPTILER_KEY = (import.meta as any).env?.VITE_MAPTILER_KEY ?? 'fsVEp87wcHaGchb3gygh';
+const MAPTILER_KEY = import.meta.env.VITE_MAPTILER_KEY ?? '';
 const TILE_URL     = `https://api.maptiler.com/maps/streets-v2-dark/{z}/{x}/{y}.png?key=${MAPTILER_KEY}`;
 const token        = () => localStorage.getItem('busgo_access_token') ?? '';
 

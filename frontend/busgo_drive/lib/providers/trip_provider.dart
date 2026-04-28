@@ -1,12 +1,15 @@
 import 'dart:async';
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:http/http.dart' as http;
 import 'package:latlong2/latlong.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
+import '../core/config/api_config.dart';
 import '../core/utils/helpers.dart';
 import '../models/route_model.dart';
 import '../models/trip_model.dart';
 import '../services/location_service.dart';
+import '../services/token_service.dart';
 
 class TripProvider extends ChangeNotifier {
   Trip?      _currentTrip;
@@ -15,33 +18,42 @@ class TripProvider extends ChangeNotifier {
   TripStatus _status           = TripStatus.idle;
   Trip?      _lastCompletedTrip;
 
-  LatLng       _currentLocation  = const LatLng(6.9271, 79.8612);
-  double       _currentSpeed     = 0;
+  LatLng       _currentLocation = const LatLng(6.9271, 79.8612);
+  double       _currentSpeed    = 0;
   double?      _currentHeading;
-  List<LatLng> _traveledPath     = [];
-  bool         _gpsReady         = false;
+  List<LatLng> _traveledPath    = [];
+  bool         _gpsReady        = false;
   String?      _gpsError;
 
-  // ── Real passenger count via Supabase Realtime ────────────────────────────
-  int              _currentPassengers = 0;
-  RealtimeChannel? _passengerChannel;
-  String?          _trackedBusId;
+  // ── Passenger count + FR-34 express mode ──────────────────────────────────
+  int          _currentPassengers = 0;
+  int          _busCapacity       = 50;
+  bool         _isExpressMode     = false;
+  List<Map<String, dynamic>> _mustStopAt = []; // [{ id, name }]
 
+  Timer? _passengerPollTimer;
   StreamSubscription<Position>? _positionStream;
   final LocationService _locationService = LocationService();
+  final TokenService    _tokenService    = TokenService();
 
   // ── Getters ───────────────────────────────────────────────────────────────
-  Trip?        get currentTrip        => _currentTrip;
-  BusRoute?    get currentRoute       => _currentRoute;
-  int          get currentStopIndex   => _currentStopIndex;
-  TripStatus   get status             => _status;
-  Trip?        get lastCompletedTrip  => _lastCompletedTrip;
-  LatLng       get currentLocation    => _currentLocation;
-  double       get currentSpeed       => _currentSpeed;
-  List<LatLng> get traveledPath       => _traveledPath;
-  bool         get gpsReady           => _gpsReady;
-  String?      get gpsError           => _gpsError;
-  int          get currentPassengers  => _currentPassengers;
+  Trip?        get currentTrip       => _currentTrip;
+  BusRoute?    get currentRoute      => _currentRoute;
+  int          get currentStopIndex  => _currentStopIndex;
+  TripStatus   get status            => _status;
+  Trip?        get lastCompletedTrip => _lastCompletedTrip;
+  LatLng       get currentLocation   => _currentLocation;
+  double       get currentSpeed      => _currentSpeed;
+  List<LatLng> get traveledPath      => _traveledPath;
+  bool         get gpsReady          => _gpsReady;
+  String?      get gpsError          => _gpsError;
+  int          get currentPassengers => _currentPassengers;
+
+  // FR-34 getters
+  int          get busCapacity      => _busCapacity;
+  bool         get isExpressMode    => _isExpressMode;
+  List<Map<String, dynamic>> get mustStopAt => _mustStopAt;
+  int          get mustStopCount    => _mustStopAt.length;
 
   RouteStop? get nextStop {
     if (_currentRoute == null) return null;
@@ -54,107 +66,96 @@ class TripProvider extends ChangeNotifier {
     return (remaining * 8).clamp(0, 999);
   }
 
-  // ── Passenger Realtime tracking ───────────────────────────────────────────
-
-  Future<void> startPassengerTracking(String busId) async {
-    if (_trackedBusId == busId) return;
-    await stopPassengerTracking();
-    _trackedBusId = busId;
-
-    await _refreshPassengerCount(busId);
-
-    _passengerChannel = Supabase.instance.client
-        .channel('passenger_count_$busId')
-        .onPostgresChanges(
-          event:  PostgresChangeEvent.all,
-          schema: 'public',
-          table:  'trips',
-          filter: PostgresChangeFilter(
-            type:   PostgresChangeFilterType.eq,
-            column: 'bus_id',
-            value:  busId,
-          ),
-          callback: (_) async => await _refreshPassengerCount(busId),
-        )
-        .subscribe();
-
-    debugPrint('[Realtime] Tracking passengers on bus $busId');
+  // ── Passenger count + express mode polling ─────────────────────────────────
+  Future<void> initPassengerTracking(String driverUserId) async {
+    await _refreshPassengerCount();
+    _passengerPollTimer?.cancel();
+    _passengerPollTimer = Timer.periodic(
+        const Duration(seconds: 5), (_) => _refreshPassengerCount());
+    debugPrint('[TripProvider] Passenger + express mode polling started');
   }
 
-  Future<void> _refreshPassengerCount(String busId) async {
+  Future<void> _refreshPassengerCount() async {
     try {
-      final res = await Supabase.instance.client
-          .from('trips')
-          .select('id')
-          .eq('bus_id', busId)
-          .eq('status', 'ongoing');
+      final token = await _tokenService.getAccessToken();
+      if (token == null) return;
 
-      _currentPassengers = (res as List).length;
-      notifyListeners();
-      debugPrint('[Realtime] Passengers on bus: $_currentPassengers');
+      final response = await http.get(
+        Uri.parse('${ApiConfig.baseUrl}/driver/trip/current'),
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type':  'application/json',
+        },
+      ).timeout(const Duration(seconds: 8));
+
+      if (response.statusCode == 200) {
+        final body = jsonDecode(response.body);
+        final data = body['data'] as Map<String, dynamic>?;
+        if (data != null) {
+          final count        = data['active_passengers'] as int? ?? 0;
+          final capacity     = data['bus_capacity']      as int? ?? 50;
+          final expressMode  = data['is_express_mode']   as bool? ?? false;
+          final rawMustStop  = data['must_stop_at']      as List<dynamic>? ?? [];
+          final mustStopList = rawMustStop
+              .whereType<Map<String, dynamic>>()
+              .toList();
+
+          bool changed = false;
+          if (_currentPassengers != count)       { _currentPassengers = count;       changed = true; }
+          if (_busCapacity       != capacity)    { _busCapacity       = capacity;    changed = true; }
+          if (_isExpressMode     != expressMode) { _isExpressMode     = expressMode; changed = true; }
+          if (_mustStopAt.length != mustStopList.length) {
+            _mustStopAt = mustStopList;
+            changed = true;
+          }
+
+          if (changed) {
+            notifyListeners();
+            if (expressMode) {
+              debugPrint('[TripProvider] 🚌 EXPRESS MODE ON — '
+                  '$count/$capacity passengers — '
+                  '${mustStopList.length} must-stop points');
+            } else {
+              debugPrint('[TripProvider] Passengers: $count/$capacity');
+            }
+          }
+        }
+      }
     } catch (e) {
-      debugPrint('[Realtime] Error refreshing count: $e');
+      debugPrint('[TripProvider] Passenger poll error: $e');
     }
   }
 
   Future<void> stopPassengerTracking() async {
-    if (_passengerChannel != null) {
-      await Supabase.instance.client.removeChannel(_passengerChannel!);
-      _passengerChannel = null;
-      _trackedBusId     = null;
-      debugPrint('[Realtime] Stopped passenger tracking');
-    }
+    _passengerPollTimer?.cancel();
+    _passengerPollTimer = null;
   }
 
-  Future<void> initPassengerTracking(String driverUserId) async {
-    try {
-      final res = await Supabase.instance.client
-          .from('buses')
-          .select('id')
-          .eq('driver_user_id', driverUserId)
-          .maybeSingle();
-
-      if (res != null && res['id'] != null) {
-        await startPassengerTracking(res['id'] as String);
-      } else {
-        debugPrint('[Realtime] No bus assigned to driver — skipping tracking');
-      }
-    } catch (e) {
-      debugPrint('[Realtime] Error finding bus: $e');
-    }
-  }
-
-  // ── GPS init ──────────────────────────────────────────────────────────────
-
+  // ── GPS ────────────────────────────────────────────────────────────────────
   Future<bool> initGps() async {
     _gpsError = null;
 
     final serviceEnabled = await Geolocator.isLocationServiceEnabled();
     if (!serviceEnabled) {
       _gpsError = 'Location services are disabled. Please enable GPS.';
-      notifyListeners();
-      return false;
+      notifyListeners(); return false;
     }
 
     LocationPermission permission = await Geolocator.checkPermission();
     if (permission == LocationPermission.denied) {
       permission = await Geolocator.requestPermission();
       if (permission == LocationPermission.denied) {
-        _gpsError = 'Location permission denied.';
-        notifyListeners();
-        return false;
+        _gpsError = 'Location permission denied.'; notifyListeners(); return false;
       }
     }
     if (permission == LocationPermission.deniedForever) {
       _gpsError = 'Location permission permanently denied. Enable in device settings.';
-      notifyListeners();
-      return false;
+      notifyListeners(); return false;
     }
 
     try {
       final pos = await Geolocator.getCurrentPosition(
-        desiredAccuracy: LocationAccuracy.high,
-      );
+          desiredAccuracy: LocationAccuracy.high);
       _applyPosition(pos);
     } catch (_) {}
 
@@ -166,17 +167,12 @@ class TripProvider extends ChangeNotifier {
 
   void _startGpsStream() {
     _positionStream?.cancel();
-
     const settings = LocationSettings(
-      accuracy:       LocationAccuracy.high,
-      distanceFilter: 10,
-    );
+        accuracy: LocationAccuracy.high, distanceFilter: 10);
 
     _positionStream = Geolocator.getPositionStream(locationSettings: settings)
         .listen((Position pos) {
       _applyPosition(pos);
-
-      // Send location whenever GPS is ready
       if (_gpsReady) {
         _locationService.updateLocation(
           lat:      pos.latitude,
@@ -208,27 +204,22 @@ class TripProvider extends ChangeNotifier {
 
     if (_currentTrip != null && _traveledPath.length >= 2) {
       final prev = _traveledPath[_traveledPath.length - 2];
-      final dist = const Distance().as(
-          LengthUnit.Kilometer, prev, newLocation);
+      final dist = const Distance().as(LengthUnit.Kilometer, prev, newLocation);
       _currentTrip = _currentTrip!.copyWith(
-        distanceCovered: _currentTrip!.distanceCovered + dist,
-      );
+          distanceCovered: _currentTrip!.distanceCovered + dist);
     }
 
     notifyListeners();
   }
 
-  // ── Stop GPS stream ───────────────────────────────────────────────────────
   void stopGpsStream() {
     _positionStream?.cancel();
     _positionStream = null;
-    _gpsReady = false;
+    _gpsReady       = false;
     notifyListeners();
-    debugPrint('[GPS] Stream stopped');
   }
 
-  // ── Trip lifecycle ────────────────────────────────────────────────────────
-
+  // ── Trip lifecycle ─────────────────────────────────────────────────────────
   Future<void> startTrip(BusRoute route) async {
     _currentRoute     = route;
     _currentStopIndex = 0;
@@ -261,8 +252,8 @@ class TripProvider extends ChangeNotifier {
     _currentTrip = _currentTrip!.copyWith(
       passengersBoarded:  _currentTrip!.passengersBoarded  + boarded,
       passengersAlighted: _currentTrip!.passengersAlighted + alighted,
-      currentPassengers:
-          (_currentTrip!.currentPassengers + boarded - alighted).clamp(0, 999),
+      currentPassengers:  (_currentTrip!.currentPassengers + boarded - alighted)
+          .clamp(0, 999),
     );
     notifyListeners();
   }
@@ -271,8 +262,7 @@ class TripProvider extends ChangeNotifier {
     if (_currentTrip == null || _currentRoute == null) return;
     _currentStopIndex++;
     if (_currentStopIndex >= _currentRoute!.stops.length) {
-      endTrip();
-      return;
+      endTrip(); return;
     }
     _status = TripStatus.active;
     notifyListeners();
@@ -282,11 +272,11 @@ class TripProvider extends ChangeNotifier {
     _status = TripStatus.completed;
     if (_currentTrip != null) {
       _lastCompletedTrip = _currentTrip!.copyWith(
-        status:          TripStatus.completed,
-        endTime:         DateTime.now(),
-        distanceCovered: _currentTrip!.distanceCovered,
-        avgSpeed:        _currentSpeed,
-        stopsCompleted:  _currentRoute?.stops.length ?? 0,
+        status:         TripStatus.completed,
+        endTime:        DateTime.now(),
+        distanceCovered:_currentTrip!.distanceCovered,
+        avgSpeed:       _currentSpeed,
+        stopsCompleted: _currentRoute?.stops.length ?? 0,
       );
     }
     _currentTrip      = null;

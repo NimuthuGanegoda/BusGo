@@ -12,3 +12,6 @@ export const createEmergencySchema = z.object({
 export const updateEmergencyStatusSchema = z.object({
   status: z.enum(['pending', 'acknowledged', 'resolved']),
 });
+
+
+

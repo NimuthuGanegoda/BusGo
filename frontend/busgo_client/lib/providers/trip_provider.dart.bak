@@ -13,9 +13,9 @@ import '../services/token_service.dart';
 import '../services/api_service.dart';
 
 class TripProvider extends ChangeNotifier {
-  final TripService   _tripService;
-  final RatingService _ratingService;
-  final TokenService  _tokenService = TokenService();
+  final TripService    _tripService;
+  final RatingService  _ratingService;
+  final TokenService   _tokenService = TokenService();
 
   List<TripModel>   _tripHistory = [];
   List<TripModel>   _recentTrips = [];
@@ -26,15 +26,18 @@ class TripProvider extends ChangeNotifier {
   List<String> _selectedTags   = ['Punctual', 'Safe Driving'];
   String       _ratingComment  = '';
 
-  Timer?    _pollTimer;
-  String?   _watchingUserId;
+  Timer?   _pollTimer;
+  String?  _watchingUserId;
   DateTime? _watchStartTime;
 
+  // Tracks which trip IDs we've already shown the rating popup for,
+  // so we don't show it again after the user dismisses/skips.
   final Set<String> _shownTripIds = {};
 
   TripModel? _completedTripForRating;
   TripModel? get completedTripForRating => _completedTripForRating;
 
+  // ── ETA State ──────────────────────────────────────────────────────────────
   int?    _etaMinutes;
   String? _etaContext;
   bool    _etaLoading = false;
@@ -62,93 +65,113 @@ class TripProvider extends ChangeNotifier {
   bool              get etaLoading     => _etaLoading;
 
   int    get totalTrips => _tripHistory.length;
-  double get totalSpent => _tripHistory.fold(0, (sum, t) => sum + t.fare);
+  double get totalSpent =>
+      _tripHistory.fold(0, (sum, t) => sum + t.fare);
   double get averageRating {
     if (_tripHistory.isEmpty) return 0;
-    return _tripHistory.fold(0, (sum, t) => sum + t.rating) / _tripHistory.length;
+    return _tripHistory.fold(0, (sum, t) => sum + t.rating) /
+        _tripHistory.length;
   }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // POLL FOR COMPLETED UNRATED TRIPS — via backend (not Supabase directly)
+  // The phone has no internet access so all Supabase calls must go through
+  // the backend at 192.168.1.2:5000.
+  // ══════════════════════════════════════════════════════════════════════════
 
   void startWatchingTrips(String userId) {
     if (_watchingUserId == userId) return;
     stopWatchingTrips();
     _watchingUserId = userId;
     _watchStartTime = DateTime.now().toUtc();
+
     _checkForCompletedTrip();
-    _pollTimer = Timer.periodic(
-        const Duration(seconds: 8), (_) => _checkForCompletedTrip());
-    debugPrint('[TripPoller] Polling every 15s for user $userId');
+    _pollTimer = Timer.periodic(const Duration(seconds: 15), (_) {
+      _checkForCompletedTrip();
+    });
+
+    debugPrint('[TripPoller] Polling for unrated trips every 15s');
   }
 
   Future<void> _checkForCompletedTrip() async {
     try {
       if (_watchStartTime == null) return;
+
       final token = await _tokenService.getAccessToken();
       if (token == null) return;
 
+      // Fetch most recent completed trips via backend
       final response = await http.get(
-        Uri.parse('$kBaseUrlDev/trips?status=completed&page=1&page_size=5'),
+        Uri.parse(
+            '$kBaseUrlDev/trips?status=completed&page=1&page_size=5'),
         headers: {
           'Authorization': 'Bearer $token',
-          'Content-Type': 'application/json',
+          'Content-Type':  'application/json',
         },
       ).timeout(const Duration(seconds: 8));
 
       if (response.statusCode != 200) return;
 
-      final body     = jsonDecode(response.body) as Map<String, dynamic>;
-      final rawData  = body['data'];
-      final tripList = rawData is List ? rawData : <dynamic>[];
+      final body  = jsonDecode(response.body) as Map<String, dynamic>;
+      final data  = body['data'] as Map<String, dynamic>?;
+      final trips = (data?['trips'] as List?) ?? [];
 
-      for (final raw in tripList) {
-        final t           = raw as Map<String, dynamic>;
-        final tripId      = t['id'] as String?;
+      for (final raw in trips) {
+        final t          = raw as Map<String, dynamic>;
+        final tripId     = t['id'] as String?;
         final alightedStr = t['alighted_at'] as String?;
 
         if (tripId == null || alightedStr == null) continue;
 
+        // Only trips that completed AFTER we started watching
         final alightedAt = DateTime.tryParse(alightedStr)?.toUtc();
         if (alightedAt == null) continue;
         if (alightedAt.isBefore(_watchStartTime!)) continue;
+
+        // Skip if we already showed the popup for this trip
         if (_shownTripIds.contains(tripId)) continue;
+
+        // Skip if already set as pending
         if (_completedTripForRating?.id == tripId) continue;
 
-        debugPrint('[TripPoller] Found unrated trip: $tripId');
+        debugPrint('[TripPoller] ✅ Found unrated completed trip: $tripId');
 
+        // Build TripModel from raw response data
         _completedTripForRating = TripModel(
           id:          tripId,
-          busId:       t['bus_id']   as String?,
-          routeId:     t['route_id'] as String?,
+          busId:       t['bus_id']    as String?,
+          routeId:     t['route_id']  as String?,
           tripStatus:  'completed',
           routeNumber: (t['bus_route']?['route_number'] as String?) ?? '---',
           from:        (t['boarding_stop']?['stop_name'] as String?) ?? '',
           to:          (t['alighting_stop']?['stop_name'] as String?) ?? '',
-          date:        alightedStr.length >= 10 ? alightedStr.substring(0, 10) : '',
-          time:        alightedStr.length >= 16 ? alightedStr.substring(11, 16) : '',
+          date:        alightedStr.substring(0, 10),
+          time:        alightedStr.length >= 16
+              ? alightedStr.substring(11, 16)
+              : '',
           fare:        (t['fare_lkr'] as num?)?.toDouble() ?? 0,
         );
         notifyListeners();
-        break;
+        break; // Only show one at a time
       }
     } catch (e) {
-      debugPrint('[TripPoller] Error: $e');
+      debugPrint('[TripPoller] Error checking trips: $e');
     }
   }
 
   void stopWatchingTrips() {
     _pollTimer?.cancel();
-    _pollTimer      = null;
-    _watchingUserId = null;
-    _watchStartTime = null;
+    _pollTimer       = null;
+    _watchingUserId  = null;
+    _watchStartTime  = null;
   }
 
   void clearCompletedTrip() {
-    if (_completedTripForRating?.id != null) {
-      _shownTripIds.add(_completedTripForRating!.id!);
-    }
     _completedTripForRating = null;
     notifyListeners();
   }
 
+  // ── ETA Polling ────────────────────────────────────────────────────────────
   void startEtaPolling({
     required String busId,
     required String stopId,
@@ -159,8 +182,11 @@ class TripProvider extends ChangeNotifier {
     _etaBusId  = busId;
     _etaStopId = stopId;
     _etaToken  = accessToken;
+
     _fetchEta();
-    _etaTimer = Timer.periodic(const Duration(seconds: 15), (_) => _fetchEta());
+    _etaTimer = Timer.periodic(
+        const Duration(seconds: 15), (_) => _fetchEta());
+    debugPrint('[ETA] Started polling bus=$busId stop=$stopId');
   }
 
   void stopEtaPolling() {
@@ -179,25 +205,35 @@ class TripProvider extends ChangeNotifier {
     if (_etaBusId == null || _etaStopId == null || _etaToken == null) return;
     _etaLoading = true;
     notifyListeners();
+
     final result = await ApiService().fetchETA(
-      busId: _etaBusId!, stopId: _etaStopId!, accessToken: _etaToken!,
+      busId:       _etaBusId!,
+      stopId:      _etaStopId!,
+      accessToken: _etaToken!,
     );
+
     if (result != null) {
       _etaMinutes = (result['eta_minutes'] as num?)?.toInt();
       _etaContext = result['context'] as String?;
+      debugPrint('[ETA] ✅ $_etaMinutes min — context: $_etaContext');
     }
+
     _etaLoading = false;
     notifyListeners();
   }
 
+  // ── Load ───────────────────────────────────────────────────────────────────
   Future<void> loadTripHistory() async {
     _isLoading    = true;
     _errorMessage = null;
     notifyListeners();
+
     try {
       _tripHistory = await _tripService.getTrips(status: 'completed');
       _ongoingTrip = await _findOngoingTrip();
-      _recentTrips = _tripHistory.length > 2 ? _tripHistory.sublist(0, 2) : _tripHistory;
+      _recentTrips = _tripHistory.length > 2
+          ? _tripHistory.sublist(0, 2)
+          : _tripHistory;
     } on AppException catch (e) {
       _errorMessage = ErrorHandler.userMessage(e);
     } catch (e) {
@@ -224,6 +260,7 @@ class TripProvider extends ChangeNotifier {
     } catch (_) {}
   }
 
+  // ── Trip actions ───────────────────────────────────────────────────────────
   Future<TripModel?> startTrip({
     required String busId,
     required String routeId,
@@ -232,9 +269,11 @@ class TripProvider extends ChangeNotifier {
     _isLoading    = true;
     _errorMessage = null;
     notifyListeners();
+
     try {
       final trip = await _tripService.startTrip(
-        busId: busId, routeId: routeId, boardingStopId: boardingStopId,
+        busId: busId, routeId: routeId,
+        boardingStopId: boardingStopId,
       );
       _ongoingTrip = trip;
       _isLoading   = false;
@@ -253,18 +292,26 @@ class TripProvider extends ChangeNotifier {
     }
   }
 
-  Future<TripModel?> alightTrip({String? alightingStopId, double? fareLkr}) async {
+  Future<TripModel?> alightTrip({
+    String? alightingStopId,
+    double? fareLkr,
+  }) async {
     if (_ongoingTrip?.id == null) return null;
     _isLoading    = true;
     _errorMessage = null;
     notifyListeners();
+
     try {
       final trip = await _tripService.alightTrip(
-        _ongoingTrip!.id!, alightingStopId: alightingStopId, fareLkr: fareLkr,
+        _ongoingTrip!.id!,
+        alightingStopId: alightingStopId,
+        fareLkr:         fareLkr,
       );
       _ongoingTrip = null;
       _tripHistory.insert(0, trip);
-      _recentTrips = _tripHistory.length > 2 ? _tripHistory.sublist(0, 2) : _tripHistory;
+      _recentTrips = _tripHistory.length > 2
+          ? _tripHistory.sublist(0, 2)
+          : _tripHistory;
       _isLoading = false;
       notifyListeners();
       return trip;
@@ -281,6 +328,7 @@ class TripProvider extends ChangeNotifier {
     }
   }
 
+  // ── Rating form ────────────────────────────────────────────────────────────
   void setRating(int rating) {
     _selectedRating = rating;
     notifyListeners();
@@ -299,14 +347,21 @@ class TripProvider extends ChangeNotifier {
     _ratingComment = comment;
   }
 
-  Future<bool> submitRating({required String tripId, required String busId}) async {
+  Future<bool> submitRating({
+    required String tripId,
+    required String busId,
+  }) async {
     _isLoading    = true;
     _errorMessage = null;
     notifyListeners();
+
     try {
       final rating = await _ratingService.submitRating(
-        tripId: tripId, busId: busId,
-        stars: _selectedRating, tags: List.from(_selectedTags), comment: _ratingComment,
+        tripId:  tripId,
+        busId:   busId,
+        stars:   _selectedRating,
+        tags:    List.from(_selectedTags),
+        comment: _ratingComment,
       );
       _ratings.insert(0, rating);
       _selectedRating = 3;
@@ -328,6 +383,17 @@ class TripProvider extends ChangeNotifier {
     }
   }
 
+
+  void clearCompletedTrip() {
+    _completedTripForRating = null;
+    notifyListeners();
+  }
+
+  void clearError() {
+    _errorMessage = null;
+    notifyListeners();
+  }
+
   void clearError() {
     _errorMessage = null;
     notifyListeners();
@@ -340,3 +406,5 @@ class TripProvider extends ChangeNotifier {
     super.dispose();
   }
 }
+
+

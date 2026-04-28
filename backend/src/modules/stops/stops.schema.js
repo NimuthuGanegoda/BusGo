@@ -6,3 +6,6 @@ export const nearbyStopsSchema = z.object({
   lng: z.coerce.number().min(-180).max(180),
   radius: z.coerce.number().positive().max(CONSTANTS.MAX_NEARBY_RADIUS_KM).default(CONSTANTS.DEFAULT_NEARBY_RADIUS_KM),
 });
+
+
+

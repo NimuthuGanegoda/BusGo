@@ -54,3 +54,6 @@ class TripService {
     return TripModel.fromJson(data as Map<String, dynamic>);
   }
 }
+
+
+

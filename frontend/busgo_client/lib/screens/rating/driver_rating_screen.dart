@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import '../../core/constants/app_colors.dart';
 import '../../providers/trip_provider.dart';
+
 class DriverRatingScreen extends StatefulWidget {
   const DriverRatingScreen({super.key});
 
@@ -12,8 +14,21 @@ class DriverRatingScreen extends StatefulWidget {
 
 class _DriverRatingScreenState extends State<DriverRatingScreen> {
   final _commentController = TextEditingController();
-  bool _submitted = false;
-  int _starRating = 3;
+  bool _submitted  = false;
+  bool _submitting = false;
+  int  _starRating = 3;
+
+  // ── Theme colors ──────────────────────────────────────────────────────────
+  static const _bg        = Color(0xFF0D1B2A);
+  static const _card      = Color(0xFF132240);
+  static const _border    = Color(0xFF1E3A5F);
+  static const _accent    = Color(0xFF3B82F6);
+  static const _accentSoft = Color(0xFF1D3461);
+  static const _textPrimary  = Colors.white;
+  static const _textSecondary = Color(0xFF94B4D4);
+  static const _textMuted     = Color(0xFF5A7A9A);
+  static const _gold      = Color(0xFFF59E0B);
+  static const _goldEmpty = Color(0xFF2A3F5F);
 
   @override
   void dispose() {
@@ -21,418 +36,395 @@ class _DriverRatingScreenState extends State<DriverRatingScreen> {
     super.dispose();
   }
 
+  TextStyle _t({
+    double size = 14,
+    FontWeight weight = FontWeight.w400,
+    Color color = _textPrimary,
+    double? letterSpacing,
+  }) =>
+      GoogleFonts.inter(
+          fontSize: size,
+          fontWeight: weight,
+          color: color,
+          letterSpacing: letterSpacing);
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.surface,
+      backgroundColor: _bg,
       body: Consumer<TripProvider>(
         builder: (context, tripProvider, _) {
-          if (_submitted) return _buildSuccessView();
-          return Column(
-            children: [
-              _buildBlueHeader(),
-              Expanded(
-                child: SingleChildScrollView(
-                  padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
-                  child: Column(
-                    children: [
-                      _buildTripSummary(),
-                      const SizedBox(height: 20),
-                      _buildDriverInfo(),
-                      const SizedBox(height: 20),
-                      _buildStarRating(),
-                      const SizedBox(height: 16),
-                      _buildQuickTags(tripProvider),
-                      const SizedBox(height: 16),
-                      _buildComment(tripProvider),
-                      const SizedBox(height: 20),
-                      _buildActions(tripProvider),
-                    ],
-                  ),
-                ),
+          if (_submitted) return _buildSuccess();
+          return Column(children: [
+            _buildHeader(),
+            Expanded(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
+                child: Column(children: [
+                  _buildTripSummary(tripProvider),
+                  const SizedBox(height: 16),
+                  _buildStarRating(),
+                  const SizedBox(height: 16),
+                  _buildQuickTags(tripProvider),
+                  const SizedBox(height: 16),
+                  _buildComment(tripProvider),
+                  const SizedBox(height: 24),
+                  _buildActions(tripProvider),
+                ]),
               ),
-            ],
-          );
+            ),
+          ]);
         },
       ),
     );
   }
 
-  Widget _buildBlueHeader() {
+  // ── Header ────────────────────────────────────────────────────────────────
+  Widget _buildHeader() {
     return Container(
       decoration: const BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.centerLeft,
-          end: Alignment.centerRight,
-          colors: [
-            Color(0xFF0B1A2E),
-            Color(0xFF132F54),
-            Color(0xFF1E5AA8),
-          ],
-        ),
-        borderRadius: BorderRadius.only(
-          bottomLeft: Radius.circular(24),
-          bottomRight: Radius.circular(24),
-        ),
+        color: Color(0xFF0A1628),
+        border: Border(
+            bottom: BorderSide(color: _border)),
       ),
       child: SafeArea(
         bottom: false,
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 20),
-          child: Row(
-            children: [
-              GestureDetector(
-                onTap: () => context.pop(),
-                child: Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: 0.15),
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: const Icon(Icons.arrow_back_rounded, size: 20, color: Colors.white),
-                ),
-              ),
-              const SizedBox(width: 12),
-              const Expanded(
-                child: Text(
-                  'Rate Your Trip',
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w700,
-                    color: Colors.white,
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildTripSummary() {
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: const Color(0xFF1E5AA8).withValues(alpha: 0.1)),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.04),
-            blurRadius: 10,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Column(
-        children: [
-          Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+          child: Row(children: [
+            GestureDetector(
+              onTap: () => context.pop(),
+              child: Container(
+                width: 36, height: 36,
                 decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                    colors: [Color(0xFF132F54), Color(0xFF1E5AA8)],
-                  ),
-                  borderRadius: BorderRadius.circular(8),
+                  color: _accentSoft,
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: _border),
                 ),
-                child: const Text(
-                  '138',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 13,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
+                alignment: Alignment.center,
+                child: const Icon(Icons.arrow_back_ios_new_rounded,
+                    size: 16, color: _textPrimary),
               ),
-              const SizedBox(width: 10),
-              const Expanded(
-                child: Text(
-                  'Nugegoda → Colombo',
-                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: AppColors.primary),
-                ),
-              ),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                decoration: BoxDecoration(
-                  color: const Color(0xFF1E5AA8).withValues(alpha: 0.08),
-                  borderRadius: BorderRadius.circular(6),
-                ),
-                child: const Text(
-                  'Rs.60',
-                  style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w700,
-                    color: Color(0xFF132F54),
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          Row(
-            children: [
-              Icon(Icons.calendar_today_rounded, size: 12, color: AppColors.textMuted.withValues(alpha: 0.6)),
-              const SizedBox(width: 6),
-              const Text(
-                '18 Mar 2026 · 09:15',
-                style: TextStyle(fontSize: 11, color: AppColors.textMuted),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildDriverInfo() {
-    return Column(
-      children: [
-        Container(
-          width: 72,
-          height: 72,
-          decoration: BoxDecoration(
-            gradient: const LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: [Color(0xFF132F54), Color(0xFF1E5AA8)],
             ),
-            shape: BoxShape.circle,
-            boxShadow: [
-              BoxShadow(
-                color: const Color(0xFF1E5AA8).withValues(alpha: 0.3),
-                blurRadius: 16,
-                offset: const Offset(0, 4),
-              ),
-            ],
-          ),
-          alignment: Alignment.center,
-          child: const Text(
-            'NF',
-            style: TextStyle(
-              color: Colors.white,
-              fontSize: 26,
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-        ),
-        const SizedBox(height: 10),
-        const Text(
-          'Namal Fernando',
-          style: TextStyle(
-            fontSize: 16,
-            fontWeight: FontWeight.w700,
-            color: AppColors.primary,
-          ),
-        ),
-        const SizedBox(height: 2),
-        const Text(
-          'Driver ID: DRV-2841',
-          style: TextStyle(fontSize: 11, color: AppColors.textMuted),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildStarRating() {
-    return Container(
-      padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 20),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: const Color(0xFF1E5AA8).withValues(alpha: 0.08)),
-      ),
-      child: Column(
-        children: [
-          const Text(
-            'How was your experience?',
-            style: TextStyle(fontSize: 13, color: AppColors.textMuted),
-          ),
-          const SizedBox(height: 12),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: List.generate(5, (index) {
-              final isFilled = index < _starRating;
-              return GestureDetector(
-                onTap: () => setState(() => _starRating = index + 1),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 4),
-                  child: Icon(
-                    isFilled ? Icons.star_rounded : Icons.star_outline_rounded,
-                    size: 36,
-                    color: isFilled ? AppColors.starFilled : AppColors.starEmpty,
-                  ),
-                ),
-              );
-            }),
-          ),
-          const SizedBox(height: 8),
-          RichText(
-            text: TextSpan(
+            const SizedBox(width: 14),
+            Expanded(child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                TextSpan(
-                  text: '$_starRating ',
-                  style: const TextStyle(
-                    fontSize: 24,
-                    fontWeight: FontWeight.w800,
-                    color: AppColors.primary,
-                  ),
-                ),
-                const TextSpan(
-                  text: '/ 5',
-                  style: TextStyle(
-                    fontSize: 14,
-                    color: AppColors.textMuted,
-                  ),
-                ),
+                Text('Rate Your Trip',
+                    style: _t(size: 17, weight: FontWeight.w700)),
+                Text('Help improve our service',
+                    style: _t(size: 11, color: _textSecondary)),
               ],
+            )),
+            Container(
+              padding: const EdgeInsets.symmetric(
+                  horizontal: 10, vertical: 5),
+              decoration: BoxDecoration(
+                color: _accentSoft,
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(color: _border),
+              ),
+              child: Row(mainAxisSize: MainAxisSize.min, children: [
+                const Icon(Icons.star_rounded, size: 14, color: _gold),
+                const SizedBox(width: 4),
+                Text('Rate Driver',
+                    style: _t(size: 11, weight: FontWeight.w600,
+                        color: _textSecondary)),
+              ]),
             ),
-          ),
-        ],
+          ]),
+        ),
       ),
     );
   }
 
-  Widget _buildQuickTags(TripProvider tripProvider) {
-    return Wrap(
-      alignment: WrapAlignment.center,
-      spacing: 8,
-      runSpacing: 8,
-      children: const [
-        'Punctual', 'Safe Driving', 'Friendly', 'Clean Bus',
-        'Smooth Ride', 'Helpful', 'On Time', 'Professional',
-      ].map((tag) {
-        final isSelected = tripProvider.selectedTags.contains(tag);
-        return GestureDetector(
-          onTap: () => tripProvider.toggleTag(tag),
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+  // ── Trip Summary ──────────────────────────────────────────────────────────
+  Widget _buildTripSummary(TripProvider tripProvider) {
+    final trip = tripProvider.completedTripForRating;
+    final routeNumber = trip?.routeNumber ?? '---';
+    final from  = trip?.from?.isNotEmpty == true
+        ? trip!.from : 'Boarding Stop';
+    final to    = trip?.to?.isNotEmpty == true
+        ? trip!.to : 'Alighting Stop';
+    final fare  = trip?.fare != null && trip!.fare > 0
+        ? 'Rs.${trip.fare.toStringAsFixed(0)}' : '—';
+    final date  = trip?.date?.isNotEmpty == true ? trip!.date : '';
+    final time  = trip?.time?.isNotEmpty == true ? trip!.time : '';
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: _card,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: _border),
+      ),
+      child: Column(children: [
+        Row(children: [
+          Container(
+            padding: const EdgeInsets.symmetric(
+                horizontal: 10, vertical: 5),
             decoration: BoxDecoration(
-              color: isSelected
-                  ? const Color(0xFF1E5AA8).withValues(alpha: 0.1)
-                  : const Color(0xFFF5F5F5),
-              borderRadius: BorderRadius.circular(20),
-              border: Border.all(
-                color: isSelected
-                    ? const Color(0xFF1E5AA8).withValues(alpha: 0.3)
-                    : Colors.transparent,
+              gradient: const LinearGradient(
+                  colors: [Color(0xFF1E5AA8), Color(0xFF3B82F6)]),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Text(routeNumber,
+                style: _t(size: 13, weight: FontWeight.w800)),
+          ),
+          const SizedBox(width: 10),
+          Expanded(child: Text('$from → $to',
+              style: _t(size: 13, weight: FontWeight.w600),
+              overflow: TextOverflow.ellipsis)),
+          Container(
+            padding: const EdgeInsets.symmetric(
+                horizontal: 8, vertical: 4),
+            decoration: BoxDecoration(
+              color: _accentSoft,
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: _border),
+            ),
+            child: Text(fare,
+                style: _t(size: 12, weight: FontWeight.w700,
+                    color: _accent)),
+          ),
+        ]),
+        if (date.isNotEmpty) ...[
+          const SizedBox(height: 10),
+          const Divider(color: _border, height: 1),
+          const SizedBox(height: 10),
+          Row(children: [
+            const Icon(Icons.calendar_today_rounded,
+                size: 13, color: _textMuted),
+            const SizedBox(width: 6),
+            Text('$date${time.isNotEmpty ? '  ·  $time' : ''}',
+                style: _t(size: 12, color: _textSecondary)),
+          ]),
+        ],
+      ]),
+    );
+  }
+
+  // ── Star Rating ───────────────────────────────────────────────────────────
+  Widget _buildStarRating() {
+    final labels = ['Terrible', 'Bad', 'Okay', 'Good', 'Excellent'];
+    final colors = [
+      const Color(0xFFEF4444),
+      const Color(0xFFF97316),
+      const Color(0xFFEAB308),
+      const Color(0xFF84CC16),
+      const Color(0xFF22C55E),
+    ];
+
+    return Container(
+      padding: const EdgeInsets.symmetric(
+          vertical: 20, horizontal: 20),
+      decoration: BoxDecoration(
+        color: _card,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: _border),
+      ),
+      child: Column(children: [
+        Text('How was your ride?',
+            style: _t(size: 14, color: _textSecondary)),
+        const SizedBox(height: 16),
+        Row(mainAxisAlignment: MainAxisAlignment.center,
+            children: List.generate(5, (i) {
+          final filled = i < _starRating;
+          return GestureDetector(
+            onTap: () => setState(() => _starRating = i + 1),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 6),
+              child: Icon(
+                filled ? Icons.star_rounded : Icons.star_outline_rounded,
+                size: 40,
+                color: filled ? _gold : _goldEmpty,
               ),
             ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  tag,
-                  style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400,
-                    color: isSelected ? const Color(0xFF132F54) : const Color(0xFF666666),
-                  ),
+          );
+        })),
+        const SizedBox(height: 12),
+        Text(
+          labels[_starRating - 1],
+          style: _t(
+              size: 18,
+              weight: FontWeight.w700,
+              color: colors[_starRating - 1]),
+        ),
+        const SizedBox(height: 4),
+        Text('$_starRating / 5',
+            style: _t(size: 12, color: _textMuted)),
+      ]),
+    );
+  }
+
+  // ── Quick Tags ────────────────────────────────────────────────────────────
+  Widget _buildQuickTags(TripProvider tripProvider) {
+    const tags = [
+      'Punctual', 'Safe Driving', 'Friendly',
+      'Clean Bus', 'Smooth Ride', 'Helpful',
+      'On Time', 'Professional',
+    ];
+
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Text('QUICK TAGS',
+          style: _t(size: 11, weight: FontWeight.w700,
+              color: _textMuted, letterSpacing: 0.8)),
+      const SizedBox(height: 10),
+      Wrap(
+        spacing: 8,
+        runSpacing: 8,
+        children: tags.map((tag) {
+          final isSelected = tripProvider.selectedTags.contains(tag);
+          return GestureDetector(
+            onTap: () => tripProvider.toggleTag(tag),
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 200),
+              padding: const EdgeInsets.symmetric(
+                  horizontal: 14, vertical: 8),
+              decoration: BoxDecoration(
+                color: isSelected ? _accent.withOpacity(0.15) : _card,
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(
+                  color: isSelected ? _accent : _border,
+                  width: isSelected ? 1.5 : 1,
                 ),
+              ),
+              child: Row(mainAxisSize: MainAxisSize.min, children: [
+                Text(tag,
+                    style: _t(
+                        size: 12,
+                        weight: isSelected
+                            ? FontWeight.w600
+                            : FontWeight.w400,
+                        color: isSelected
+                            ? Colors.white
+                            : _textSecondary)),
                 if (isSelected) ...[
-                  const SizedBox(width: 4),
-                  const Icon(Icons.check_rounded, size: 14, color: Color(0xFF1E5AA8)),
+                  const SizedBox(width: 5),
+                  const Icon(Icons.check_rounded,
+                      size: 13, color: _accent),
                 ],
-              ],
+              ]),
             ),
-          ),
-        );
-      }).toList(),
-    );
+          );
+        }).toList(),
+      ),
+    ]);
   }
 
+  // ── Comment ───────────────────────────────────────────────────────────────
   Widget _buildComment(TripProvider tripProvider) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Text(
-          'Leave a Comment (optional)',
-          style: TextStyle(fontSize: 12, color: AppColors.textMuted),
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Text('YOUR EXPERIENCE (optional)',
+          style: _t(size: 11, weight: FontWeight.w700,
+              color: _textMuted, letterSpacing: 0.8)),
+      const SizedBox(height: 10),
+
+      // AI note
+      Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(12),
+        margin: const EdgeInsets.only(bottom: 10),
+        decoration: BoxDecoration(
+          color: const Color(0xFF1A3A5C).withOpacity(0.5),
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: _border),
         ),
-        const SizedBox(height: 6),
-        Container(
-          width: double.infinity,
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: AppColors.border),
-          ),
-          child: TextField(
-            controller: _commentController,
-            maxLines: 3,
-            onChanged: (value) => tripProvider.setComment(value),
-            style: const TextStyle(fontSize: 13, color: Color(0xFF333333)),
-            decoration: const InputDecoration(
-              hintText: 'Great driver, very professional...',
-              hintStyle: TextStyle(fontSize: 13, color: Color(0xFFBBBBBB)),
-              border: InputBorder.none,
-              contentPadding: EdgeInsets.all(12),
-            ),
+        child: Row(children: [
+          const Icon(Icons.psychology_rounded,
+              size: 16, color: _accent),
+          const SizedBox(width: 8),
+          Expanded(child: Text(
+            'Our AI reads your comment to score the driver fairly.',
+            style: _t(size: 11, color: _textSecondary, letterSpacing: 0.1),
+          )),
+        ]),
+      ),
+
+      Container(
+        decoration: BoxDecoration(
+          color: _card,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: _border),
+        ),
+        child: TextField(
+          controller:  _commentController,
+          maxLines:    4,
+          maxLength:   300,
+          // ← HIGH CONTRAST: white text on dark field
+          style:       _t(size: 14, color: _textPrimary),
+          onChanged:   (v) => tripProvider.setComment(v),
+          decoration: InputDecoration(
+            hintText: 'Was the driver polite? Bus clean? On time?',
+            hintStyle: _t(size: 13, color: _textMuted),
+            filled:    false,
+            border:    InputBorder.none,
+            counterStyle: _t(size: 10, color: _textMuted),
+            contentPadding: const EdgeInsets.all(14),
           ),
         ),
-      ],
-    );
+      ),
+    ]);
   }
 
+  // ── Actions ───────────────────────────────────────────────────────────────
   Widget _buildActions(TripProvider tripProvider) {
-    return Column(
-      children: [
-        SizedBox(
-          width: double.infinity,
-          height: 48,
-          child: ElevatedButton(
-            onPressed: () async {
-              tripProvider.setRating(_starRating);
-              // tripId and busId come from the ongoing/last trip; use
-              // ongoingTrip if available, otherwise fall back to the most
-              // recent completed trip.
-              final trip = tripProvider.ongoingTrip
-                  ?? (tripProvider.tripHistory.isNotEmpty
-                      ? tripProvider.tripHistory.first
-                      : null);
-              if (trip?.id != null && trip?.busId != null) {
-                await tripProvider.submitRating(
-                  tripId: trip!.id!,
-                  busId:  trip.busId!,
-                );
-              }
-              if (mounted) setState(() => _submitted = true);
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF1E5AA8),
-              foregroundColor: Colors.white,
-              elevation: 0,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(14),
-              ),
-            ),
-            child: const Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Text(
-                  'Submit Rating',
-                  style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
-                ),
-                SizedBox(width: 6),
-                Icon(Icons.star_rounded, size: 18),
-              ],
-            ),
+    return Column(children: [
+      SizedBox(
+        width: double.infinity, height: 52,
+        child: ElevatedButton(
+          onPressed: _submitting ? null : () async {
+            setState(() => _submitting = true);
+            tripProvider.setRating(_starRating);
+
+            final trip = tripProvider.completedTripForRating
+                ?? (tripProvider.tripHistory.isNotEmpty
+                    ? tripProvider.tripHistory.first
+                    : null);
+
+            if (trip?.id != null && trip?.busId != null) {
+              await tripProvider.submitRating(
+                tripId: trip!.id!,
+                busId:  trip.busId!,
+              );
+            }
+            if (mounted) setState(() { _submitted = true; _submitting = false; });
+          },
+          style: ElevatedButton.styleFrom(
+            backgroundColor: _accent,
+            disabledBackgroundColor: _accent.withOpacity(0.3),
+            elevation: 0,
+            shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(14)),
           ),
+          child: _submitting
+              ? const SizedBox(
+                  width: 22, height: 22,
+                  child: CircularProgressIndicator(
+                      strokeWidth: 2.5, color: Colors.white))
+              : Row(mainAxisSize: MainAxisSize.min, children: [
+                  const Icon(Icons.star_rounded,
+                      size: 18, color: Colors.white),
+                  const SizedBox(width: 8),
+                  Text('Submit Rating',
+                      style: _t(size: 15, weight: FontWeight.w700)),
+                ]),
         ),
-        const SizedBox(height: 10),
-        GestureDetector(
-          onTap: () => context.pop(),
-          child: const Text(
-            'Skip',
-            style: TextStyle(fontSize: 13, color: AppColors.textMuted),
-          ),
-        ),
-      ],
-    );
+      ),
+      const SizedBox(height: 12),
+      GestureDetector(
+        onTap: () {
+          tripProvider.clearCompletedTrip();
+          context.pop();
+        },
+        child: Text('Skip for now',
+            style: _t(size: 13, color: _textMuted)),
+      ),
+    ]);
   }
 
-  Widget _buildSuccessView() {
+  // ── Success view ──────────────────────────────────────────────────────────
+  Widget _buildSuccess() {
     return Container(
       width: double.infinity,
       height: double.infinity,
@@ -440,7 +432,7 @@ class _DriverRatingScreenState extends State<DriverRatingScreen> {
         gradient: LinearGradient(
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
-          colors: [Color(0xFF0B1A2E), Color(0xFF132F54)],
+          colors: [Color(0xFF0A1628), Color(0xFF0D2040)],
         ),
       ),
       child: SafeArea(
@@ -451,47 +443,39 @@ class _DriverRatingScreenState extends State<DriverRatingScreen> {
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 Container(
-                  padding: const EdgeInsets.all(20),
+                  width: 90, height: 90,
                   decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: 0.1),
+                    color: const Color(0xFF16A34A).withOpacity(0.15),
                     shape: BoxShape.circle,
+                    border: Border.all(
+                        color: const Color(0xFF16A34A).withOpacity(0.5),
+                        width: 2),
                   ),
-                  child: const Icon(Icons.check_circle_rounded, size: 64, color: Colors.white),
+                  child: const Icon(Icons.check_circle_rounded,
+                      size: 50, color: Color(0xFF4ADE80)),
                 ),
                 const SizedBox(height: 24),
-                const Text(
-                  'Thank You!',
-                  style: TextStyle(
-                    fontSize: 24,
-                    fontWeight: FontWeight.w700,
-                    color: Colors.white,
-                  ),
-                ),
-                const SizedBox(height: 8),
+                Text('Thank You!',
+                    style: _t(size: 26, weight: FontWeight.w800)),
+                const SizedBox(height: 10),
                 Text(
-                  'Your rating has been submitted successfully.',
+                  'Your feedback helps improve the\nservice for everyone.',
                   textAlign: TextAlign.center,
-                  style: TextStyle(
-                    fontSize: 14,
-                    color: Colors.white.withValues(alpha: 0.7),
-                  ),
+                  style: _t(size: 14, color: _textSecondary),
                 ),
-                const SizedBox(height: 32),
+                const SizedBox(height: 40),
                 SizedBox(
-                  width: double.infinity,
-                  height: 48,
+                  width: double.infinity, height: 52,
                   child: ElevatedButton(
                     onPressed: () => context.go('/home'),
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.white,
-                      foregroundColor: const Color(0xFF132F54),
+                      backgroundColor: _accent,
                       elevation: 0,
                       shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(14),
-                      ),
+                          borderRadius: BorderRadius.circular(14)),
                     ),
-                    child: const Text('Back to Home',
-                        style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
+                    child: Text('Back to Home',
+                        style: _t(size: 15, weight: FontWeight.w600)),
                   ),
                 ),
               ],
@@ -502,3 +486,4 @@ class _DriverRatingScreenState extends State<DriverRatingScreen> {
     );
   }
 }
+

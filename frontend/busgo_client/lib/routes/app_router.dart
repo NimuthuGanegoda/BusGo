@@ -4,6 +4,7 @@ import '../screens/auth/splash_screen.dart';
 import '../screens/auth/login_screen.dart';
 import '../screens/auth/register_screen.dart';
 import '../screens/auth/forgot_password_screen.dart';
+import '../screens/auth/verify_email_screen.dart';
 import '../screens/dashboard/dashboard_screen.dart';
 import '../screens/map/live_map_screen.dart';
 import '../screens/profile/profile_screen.dart';
@@ -21,8 +22,6 @@ import '../providers/auth_provider.dart';
 import '../providers/trip_provider.dart';
 import '../widgets/rating_popup.dart';
 import '../screens/payment/payment_screen.dart';
-
-
 
 final GoRouter appRouter = GoRouter(
   initialLocation: '/splash',
@@ -43,11 +42,16 @@ final GoRouter appRouter = GoRouter(
       path: '/forgot-password',
       builder: (context, state) => const ForgotPasswordScreen(),
     ),
-
-    // Add this GoRoute:
+    GoRoute(
+      path: '/verify-email',
+      builder: (context, state) => VerifyEmailScreen(
+        email: state.extra as String? ?? '',
+      ),
+    ),
     GoRoute(
       path: '/payment',
-      builder: (context, state) => const PaymentScreen()),
+      builder: (context, state) => const PaymentScreen(),
+    ),
 
     StatefulShellRoute.indexedStack(
       builder: (context, state, navigationShell) {
@@ -103,8 +107,15 @@ final GoRouter appRouter = GoRouter(
     ),
     GoRoute(
       path: '/qr',
-      builder: (context, state) => const QrCardScreen(),
+      builder: (context, state) {
+        final extra = state.extra as Map<String, dynamic>?;
+        return QrCardScreen(
+          alightingStopId:   extra?['alighting_stop_id'] as String?,
+          alightingStopName: extra?['alighting_stop_name'] as String?,
+        );
+      },
     ),
+    
     GoRoute(
       path: '/rating',
       builder: (context, state) => const DriverRatingScreen(),
@@ -120,7 +131,7 @@ final GoRouter appRouter = GoRouter(
   ],
 );
 
-// ── Main shell widget ──────────────────────────────────────────────────────────
+// ── Main shell widget ─────────────────────────────────────────────────────────
 class _MainShell extends StatefulWidget {
   final StatefulNavigationShell navigationShell;
   const _MainShell({required this.navigationShell});
@@ -152,7 +163,6 @@ class _MainShellState extends State<_MainShell> {
 
   @override
   Widget build(BuildContext context) {
-
     return Consumer<TripProvider>(
       builder: (context, tripProvider, child) {
         final pendingTrip = tripProvider.completedTripForRating;
@@ -160,7 +170,6 @@ class _MainShellState extends State<_MainShell> {
         if (pendingTrip != null &&
             !_dialogShowing &&
             pendingTrip.id != _lastShownTripId) {
-
           _dialogShowing   = true;
           _lastShownTripId = pendingTrip.id;
 
@@ -191,3 +200,6 @@ class _MainShellState extends State<_MainShell> {
     );
   }
 }
+
+
+
