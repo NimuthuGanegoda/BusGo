@@ -227,6 +227,7 @@ class _EmergencyScreenState extends State<EmergencyScreen> {
     await emergency.sendAlert(
       driverId:  auth.driver?.id ?? 'DRV-UNKNOWN',
       tripId:    tp.currentTrip?.id ?? 'NO-TRIP',
+      busId:     tp.busId,
       latitude:  tp.currentLocation.latitude,
       longitude: tp.currentLocation.longitude,
     );
@@ -371,6 +372,10 @@ class _SosHoldButtonState extends State<_SosHoldButton>
     );
   }
 }
+
+
+
+
 
 
 

@@ -37,6 +37,7 @@ class EmergencyProvider extends ChangeNotifier {
     required String tripId,
     required double latitude,
     required double longitude,
+    String? busId,   // ← added
   }) async {
     if (_selectedType == null) return;
     _isSending = true;
@@ -44,7 +45,6 @@ class EmergencyProvider extends ChangeNotifier {
     notifyListeners();
 
     final token = await _tokenService.getAccessToken();
-
     if (token == null) {
       _error     = 'Not logged in — please log in again';
       _isSending = false;
@@ -62,20 +62,33 @@ class EmergencyProvider extends ChangeNotifier {
         'other':     'other',
       };
 
+      // Build request body — include bus_id and trip_id so the backend
+      // can store them on the emergency_alerts record
+      final requestBody = <String, dynamic>{
+        'alert_type':  typeMap[_selectedType] ?? 'other',
+        'description': _description.isEmpty
+            ? 'Emergency alert from driver'
+            : _description,
+        'latitude':  latitude,
+        'longitude': longitude,
+      };
+
+      // Only include if valid — avoids sending 'NO-TRIP' or 'DRV-UNKNOWN'
+      // as real UUIDs which would cause a DB error
+      if (busId != null && busId.isNotEmpty && busId != 'UNKNOWN') {
+        requestBody['bus_id'] = busId;
+      }
+      if (tripId.isNotEmpty && tripId != 'NO-TRIP') {
+        requestBody['trip_id'] = tripId;
+      }
+
       final response = await http.post(
         Uri.parse('${ApiConfig.baseUrl}/emergency'),
         headers: {
           'Content-Type':  'application/json',
           'Authorization': 'Bearer $token',
         },
-        body: jsonEncode({
-          'alert_type':  typeMap[_selectedType] ?? 'other',
-          'description': _description.isEmpty
-              ? 'Emergency alert from driver'
-              : _description,
-          'latitude':  latitude,
-          'longitude': longitude,
-        }),
+        body: jsonEncode(requestBody),
       ).timeout(const Duration(seconds: 10));
 
       if (response.statusCode == 201 || response.statusCode == 200) {
@@ -97,12 +110,12 @@ class EmergencyProvider extends ChangeNotifier {
         _error  = null;
       } else {
         final body = jsonDecode(response.body);
-        _error = body['message'] as String? ?? 'Failed to send alert (${response.statusCode})';
+        _error  = body['message'] as String? ?? 'Failed to send alert (${response.statusCode})';
         _isSent = false;
         debugPrint('[Emergency] Backend error ${response.statusCode}: $_error');
       }
     } catch (e) {
-      _error = 'Network error — please check your connection';
+      _error  = 'Network error — please check your connection';
       _isSent = false;
       debugPrint('[Emergency] Network error: $e');
     } finally {
@@ -127,6 +140,3 @@ class EmergencyProvider extends ChangeNotifier {
     notifyListeners();
   }
 }
-
-
-

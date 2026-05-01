@@ -30,6 +30,7 @@ class TripProvider extends ChangeNotifier {
   int          _busCapacity       = 50;
   bool         _isExpressMode     = false;
   List<Map<String, dynamic>> _mustStopAt = []; // [{ id, name }]
+  String?      _busId;
 
   Timer? _passengerPollTimer;
   StreamSubscription<Position>? _positionStream;
@@ -52,6 +53,7 @@ class TripProvider extends ChangeNotifier {
   // FR-34 getters
   int          get busCapacity      => _busCapacity;
   bool         get isExpressMode    => _isExpressMode;
+  String?      get busId            => _busId;
   List<Map<String, dynamic>> get mustStopAt => _mustStopAt;
   int          get mustStopCount    => _mustStopAt.length;
 
@@ -95,6 +97,8 @@ class TripProvider extends ChangeNotifier {
           final count        = data['active_passengers'] as int? ?? 0;
           final capacity     = data['bus_capacity']      as int? ?? 50;
           final expressMode  = data['is_express_mode']   as bool? ?? false;
+          final busId        = data['bus_id']            as String?;  // ← ADD THIS
+          if (busId != null) _busId = busId;
           final rawMustStop  = data['must_stop_at']      as List<dynamic>? ?? [];
           final mustStopList = rawMustStop
               .whereType<Map<String, dynamic>>()
@@ -300,3 +304,7 @@ class TripProvider extends ChangeNotifier {
     super.dispose();
   }
 }
+
+
+
+

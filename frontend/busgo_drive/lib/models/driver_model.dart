@@ -92,3 +92,6 @@ class Driver {
     assignedRouteDestination: assignedRouteDestination ?? this.assignedRouteDestination,
   );
 }
+
+
+

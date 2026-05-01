@@ -249,3 +249,6 @@ async function updateRatingAggregate(busId) {
     weighted_score: weighted,
   }, { onConflict: 'bus_id,period_start' });
 }
+
+
+

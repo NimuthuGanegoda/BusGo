@@ -1,411 +1,346 @@
-import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:http/http.dart' as http;
-import '../../core/constants/api_constants.dart';
+import 'package:provider/provider.dart';
+import '../../providers/auth_provider.dart';
+import '../../widgets/busgo_alert.dart';
 
 class ForgotPasswordScreen extends StatefulWidget {
   const ForgotPasswordScreen({super.key});
   @override State<ForgotPasswordScreen> createState() => _ForgotPasswordScreenState();
 }
 
-class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
-  // Steps: 1 = enter email, 2 = enter PIN, 3 = new password, 4 = success
-  int _step = 1;
+class _ForgotPasswordScreenState extends State<ForgotPasswordScreen>
+    with SingleTickerProviderStateMixin {
 
-  final _emailController    = TextEditingController();
-  final _pinController      = TextEditingController();
-  final _passwordController = TextEditingController();
-  final _confirmController  = TextEditingController();
+  // Step driven by auth_provider.forgotPasswordStep (0=email,1=pin,2=new pass)
+  final _emailCtrl   = TextEditingController();
+  final _pinCtrl     = TextEditingController();
+  final _passCtrl    = TextEditingController();
+  final _confirmCtrl = TextEditingController();
+  bool _obscurePass    = true;
+  bool _obscureConfirm = true;
 
-  bool    _isLoading       = false;
-  String? _error;
-  String? _resetToken;
-  bool    _obscurePassword = true;
-  bool    _obscureConfirm  = true;
-  String  _email           = '';
+  late AnimationController _enterCtrl;
+
+  static const _bg   = Color(0xFF040D18);
+  static const _teal = Color(0xFF4ECDC4);
+  static const _panel= Color(0xFF0A1628);
+
+  @override
+  void initState() {
+    super.initState();
+    _enterCtrl = AnimationController(vsync: this,
+        duration: const Duration(milliseconds: 600))..forward();
+    // Reset provider state when entering screen
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      context.read<AuthProvider>().resetForgotPassword();
+    });
+  }
 
   @override
   void dispose() {
-    _emailController.dispose();
-    _pinController.dispose();
-    _passwordController.dispose();
-    _confirmController.dispose();
+    _enterCtrl.dispose();
+    _emailCtrl.dispose(); _pinCtrl.dispose();
+    _passCtrl.dispose(); _confirmCtrl.dispose();
     super.dispose();
   }
 
-  // ── Step 1: Request PIN ────────────────────────────────────────────────────
-  Future<void> _requestPin() async {
-    if (_emailController.text.trim().isEmpty) {
-      setState(() => _error = 'Please enter your email');
+  // Current UI step based on provider state
+  int _uiStep(AuthProvider auth) => auth.forgotPasswordStep + 1; // 0→1, 1→2, 2→3
+
+  Future<void> _sendPin(AuthProvider auth) async {
+    final email = _emailCtrl.text.trim();
+    if (email.isEmpty) {
+      BusgoAlert.show(context, type: BusgoAlertType.error,
+          title: 'Email Required', message: 'Please enter your email address.');
       return;
     }
-    setState(() { _isLoading = true; _error = null; });
-
-    try {
-      final res = await http.post(
-        Uri.parse('$kBaseUrlDev/auth/forgot-password/request'),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({'email': _emailController.text.trim().toLowerCase()}),
-      ).timeout(const Duration(seconds: 10));
-
-      if (res.statusCode == 200) {
-        _email = _emailController.text.trim().toLowerCase();
-        setState(() { _step = 2; _isLoading = false; });
-      } else {
-        final body = jsonDecode(res.body);
-        setState(() {
-          _error = body['message'] ?? 'Failed to send PIN';
-          _isLoading = false;
-        });
-      }
-    } catch (e) {
-      setState(() {
-        _error = 'Connection failed. Is the backend running?';
-        _isLoading = false;
-      });
+    await auth.sendResetPin(email);
+    if (!mounted) return;
+    if (auth.errorMessage != null) {
+      BusgoAlert.show(context, type: BusgoAlertType.error,
+          title: 'Failed', message: auth.errorMessage!);
+      auth.clearError();
     }
   }
 
-  // ── Step 2: Verify PIN ─────────────────────────────────────────────────────
-  Future<void> _verifyPin() async {
-    if (_pinController.text.trim().length != 6) {
-      setState(() => _error = 'Please enter the 6-digit PIN');
+  Future<void> _verifyPin(AuthProvider auth) async {
+    final pin = _pinCtrl.text.trim();
+    if (pin.isEmpty) {
+      BusgoAlert.show(context, type: BusgoAlertType.error,
+          title: 'PIN Required', message: 'Enter the PIN sent to your email.');
       return;
     }
-    setState(() { _isLoading = true; _error = null; });
-
-    try {
-      final res = await http.post(
-        Uri.parse('$kBaseUrlDev/auth/forgot-password/verify'),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({
-          'email': _email,
-          'pin':   _pinController.text.trim(),
-        }),
-      ).timeout(const Duration(seconds: 10));
-
-      final body = jsonDecode(res.body);
-
-      if (res.statusCode == 200) {
-        _resetToken = body['data']['reset_token'] as String;
-        setState(() { _step = 3; _isLoading = false; });
-      } else {
-        setState(() {
-          _error = body['message'] ?? 'Invalid PIN';
-          _isLoading = false;
-        });
-      }
-    } catch (e) {
-      setState(() {
-        _error = 'Connection failed.';
-        _isLoading = false;
-      });
+    await auth.verifyPin(pin);
+    if (!mounted) return;
+    if (auth.errorMessage != null) {
+      BusgoAlert.show(context, type: BusgoAlertType.error,
+          title: 'Invalid PIN', message: 'The PIN is incorrect or expired.');
+      auth.clearError();
     }
   }
 
-  // ── Step 3: Reset Password ─────────────────────────────────────────────────
-  Future<void> _resetPassword() async {
-    if (_passwordController.text.length < 8) {
-      setState(() => _error = 'Password must be at least 8 characters');
-      return;
-    }
-    if (_passwordController.text != _confirmController.text) {
-      setState(() => _error = 'Passwords do not match');
-      return;
-    }
-    setState(() { _isLoading = true; _error = null; });
-
-    try {
-      final res = await http.post(
-        Uri.parse('$kBaseUrlDev/auth/forgot-password/reset'),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({
-          'reset_token':      _resetToken,
-          'new_password':     _passwordController.text,
-          'confirm_password': _confirmController.text,
-        }),
-      ).timeout(const Duration(seconds: 10));
-
-      if (res.statusCode == 200) {
-        setState(() { _step = 4; _isLoading = false; });
-      } else {
-        final body = jsonDecode(res.body);
-        setState(() {
-          _error = body['message'] ?? 'Failed to reset password';
-          _isLoading = false;
-        });
-      }
-    } catch (e) {
-      setState(() {
-        _error = 'Connection failed.';
-        _isLoading = false;
-      });
+  Future<void> _resetPassword(AuthProvider auth) async {
+    final ok = await auth.resetPassword(_passCtrl.text, _confirmCtrl.text);
+    if (!mounted) return;
+    if (ok) {
+      BusgoAlert.show(context, type: BusgoAlertType.success,
+          title: 'Password Reset!',
+          message: 'You can now sign in with your new password.');
+      await Future.delayed(const Duration(milliseconds: 1600));
+      if (!mounted) return;
+      context.go('/login');
+    } else if (auth.errorMessage != null) {
+      BusgoAlert.show(context, type: BusgoAlertType.error,
+          title: 'Reset Failed', message: auth.errorMessage!);
+      auth.clearError();
     }
   }
 
   @override
-  Widget build(BuildContext context) => Scaffold(
-    body: Container(
-      width: double.infinity, height: double.infinity,
-      decoration: const BoxDecoration(gradient: LinearGradient(
-        begin: Alignment.topLeft, end: Alignment.bottomRight,
-        colors: [Color(0xFF0B1A2E), Color(0xFF132F54), Color(0xFF1E5AA8)],
-      )),
-      child: SafeArea(child: SingleChildScrollView(
-        padding: const EdgeInsets.symmetric(horizontal: 24),
-        child: Column(children: [
-          const SizedBox(height: 40),
-          _buildHeader(),
-          const SizedBox(height: 32),
-          _buildStepIndicator(),
-          const SizedBox(height: 24),
-          _buildCard(),
-          const SizedBox(height: 20),
-          if (_step < 4) GestureDetector(
-            onTap: () => context.pop(),
-            child: Text('← Back to Login',
-                style: GoogleFonts.inter(fontSize: 13,
-                    color: const Color(0xFF90CAF9),
-                    fontWeight: FontWeight.w600)),
-          ),
-          const SizedBox(height: 40),
-        ]),
-      )),
-    ),
-  );
-
-  Widget _buildHeader() => Column(children: [
-    Container(width: 56, height: 56,
-      decoration: BoxDecoration(color: const Color(0xFF1A6FA8),
-          borderRadius: BorderRadius.circular(16)),
-      child: const Icon(Icons.lock_reset_rounded, size: 28, color: Colors.white)),
-    const SizedBox(height: 16),
-    Text('BUSGO', style: GoogleFonts.inter(
-        fontSize: 28, fontWeight: FontWeight.w900,
-        color: Colors.white, letterSpacing: 6)),
-    const SizedBox(height: 8),
-    Text('Reset Your Password', style: GoogleFonts.inter(
-        fontSize: 16, fontWeight: FontWeight.w600, color: Colors.white)),
-    const SizedBox(height: 4),
-    Text(
-      _step == 1 ? 'Enter your email to receive a PIN'
-      : _step == 2 ? 'Check your email for the PIN'
-      : _step == 3 ? 'Create your new password'
-      : 'Password reset successfully!',
-      style: GoogleFonts.inter(fontSize: 13, color: const Color(0xFF90CAF9))),
-  ]);
-
-  Widget _buildStepIndicator() => Row(
-    mainAxisAlignment: MainAxisAlignment.center,
-    children: List.generate(3, (i) {
-      final stepNum  = i + 1;
-      final isActive = _step == stepNum;
-      final isDone   = _step > stepNum;
-      return Row(children: [
-        AnimatedContainer(
-          duration: const Duration(milliseconds: 300),
-          width: isActive ? 32 : 24, height: 24,
-          decoration: BoxDecoration(
-            color: isDone ? const Color(0xFF16a34a)
-                : isActive ? const Color(0xFF1A6FA8)
-                : Colors.white.withValues(alpha: 0.2),
-            borderRadius: BorderRadius.circular(12),
-          ),
-          child: Center(child: isDone
-              ? const Icon(Icons.check, size: 14, color: Colors.white)
-              : Text('$stepNum', style: GoogleFonts.inter(
-                  fontSize: 12, fontWeight: FontWeight.w700,
-                  color: Colors.white))),
-        ),
-        if (i < 2) Container(width: 32, height: 2,
-            color: _step > stepNum
-                ? const Color(0xFF16a34a)
-                : Colors.white.withValues(alpha: 0.2)),
-      ]);
-    }),
-  );
-
-  Widget _buildCard() => Container(
-    padding: const EdgeInsets.all(24),
-    decoration: BoxDecoration(color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
-        border: const Border(top: BorderSide(color: Color(0xFF1A6FA8), width: 3))),
-    child: _step == 4 ? _buildSuccessContent() : Column(children: [
-      if (_error != null) Container(
-        width: double.infinity, padding: const EdgeInsets.all(12),
-        margin: const EdgeInsets.only(bottom: 16),
-        decoration: BoxDecoration(color: const Color(0xFFFEF2F2),
-            borderRadius: BorderRadius.circular(8),
-            border: Border.all(color: const Color(0xFFFCA5A5))),
-        child: Row(children: [
-          const Icon(Icons.error_outline, size: 16, color: Color(0xFFDC2626)),
-          const SizedBox(width: 8),
-          Expanded(child: Text(_error!,
-              style: GoogleFonts.inter(fontSize: 12, color: const Color(0xFFDC2626)))),
-        ]),
+  Widget build(BuildContext context) {
+    final size = MediaQuery.of(context).size;
+    return Scaffold(
+      backgroundColor: _bg,
+      resizeToAvoidBottomInset: true,
+      body: FadeTransition(
+        opacity: CurvedAnimation(parent: _enterCtrl, curve: Curves.easeOut),
+        child: Consumer<AuthProvider>(builder: (ctx, auth, _) {
+          final step = _uiStep(auth);
+          return Stack(children: [
+            Container(decoration: const BoxDecoration(gradient: RadialGradient(
+              center: Alignment(0.0, -0.6), radius: 1.1,
+              colors: [Color(0xFF0A1E30), Color(0xFF040D18)]))),
+            CustomPaint(size: size, painter: _GridPainter()),
+            Positioned(top: -30, left: 0, right: 0, child: Center(child: Container(
+              width: 240, height: 240,
+              decoration: BoxDecoration(shape: BoxShape.circle,
+                gradient: RadialGradient(colors: [
+                  _teal.withOpacity(0.06), Colors.transparent]))))),
+            SafeArea(child: SingleChildScrollView(
+              padding: const EdgeInsets.fromLTRB(24, 20, 24, 40),
+              child: Column(children: [
+                // Header
+                Row(children: [
+                  GestureDetector(onTap: () => context.pop(),
+                    child: Container(width: 38, height: 38,
+                      decoration: BoxDecoration(shape: BoxShape.circle,
+                        color: _panel,
+                        border: Border.all(color: _teal.withOpacity(0.2))),
+                      child: const Icon(Icons.arrow_back_rounded,
+                          size: 18, color: Colors.white70))),
+                  const SizedBox(width: 14),
+                  Text('BUSGO', style: GoogleFonts.poppins(
+                    fontSize: 20, fontWeight: FontWeight.w800,
+                    color: Colors.white, letterSpacing: 4)),
+                ]),
+                const SizedBox(height: 32),
+                // Icon
+                AnimatedSwitcher(duration: const Duration(milliseconds: 300),
+                  child: Container(key: ValueKey(step),
+                    width: 64, height: 64,
+                    decoration: BoxDecoration(shape: BoxShape.circle,
+                      color: _panel,
+                      border: Border.all(color: _teal.withOpacity(0.25), width: 1.5),
+                      boxShadow: [BoxShadow(color: _teal.withOpacity(0.10),
+                          blurRadius: 20, spreadRadius: 3)]),
+                    child: Icon(_icon(step), size: 28, color: _teal))),
+                const SizedBox(height: 16),
+                Text(_title(step), style: GoogleFonts.poppins(
+                    fontSize: 22, fontWeight: FontWeight.w700, color: Colors.white)),
+                const SizedBox(height: 6),
+                Text(_subtitle(step), style: GoogleFonts.poppins(
+                    fontSize: 13, color: const Color(0xFF6B7A8D)),
+                  textAlign: TextAlign.center),
+                const SizedBox(height: 26),
+                // Step dots
+                Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                  _dot(1, step), _line(), _dot(2, step), _line(), _dot(3, step),
+                ]),
+                const SizedBox(height: 26),
+                // Card
+                Container(
+                  width: double.infinity,
+                  decoration: BoxDecoration(
+                    color: _panel.withOpacity(0.8),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: _teal.withOpacity(0.12))),
+                  padding: const EdgeInsets.all(20),
+                  child: AnimatedSwitcher(
+                    duration: const Duration(milliseconds: 350),
+                    switchInCurve: Curves.easeOutCubic,
+                    transitionBuilder: (child, anim) => SlideTransition(
+                      position: Tween<Offset>(
+                        begin: const Offset(0.12, 0), end: Offset.zero).animate(anim),
+                      child: FadeTransition(opacity: anim, child: child)),
+                    child: _buildStep(step, auth))),
+                const SizedBox(height: 20),
+                GestureDetector(onTap: () => context.go('/login'),
+                  child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                    Icon(Icons.arrow_back_rounded, size: 14,
+                        color: _teal.withOpacity(0.6)),
+                    const SizedBox(width: 6),
+                    Text('Back to Login', style: GoogleFonts.poppins(
+                        fontSize: 13, color: _teal.withOpacity(0.6),
+                        fontWeight: FontWeight.w500)),
+                  ])),
+              ]))),
+          ]);
+        }),
       ),
-      if (_step == 1) _buildStep1(),
-      if (_step == 2) _buildStep2(),
-      if (_step == 3) _buildStep3(),
-    ]),
-  );
+    );
+  }
 
-  // ── Step 1 UI ──────────────────────────────────────────────────────────────
-  Widget _buildStep1() => Column(crossAxisAlignment: CrossAxisAlignment.start,
-    children: [
-      Text('EMAIL ADDRESS', style: GoogleFonts.inter(
-          fontSize: 11, fontWeight: FontWeight.w600,
-          color: const Color(0xFF888888), letterSpacing: 0.6)),
-      const SizedBox(height: 8),
-      TextFormField(
-        controller: _emailController,
-        keyboardType: TextInputType.emailAddress,
-        style: GoogleFonts.inter(fontSize: 14, color: const Color(0xFF333333)),
-        decoration: _inputDecoration('your@email.com', Icons.email_outlined),
-      ),
-      const SizedBox(height: 20),
-      _buildButton('Send Reset PIN', _requestPin),
+  IconData _icon(int s) => s == 1 ? Icons.lock_reset_rounded
+      : s == 2 ? Icons.pin_outlined : Icons.lock_open_rounded;
+  String _title(int s) => s == 1 ? 'Reset Password'
+      : s == 2 ? 'Enter PIN' : 'New Password';
+  String _subtitle(int s) => s == 1
+      ? 'Enter your email to receive\na reset PIN'
+      : s == 2 ? 'Check your inbox and enter\nthe 6-digit PIN'
+      : 'Choose a strong new password\nfor your account';
+
+  Widget _dot(int n, int step) {
+    final active = n == step; final done = n < step;
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 300),
+      width: active?34:28, height: active?34:28,
+      decoration: BoxDecoration(shape: BoxShape.circle,
+        color: done?_teal: active?_teal.withOpacity(0.12):Colors.white.withOpacity(0.05),
+        border: Border.all(color: (active||done)?_teal:Colors.white.withOpacity(0.12),
+            width: active?2:1.5)),
+      child: Center(child: done
+          ? const Icon(Icons.check_rounded, size: 14, color: Colors.white)
+          : Text('$n', style: GoogleFonts.poppins(fontSize: 12,
+              fontWeight: FontWeight.w700,
+              color: active?_teal:Colors.white.withOpacity(0.3)))));
+  }
+
+  Widget _line() => Container(width: 40, height: 1.5,
+      margin: const EdgeInsets.symmetric(horizontal: 6),
+      color: Colors.white.withOpacity(0.08));
+
+  Widget _buildStep(int step, AuthProvider auth) => switch(step) {
+    1 => _step1(auth, key: const ValueKey(1)),
+    2 => _step2(auth, key: const ValueKey(2)),
+    _ => _step3(auth, key: const ValueKey(3)),
+  };
+
+  Widget _step1(AuthProvider auth, {Key? key}) =>
+    Column(key: key, mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start, children: [
+      _lbl('EMAIL ADDRESS'),
+      _inp(_emailCtrl, 'your@email.com', Icons.email_outlined,
+          keyboard: TextInputType.emailAddress),
+      const SizedBox(height: 16),
+      _btn('Send Reset PIN', auth, () => _sendPin(auth)),
     ]);
 
-  // ── Step 2 UI ──────────────────────────────────────────────────────────────
-  Widget _buildStep2() => Column(crossAxisAlignment: CrossAxisAlignment.start,
-    children: [
-      Container(width: double.infinity, padding: const EdgeInsets.all(12),
-        margin: const EdgeInsets.only(bottom: 16),
-        decoration: BoxDecoration(color: const Color(0xFFF0F7FF),
-            borderRadius: BorderRadius.circular(8),
-            border: Border.all(color: const Color(0xFFBFDBFE))),
+  Widget _step2(AuthProvider auth, {Key? key}) =>
+    Column(key: key, mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Container(padding: const EdgeInsets.all(10),
+        decoration: BoxDecoration(color: _teal.withOpacity(0.07),
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: _teal.withOpacity(0.2))),
         child: Row(children: [
-          const Icon(Icons.email_rounded, size: 16, color: Color(0xFF1A6FA8)),
+          Icon(Icons.mail_outline_rounded, size: 16, color: _teal.withOpacity(0.7)),
           const SizedBox(width: 8),
-          Expanded(child: Text('PIN sent to $_email',
-              style: GoogleFonts.inter(fontSize: 12,
-                  color: const Color(0xFF1A6FA8), fontWeight: FontWeight.w600))),
-        ]),
-      ),
-      Text('6-DIGIT PIN', style: GoogleFonts.inter(
-          fontSize: 11, fontWeight: FontWeight.w600,
-          color: const Color(0xFF888888), letterSpacing: 0.6)),
-      const SizedBox(height: 8),
-      TextFormField(
-        controller: _pinController,
-        keyboardType: TextInputType.number,
-        maxLength: 6,
-        inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-        textAlign: TextAlign.center,
-        style: GoogleFonts.inter(fontSize: 24, fontWeight: FontWeight.w800,
-            color: const Color(0xFF0A2342), letterSpacing: 8),
-        decoration: _inputDecoration('000000', Icons.pin_outlined)
-            .copyWith(counterText: ''),
-      ),
-      const SizedBox(height: 20),
-      _buildButton('Verify PIN', _verifyPin),
-      const SizedBox(height: 12),
-      Center(child: GestureDetector(
-        onTap: _requestPin,
-        child: Text('Resend PIN',
-            style: GoogleFonts.inter(fontSize: 13,
-                color: const Color(0xFF1A6FA8), fontWeight: FontWeight.w600)),
-      )),
-    ]);
-
-  // ── Step 3 UI ──────────────────────────────────────────────────────────────
-  Widget _buildStep3() => Column(crossAxisAlignment: CrossAxisAlignment.start,
-    children: [
-      Text('NEW PASSWORD', style: GoogleFonts.inter(
-          fontSize: 11, fontWeight: FontWeight.w600,
-          color: const Color(0xFF888888), letterSpacing: 0.6)),
-      const SizedBox(height: 8),
-      TextFormField(
-        controller: _passwordController,
-        obscureText: _obscurePassword,
-        style: GoogleFonts.inter(fontSize: 14, color: const Color(0xFF333333)),
-        decoration: _inputDecoration('Min. 8 characters', Icons.lock_outline)
-            .copyWith(suffixIcon: IconButton(
-          icon: Icon(_obscurePassword
-              ? Icons.visibility_off_outlined : Icons.visibility_outlined,
-              size: 18, color: const Color(0xFFAAAAAA)),
-          onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
-        )),
-      ),
+          Expanded(child: Text('PIN sent to ${auth.forgotEmail}',
+            style: GoogleFonts.poppins(fontSize: 11, color: _teal.withOpacity(0.8)))),
+        ])),
       const SizedBox(height: 14),
-      Text('CONFIRM PASSWORD', style: GoogleFonts.inter(
-          fontSize: 11, fontWeight: FontWeight.w600,
-          color: const Color(0xFF888888), letterSpacing: 0.6)),
-      const SizedBox(height: 8),
-      TextFormField(
-        controller: _confirmController,
-        obscureText: _obscureConfirm,
-        style: GoogleFonts.inter(fontSize: 14, color: const Color(0xFF333333)),
-        decoration: _inputDecoration('Re-enter password', Icons.lock_outline)
-            .copyWith(suffixIcon: IconButton(
-          icon: Icon(_obscureConfirm
-              ? Icons.visibility_off_outlined : Icons.visibility_outlined,
-              size: 18, color: const Color(0xFFAAAAAA)),
-          onPressed: () => setState(() => _obscureConfirm = !_obscureConfirm),
-        )),
-      ),
-      const SizedBox(height: 20),
-      _buildButton('Reset Password', _resetPassword),
+      _lbl('6-DIGIT PIN'),
+      _inp(_pinCtrl, '• • • • • •', Icons.pin_outlined,
+          keyboard: TextInputType.number, maxLen: 6, center: true),
+      const SizedBox(height: 16),
+      _btn('Verify PIN', auth, () => _verifyPin(auth)),
+      const SizedBox(height: 10),
+      Center(child: GestureDetector(onTap: () => _sendPin(auth),
+        child: Text("Didn't receive? Resend",
+          style: GoogleFonts.poppins(fontSize: 12, color: _teal.withOpacity(0.6))))),
     ]);
 
-  // ── Success UI ─────────────────────────────────────────────────────────────
-  Widget _buildSuccessContent() => Column(children: [
-    Container(width: 72, height: 72,
-      decoration: const BoxDecoration(color: Color(0xFF16a34a), shape: BoxShape.circle),
-      child: const Icon(Icons.check_rounded, size: 40, color: Colors.white)),
-    const SizedBox(height: 16),
-    Text('Password Reset!', style: GoogleFonts.inter(
-        fontSize: 20, fontWeight: FontWeight.w800, color: const Color(0xFF0A2342))),
-    const SizedBox(height: 8),
-    Text('You can now log in with your new password.',
-        textAlign: TextAlign.center,
-        style: GoogleFonts.inter(fontSize: 13, color: const Color(0xFF6B7280))),
-    const SizedBox(height: 24),
-    SizedBox(width: double.infinity, height: 50,
-      child: ElevatedButton(
-        onPressed: () => context.go('/login'),
-        style: ElevatedButton.styleFrom(
-            backgroundColor: const Color(0xFF1A6FA8),
-            foregroundColor: Colors.white, elevation: 0,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
-        child: Text('Back to Login',
-            style: GoogleFonts.inter(fontSize: 15, fontWeight: FontWeight.w700)),
-      )),
-  ]);
+  Widget _step3(AuthProvider auth, {Key? key}) =>
+    Column(key: key, mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start, children: [
+      _lbl('NEW PASSWORD'),
+      _inp(_passCtrl, 'Min. 8 characters', Icons.lock_outline_rounded,
+          obscure: _obscurePass,
+          suffix: _obscurePass ? Icons.visibility_off_outlined : Icons.visibility_outlined,
+          onSuffix: () => setState(() => _obscurePass = !_obscurePass)),
+      const SizedBox(height: 12),
+      _lbl('CONFIRM PASSWORD'),
+      _inp(_confirmCtrl, 'Re-enter password', Icons.lock_outline_rounded,
+          obscure: _obscureConfirm,
+          suffix: _obscureConfirm ? Icons.visibility_off_outlined : Icons.visibility_outlined,
+          onSuffix: () => setState(() => _obscureConfirm = !_obscureConfirm)),
+      const SizedBox(height: 16),
+      _btn('Reset Password', auth, () => _resetPassword(auth)),
+    ]);
 
-  Widget _buildButton(String label, VoidCallback onTap) =>
-    SizedBox(width: double.infinity, height: 50,
-      child: ElevatedButton(
-        onPressed: _isLoading ? null : onTap,
-        style: ElevatedButton.styleFrom(
-            backgroundColor: const Color(0xFF1A6FA8),
-            foregroundColor: Colors.white, elevation: 0,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
-        child: _isLoading
-            ? const SizedBox(height: 22, width: 22,
-                child: CircularProgressIndicator(strokeWidth: 2.5, color: Colors.white))
-            : Text(label, style: GoogleFonts.inter(
-                fontSize: 15, fontWeight: FontWeight.w700)),
-      ));
+  Widget _lbl(String t) => Padding(padding: const EdgeInsets.only(bottom: 6),
+    child: Text(t, style: GoogleFonts.poppins(fontSize: 9,
+        fontWeight: FontWeight.w700,
+        color: Colors.white.withOpacity(0.35), letterSpacing: 1.5)));
 
-  InputDecoration _inputDecoration(String hint, IconData icon) => InputDecoration(
-    hintText: hint,
-    hintStyle: GoogleFonts.inter(fontSize: 13, color: const Color(0xFFBBBBBB)),
-    prefixIcon: Icon(icon, size: 18, color: const Color(0xFF1A6FA8)),
-    filled: true, fillColor: const Color(0xFFF8FAFC),
-    contentPadding: const EdgeInsets.symmetric(vertical: 14, horizontal: 14),
-    border: OutlineInputBorder(borderRadius: BorderRadius.circular(10),
-        borderSide: const BorderSide(color: Color(0xFFE2E8F0), width: 1.5)),
-    enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10),
-        borderSide: const BorderSide(color: Color(0xFFE2E8F0), width: 1.5)),
-    focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10),
-        borderSide: const BorderSide(color: Color(0xFF1A6FA8), width: 2)),
-  );
+  Widget _inp(TextEditingController ctrl, String hint, IconData icon,
+      {bool obscure=false, TextInputType? keyboard, int? maxLen,
+       bool center=false, IconData? suffix, VoidCallback? onSuffix}) {
+    return Container(
+      decoration: BoxDecoration(color: Colors.white.withOpacity(0.04),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.white.withOpacity(0.08))),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 2),
+      child: Row(children: [
+        Icon(icon, size: 16, color: _teal.withOpacity(0.55)),
+        const SizedBox(width: 10),
+        Expanded(child: TextField(
+          controller: ctrl, obscureText: obscure,
+          keyboardType: keyboard, maxLength: maxLen,
+          textAlign: center ? TextAlign.center : TextAlign.start,
+          style: GoogleFonts.poppins(fontSize: 14, color: Colors.white, letterSpacing: 1.1),
+          decoration: InputDecoration(
+            hintText: hint, border: InputBorder.none, isDense: true, counterText: '',
+            contentPadding: const EdgeInsets.symmetric(vertical: 12),
+            hintStyle: GoogleFonts.poppins(fontSize: 12,
+                color: Colors.white.withOpacity(0.20))))),
+        if (suffix != null)
+          GestureDetector(onTap: onSuffix,
+            child: Icon(suffix, size: 16, color: Colors.white30)),
+      ]));
+  }
+
+  Widget _btn(String label, AuthProvider auth, VoidCallback onTap) =>
+    SizedBox(width: double.infinity, height: 50,
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(12),
+          gradient: auth.isLoading ? null
+              : const LinearGradient(colors: [Color(0xFF3BBFB8), Color(0xFF4ECDC4)]),
+          color: auth.isLoading ? _teal.withOpacity(0.3) : null,
+          boxShadow: auth.isLoading ? null : [BoxShadow(
+            color: _teal.withOpacity(0.25), blurRadius: 12,
+            offset: const Offset(0, 4))]),
+        child: ElevatedButton(
+          onPressed: auth.isLoading ? null : onTap,
+          style: ElevatedButton.styleFrom(
+            backgroundColor: Colors.transparent, shadowColor: Colors.transparent,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
+          child: auth.isLoading
+              ? const SizedBox(width: 20, height: 20,
+                  child: CircularProgressIndicator(strokeWidth: 2.5, color: Colors.white))
+              : Text(label, style: GoogleFonts.poppins(
+                  fontSize: 14, fontWeight: FontWeight.w600, color: Colors.white)))));
 }
 
-
-
+class _GridPainter extends CustomPainter {
+  @override void paint(Canvas canvas, Size sz) {
+    final p = Paint()..color = Colors.white.withOpacity(0.025);
+    for (double x = 0; x < sz.width; x += 28)
+      for (double y = 0; y < sz.height; y += 28)
+        canvas.drawCircle(Offset(x, y), 1.2, p);
+  }
+  @override bool shouldRepaint(_GridPainter _) => false;
+}

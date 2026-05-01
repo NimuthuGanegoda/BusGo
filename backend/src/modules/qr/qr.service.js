@@ -3,7 +3,9 @@ import { supabase } from '../../config/supabase.js';
 import { CONSTANTS } from '../../config/constants.js';
 import { logSecurityEvent, SECURITY_EVENTS } from '../../services/security-audit.service.js';
 
-export async function getMyQrCard(userId) {
+// ── force=false → only regenerate if token is expired (normal screen load)
+// ── force=true  → always regenerate (refresh button pressed)
+export async function getMyQrCard(userId, force = false) {
   const { data: user, error } = await supabase
     .from('users')
     .select('id, full_name, username, membership_type, qr_token, qr_expires_at, created_at')
@@ -11,7 +13,7 @@ export async function getMyQrCard(userId) {
   if (error) throw error;
 
   const now = new Date();
-  if (new Date(user.qr_expires_at) <= now) {
+  if (force || new Date(user.qr_expires_at) <= now) {
     const newToken  = uuidv4();
     const newExpiry = new Date(now.getTime() + CONSTANTS.QR_TOKEN_EXPIRES_MS).toISOString();
     const { data: updated, error: e } = await supabase
@@ -32,8 +34,128 @@ export async function getMyQrCard(userId) {
 }
 
 // ── FR-34: Scan-In with alighting stop + express mode auto-toggle ─────────────
+// Now also handles payment QR codes (trip_tickets.qr_data)
 export async function scanIn(scannedToken, driverUserId, context = {}) {
-  // Validate passenger QR token
+
+  // ── STEP 1: Check if this is a PAYMENT QR (trip_tickets.qr_data) ─────────
+  const { data: ticket } = await supabase
+    .from('trip_tickets')
+    .select('id, user_id, route_id, boarding_stop_id, alighting_stop_id, payment_status, valid_until, verified_at, amount')
+    .eq('qr_data', scannedToken)
+    .maybeSingle();
+
+  if (ticket) {
+    // Payment QR found — validate it
+    if (ticket.payment_status !== 'paid') {
+      const e = new Error('Ticket not paid yet'); e.statusCode = 402; e.code = 'TICKET_NOT_PAID'; throw e;
+    }
+    if (new Date(ticket.valid_until) < new Date()) {
+      const e = new Error('Ticket expired'); e.statusCode = 410; e.code = 'TICKET_EXPIRED'; throw e;
+    }
+    if (ticket.verified_at) {
+      const e = new Error('Ticket already used'); e.statusCode = 409; e.code = 'TICKET_ALREADY_USED'; throw e;
+    }
+
+    // Get passenger info
+    const { data: passenger } = await supabase
+      .from('users')
+      .select('id, full_name, username, membership_type, is_active')
+      .eq('id', ticket.user_id).single();
+
+    if (!passenger || !passenger.is_active) {
+      const e = new Error('Passenger account inactive'); e.statusCode = 403; e.code = 'ACCOUNT_INACTIVE'; throw e;
+    }
+
+    // Check no ongoing trip already
+    const { data: ongoing } = await supabase
+      .from('trips').select('id').eq('user_id', passenger.id).eq('status', 'ongoing').maybeSingle();
+    if (ongoing) {
+      const e = new Error('Passenger already has an ongoing trip');
+      e.statusCode = 409; e.code = 'TRIP_ALREADY_ONGOING'; throw e;
+    }
+
+    // Resolve bus_id — same logic as normal scan
+    let busId = context.bus_id, routeId = context.route_id || ticket.route_id;
+    if (!busId) {
+      const { data: bus } = await supabase
+        .from('buses').select('id, route_id').eq('driver_user_id', driverUserId).maybeSingle();
+      if (bus) { busId = bus.id; routeId = routeId || bus.route_id; }
+    }
+    if (!busId) {
+      const e = new Error('Cannot determine bus'); e.statusCode = 422; e.code = 'BUS_NOT_RESOLVED'; throw e;
+    }
+
+    // Mark ticket as verified
+    await supabase
+      .from('trip_tickets')
+      .update({ verified_at: new Date().toISOString() })
+      .eq('id', ticket.id);
+
+    // Create trip record — bus_id is correctly set here
+    const { data: busData } = await supabase
+      .from('buses')
+      .select('id, bus_number, capacity, express_mode, crowd_level')
+      .eq('id', busId).single();
+
+    const capacity = busData?.capacity || 50;
+
+    const { count: currentCount } = await supabase
+      .from('trips')
+      .select('id', { count: 'exact', head: true })
+      .eq('bus_id', busId)
+      .eq('status', 'ongoing');
+
+    const activeBeforeBoarding = currentCount || 0;
+
+    const { data: trip, error: tErr } = await supabase
+      .from('trips')
+      .insert({
+        user_id:           passenger.id,
+        bus_id:            busId,                             // ← bus_id correctly set
+        route_id:          routeId,
+        boarding_stop_id:  ticket.boarding_stop_id || null,
+        alighting_stop_id: ticket.alighting_stop_id || context.alighting_stop_id || null,
+        status:            'ongoing',
+        fare_lkr:          ticket.amount,                    // ← fare from ticket
+      })
+      .select('id, boarded_at').single();
+    if (tErr) throw tErr;
+
+    const activeAfterBoarding = activeBeforeBoarding + 1;
+    const isNowFull = activeAfterBoarding >= capacity;
+
+    if (isNowFull) {
+      await supabase
+        .from('buses')
+        .update({ express_mode: true, crowd_level: 'full' })
+        .eq('id', busId);
+    }
+
+    await supabase.from('notifications').insert({
+      user_id:  passenger.id,
+      category: 'trip',
+      title:    '🚌 Boarded Successfully',
+      body:     'Your prepaid journey has started. Have a safe trip!',
+      meta:     { trip_id: trip.id, bus_id: busId, ticket_id: ticket.id },
+    });
+
+    return {
+      trip_id:           trip.id,
+      boarded_at:        trip.boarded_at,
+      is_express_mode:   isNowFull,
+      active_passengers: activeAfterBoarding,
+      bus_capacity:      capacity,
+      passenger: {
+        id:              passenger.id,
+        full_name:       passenger.full_name,
+        username:        passenger.username,
+        membership_type: passenger.membership_type,
+      },
+      message: `${passenger.full_name} boarded (prepaid ticket)`,
+    };
+  }
+
+  // ── STEP 2: Normal QR scan (users.qr_token) ───────────────────────────────
   const { data: passenger, error: pErr } = await supabase
     .from('users')
     .select('id, full_name, username, membership_type, qr_token, qr_expires_at, is_active')
@@ -46,10 +168,9 @@ export async function scanIn(scannedToken, driverUserId, context = {}) {
     const e = new Error('Account deactivated'); e.statusCode = 403; e.code = 'ACCOUNT_INACTIVE'; throw e;
   }
   if (new Date(passenger.qr_expires_at) <= new Date()) {
-    const e = new Error('QR expired — ask passenger to refresh'); e.statusCode = 410; e.code = 'QR_EXPIRED'; throw e;
+    const e = new Error('QR expired – ask passenger to refresh'); e.statusCode = 410; e.code = 'QR_EXPIRED'; throw e;
   }
 
-  // Check no existing ongoing trip
   const { data: ongoing } = await supabase
     .from('trips').select('id').eq('user_id', passenger.id).eq('status', 'ongoing').maybeSingle();
   if (ongoing) {
@@ -57,7 +178,6 @@ export async function scanIn(scannedToken, driverUserId, context = {}) {
     e.statusCode = 409; e.code = 'TRIP_ALREADY_ONGOING'; throw e;
   }
 
-  // Resolve bus and route
   let busId = context.bus_id, routeId = context.route_id;
   if (!busId) {
     const { data: bus } = await supabase
@@ -68,7 +188,6 @@ export async function scanIn(scannedToken, driverUserId, context = {}) {
     const e = new Error('Cannot determine bus or route'); e.statusCode = 422; e.code = 'BUS_NOT_RESOLVED'; throw e;
   }
 
-  // ── Get bus capacity before boarding ──────────────────────────────────────
   const { data: busData } = await supabase
     .from('buses')
     .select('id, bus_number, capacity, express_mode, crowd_level')
@@ -76,7 +195,6 @@ export async function scanIn(scannedToken, driverUserId, context = {}) {
 
   const capacity = busData?.capacity || 50;
 
-  // Count current active passengers
   const { count: currentCount } = await supabase
     .from('trips')
     .select('id', { count: 'exact', head: true })
@@ -85,7 +203,6 @@ export async function scanIn(scannedToken, driverUserId, context = {}) {
 
   const activeBeforeBoarding = currentCount || 0;
 
-  // Create the trip — store alighting_stop_id if passenger provided it
   const { data: trip, error: tErr } = await supabase
     .from('trips')
     .insert({
@@ -93,35 +210,28 @@ export async function scanIn(scannedToken, driverUserId, context = {}) {
       bus_id:            busId,
       route_id:          routeId,
       boarding_stop_id:  context.boarding_stop_id  || null,
-      alighting_stop_id: context.alighting_stop_id || null,  // ← FR-34: destination
+      alighting_stop_id: context.alighting_stop_id || null,
       status:            'ongoing',
     })
     .select('id, boarded_at').single();
   if (tErr) throw tErr;
 
-  // Invalidate QR immediately
   await supabase
     .from('users')
     .update({ qr_expires_at: new Date(Date.now() - 1).toISOString() })
     .eq('id', passenger.id);
 
-  // ── FR-34: Auto-manage express mode after boarding ─────────────────────────
   const activeAfterBoarding = activeBeforeBoarding + 1;
   const isNowFull           = activeAfterBoarding >= capacity;
   const isOverCapacity      = activeAfterBoarding > capacity;
 
   if (isNowFull) {
-    // Enable express mode and set crowd to full
     await supabase
       .from('buses')
-      .update({
-        express_mode: true,
-        crowd_level:  'full',
-      })
+      .update({ express_mode: true, crowd_level: 'full' })
       .eq('id', busId);
   }
 
-  // Log a CAPACITY_VIOLATION if driver has gone over the limit
   if (isOverCapacity) {
     await logSecurityEvent({
       eventType: SECURITY_EVENTS.CAPACITY_VIOLATION,
@@ -140,7 +250,6 @@ export async function scanIn(scannedToken, driverUserId, context = {}) {
     });
   }
 
-  // Board notification to passenger
   await supabase.from('notifications').insert({
     user_id:  passenger.id,
     category: 'trip',
@@ -150,11 +259,11 @@ export async function scanIn(scannedToken, driverUserId, context = {}) {
   });
 
   return {
-    trip_id:        trip.id,
-    boarded_at:     trip.boarded_at,
-    is_express_mode: isNowFull,
+    trip_id:           trip.id,
+    boarded_at:        trip.boarded_at,
+    is_express_mode:   isNowFull,
     active_passengers: activeAfterBoarding,
-    bus_capacity:   capacity,
+    bus_capacity:      capacity,
     passenger: {
       id:              passenger.id,
       full_name:       passenger.full_name,
@@ -165,7 +274,7 @@ export async function scanIn(scannedToken, driverUserId, context = {}) {
   };
 }
 
-// ── FR-34: Scan-Exit — auto-disable express mode when capacity drops ──────────
+// ── FR-34: Scan-Exit – auto-disable express mode when capacity drops ──────────
 export async function scanExit(driverUserId, dto = {}) {
   const { scanned_token, alighting_stop_id, fare_lkr } = dto;
 
@@ -190,9 +299,6 @@ export async function scanExit(driverUserId, dto = {}) {
   }
 
   const now = new Date().toISOString();
-
-  // Resolve alighting stop — prefer one stored at boarding (from passenger QR),
-  // then dto, then null
   const resolvedAlightingStop = trip.alighting_stop_id || alighting_stop_id || null;
 
   await supabase.from('trips').update({
@@ -206,10 +312,9 @@ export async function scanExit(driverUserId, dto = {}) {
     .update({ qr_expires_at: new Date(Date.now() - 1).toISOString() })
     .eq('id', passenger.id);
 
-  // ── FR-34: Auto-disable express mode if capacity drops below limit ──────────
   const { data: busData } = await supabase
     .from('buses')
-    .select('capacity, express_mode, bus_number')
+    .select('capacity, express_mode, bus_number, crowd_level')
     .eq('id', trip.bus_id).single();
 
   const capacity = busData?.capacity || 50;
@@ -221,14 +326,12 @@ export async function scanExit(driverUserId, dto = {}) {
     .eq('status', 'ongoing');
 
   const remaining = remainingCount || 0;
-
-  // Compute new crowd level based on remaining passengers
-  const fillRatio   = remaining / capacity;
-  const newCrowd    = fillRatio >= 1.0 ? 'full'
-                    : fillRatio >= 0.75 ? 'high'
-                    : fillRatio >= 0.5  ? 'medium'
-                    : 'low';
-  const newExpress  = remaining >= capacity;
+  const fillRatio  = remaining / capacity;
+  const newCrowd   = fillRatio >= 1.0 ? 'full'
+                   : fillRatio >= 0.75 ? 'high'
+                   : fillRatio >= 0.5  ? 'medium'
+                   : 'low';
+  const newExpress = remaining >= capacity;
 
   if (busData?.express_mode !== newExpress || busData?.crowd_level !== newCrowd) {
     await supabase

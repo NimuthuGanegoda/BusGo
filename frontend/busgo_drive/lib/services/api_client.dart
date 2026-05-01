@@ -2,11 +2,12 @@ import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:pretty_dio_logger/pretty_dio_logger.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
-const String _kBaseUrlDev  = 'http://192.168.1.3:5000/api';
+String get _kBaseUrlDev => dotenv.env['API_URL'] ?? 'http://192.168.1.3:5000/api';
 const String _kBaseUrlProd = 'https://your-api-domain.com/api';
-const String _kBaseUrl = kDebugMode ? _kBaseUrlDev : _kBaseUrlProd;
+String get _kBaseUrl => kDebugMode ? _kBaseUrlDev : _kBaseUrlProd;
 
 // ── Endpoint paths ────────────────────────────────────────────────────────────
 class DriveEndpoints {
@@ -160,6 +161,10 @@ class DriveApiClient {
     return _unwrap(r);
   }
 }
+
+
+
+
 
 
 

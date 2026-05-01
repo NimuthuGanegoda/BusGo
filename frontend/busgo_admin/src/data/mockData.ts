@@ -188,3 +188,6 @@ export const notifications: Notification[] = [
   { id: 'N-007', type: 'system', title: 'Bus Breakdown', message: 'Bus #176-C engine failure at Homagama Depot', time: '54 min ago', read: true },
   { id: 'N-008', type: 'driver', title: 'Driver Rating Update', message: 'Driver Nimal Silva rating dropped below threshold', time: '2 hours ago', read: true },
 ];
+
+
+

@@ -38,5 +38,6 @@ flutter:
   assets:
     - .env  
     - assets/images/
+    - assets/images/scene/
 
 

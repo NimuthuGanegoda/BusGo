@@ -6,6 +6,7 @@ Flask service exposing 3 endpoints for the Node.js backend:
                             Enhanced with VADER hybrid ensemble + cultural calibration
   POST /ml/eta            — Bus ETA prediction       (Model 2)
   POST /ml/alert-priority — Alert prioritization     (Model 3)
+                            Enhanced with VADER urgency override + minor complaint cap
 
 Place all .pkl files in the ./models/ directory before starting.
 
@@ -13,6 +14,15 @@ Model 1 Enhancement (v5.1):
   LightGBM base prediction → VADER independent verifier →
   Hybrid ensemble (agreement-weighted blend) →
   Sri Lankan cultural calibration → Final score
+
+Model 3 Enhancement (v1.3):
+  Stage 1: XGBoost false alert detection
+  Stage 2: LightGBM + SBERT priority scoring
+  Stage 3: VADER urgency override — boosts informal/abbreviated distress language
+  Stage 4: Minor complaint cap — prevents comfort issues scoring HIGH/CRITICAL
+
+  v1.2 fixes: Condition A/B threshold logic corrected, signal list expanded
+  v1.3 adds:  Stage 4 minor complaint cap for over-scored comfort complaints
 """
 import os
 import re
@@ -85,8 +95,10 @@ def load_all_models():
     log.info("✅ Alert prioritizer loaded")
     log.info("🚀 All 3 models ready!")
 
+
 # ══════════════════════════════════════════════════════════════════════════════
 #  MODEL 1 — RATING PREDICTION HELPERS
+#  !! UNCHANGED FROM WORKING VERSION — DO NOT MODIFY !!
 # ══════════════════════════════════════════════════════════════════════════════
 base_stopwords = set(stopwords.words("english"))
 sentiment_keep = {
@@ -147,22 +159,15 @@ STRONG_POSITIVE = [
 ]
 
 # ── Sri Lankan / informal English cultural signals ─────────────────────────────
-# These are positive informal expressions common in Sri Lankan English and
-# Singlish that the LightGBM model underweights due to training data bias.
 SL_INFORMAL_POSITIVE = [
-    # Singlish / Sri Lankan address terms used in positive context
     'bro','machan','machi','nangi','aiya','ayya','akka',
-    # Romanised Sinhala positive words
     'hoda','niyamai','hodai','bohoma hoda','supiri','lassanai',
-    # Informal positive expressions
     'nice ride','nice bro','good bro','great bro','love it bro',
     'again','ride again','go again','come again','use again',
     'recommend','would go','will go','always use',
-    # Casual affirmations
     'legit','lit','fire','goat','top','clean af','smooth af',
 ]
 
-# Informal negative signals that may be missed
 SL_INFORMAL_NEGATIVE = [
     'hora','naha','nehe','boru','chee','yako',
     'worst bro','bad bro','never again','dont go',
@@ -212,53 +217,33 @@ def process_comment(comment):
         except: pass
     return clean_comment(comment)
 
+
 # ══════════════════════════════════════════════════════════════════════════════
-#  VADER HYBRID ENSEMBLE (Model 1 Enhancement)
+#  MODEL 1 — VADER HYBRID ENSEMBLE
+#  !! UNCHANGED FROM WORKING VERSION — DO NOT MODIFY !!
 # ══════════════════════════════════════════════════════════════════════════════
 
 def vader_to_scale(compound: float) -> float:
-    """
-    Convert VADER compound score (-1.0 to +1.0) to 1–10 rating scale.
-    Uses a linear mapping with a slight centre bias:
-      compound  1.0 → 10.0
-      compound  0.0 →  5.5  (neutral maps to slightly above midpoint)
-      compound -1.0 →  1.0
-    """
     return round(float(np.clip(((compound + 1.0) / 2.0) * 9.0 + 1.0, 1.0, 10.0)), 1)
 
 
 def cultural_calibration(comment: str) -> float:
-    """
-    Calculate a cultural bias correction offset for Sri Lankan informal English.
-
-    LightGBM was trained predominantly on formal review corpora which
-    underrepresent casual Sri Lankan / Singlish expressions. This function
-    detects those signals and returns a small positive or negative offset
-    to compensate.
-
-    Returns:
-        float: offset in the range [-1.5, +2.0] to add to the blended score
-    """
     lower   = comment.lower()
     offset  = 0.0
     reasons = []
 
-    # Positive informal signals
     sl_pos_hits = sum(1 for phrase in SL_INFORMAL_POSITIVE if phrase in lower)
     if sl_pos_hits > 0:
-        # Each informal positive signal adds 0.4, capped at +2.0
         boost = min(sl_pos_hits * 0.4, 2.0)
         offset += boost
         reasons.append(f"sl_informal_positive_signals={sl_pos_hits} +{boost:.1f}")
 
-    # Negative informal signals
     sl_neg_hits = sum(1 for phrase in SL_INFORMAL_NEGATIVE if phrase in lower)
     if sl_neg_hits > 0:
         penalty = min(sl_neg_hits * 0.5, 1.5)
         offset -= penalty
         reasons.append(f"sl_informal_negative_signals={sl_neg_hits} -{penalty:.1f}")
 
-    # Repeated words / enthusiasm (e.g. "very very nice", "so so good")
     repeat_match = re.findall(r"\b(\w+)\s+\1\b", lower)
     if repeat_match:
         offset += 0.3
@@ -279,36 +264,20 @@ def hybrid_ensemble(
     weight_vader_disagree: float = 0.50,
     disagreement_threshold: float = 2.0,
 ) -> dict:
-    """
-    Blend LightGBM prediction with VADER sentiment score.
-
-    Strategy:
-    - Run VADER independently on the original raw comment.
-    - Compare VADER score (on 1-10 scale) with LightGBM score.
-    - If gap < threshold → models agree → trust LightGBM more (70/30).
-    - If gap >= threshold → models disagree → likely informal language
-      that LightGBM underweights → use 50/50 blend.
-    - Apply Sri Lankan cultural calibration offset on top.
-
-    This preserves the LightGBM model's training while compensating
-    for its known pessimistic bias on informal local language.
-    """
-    # Independent VADER score
-    vader_scores  = vader_analyser.polarity_scores(comment)
+    vader_scores   = vader_analyser.polarity_scores(comment)
     vader_compound = vader_scores["compound"]
-    vader_score   = vader_to_scale(vader_compound)
+    vader_score    = vader_to_scale(vader_compound)
 
-    gap     = abs(lgbm_score - vader_score)
-    agree   = gap < disagreement_threshold
+    gap   = abs(lgbm_score - vader_score)
+    agree = gap < disagreement_threshold
 
     if agree:
-        blended = lgbm_score * weight_lgbm_agree + vader_score * weight_vader_agree
+        blended      = lgbm_score * weight_lgbm_agree + vader_score * weight_vader_agree
         blend_method = f"agreement (gap={gap:.1f}<{disagreement_threshold}) → 70% LightGBM / 30% VADER"
     else:
-        blended = lgbm_score * weight_lgbm_disagree + vader_score * weight_vader_disagree
+        blended      = lgbm_score * weight_lgbm_disagree + vader_score * weight_vader_disagree
         blend_method = f"disagreement (gap={gap:.1f}>={disagreement_threshold}) → 50% LightGBM / 50% VADER"
 
-    # Cultural calibration
     cultural_offset = cultural_calibration(comment)
     final = float(np.clip(blended + cultural_offset, 1.0, 10.0))
 
@@ -320,18 +289,18 @@ def hybrid_ensemble(
     )
 
     return {
-        "final":          round(final, 1),
-        "lgbm_score":     lgbm_score,
-        "vader_score":    vader_score,
-        "vader_compound": round(vader_compound, 3),
-        "gap":            round(gap, 2),
-        "models_agreed":  agree,
-        "blend_method":   blend_method,
+        "final":           round(final, 1),
+        "lgbm_score":      lgbm_score,
+        "vader_score":     vader_score,
+        "vader_compound":  round(vader_compound, 3),
+        "gap":             round(gap, 2),
+        "models_agreed":   agree,
+        "blend_method":    blend_method,
         "cultural_offset": round(cultural_offset, 2),
     }
 
 
-# ── Feature extraction (unchanged) ────────────────────────────────────────────
+# ── Feature extraction ────────────────────────────────────────────────────────
 def extract_meta(comment_raw, hour=12, is_peak=0, is_weekend=0, is_night=0,
                  is_raining=0, driver_id=None, driver_history=None, specificity_score=None):
     raw   = str(comment_raw) if isinstance(comment_raw, str) else ""
@@ -442,10 +411,6 @@ def apply_context(raw_comment, base_pred, is_raining=False, is_peak=False,
     return round(adj, 1), " | ".join(reasons) if reasons else "no adjustment", round(conf, 2)
 
 def apply_sentiment_adjustment(comment, base_pred):
-    """
-    Post-prediction sentiment correction to compensate for training
-    data imbalance (too many low-rated reviews in training set).
-    """
     comment_lower = comment.lower()
     neg_count    = sum(1 for w in NEGATIVE_WORDS if w in comment_lower)
     pos_count    = sum(1 for w in POSITIVE_WORDS if w in comment_lower)
@@ -453,19 +418,14 @@ def apply_sentiment_adjustment(comment, base_pred):
     has_negative = neg_count > 0
     has_positive = pos_count > 0
     has_strong   = strong_count > 0
-
     adjusted = base_pred
-
     if not has_negative and adjusted < 4.0:
         adjusted = 4.0
-
     if has_strong and not has_negative:
         adjusted = max(adjusted, 7.0)
-
     if has_positive and not has_negative:
         boost    = min(pos_count * 0.8, 3.0)
         adjusted = min(adjusted + boost, 9.5)
-
     if has_positive and has_negative:
         if pos_count > neg_count * 2:
             adjusted = min(adjusted + 0.8, 7.5)
@@ -473,11 +433,11 @@ def apply_sentiment_adjustment(comment, base_pred):
             adjusted = min(adjusted + 0.5, 7.0)
         elif neg_count > pos_count:
             adjusted = max(adjusted - 0.5, 1.0)
-
     return round(float(np.clip(adjusted, 1.0, 10.0)), 1)
 
+
 # ══════════════════════════════════════════════════════════════════════════════
-#  MODEL 3 — ALERT PRIORITY HELPERS  (unchanged)
+#  MODEL 3 — ALERT PRIORITY HELPERS
 # ══════════════════════════════════════════════════════════════════════════════
 CRITICAL_KW = ["unconscious","not breathing","cardiac","heart attack","seizure",
                "bleeding","collapsed","knife","gun","weapon","armed","shooting",
@@ -504,6 +464,62 @@ RESPONSE_ACTION = {
     2:"Low — Log & follow up",
     1:"False Alert — No dispatch needed",
 }
+
+# ── Model 3 — VADER Urgency Override signals (v1.2) ───────────────────────────
+INFORMAL_DISTRESS_SIGNALS = [
+    # Standalone distress words
+    " hurt", "i hurt", "am hurt", "got hurt", "get hurt",
+    "hurt help", "hurt bad", "help hurt",
+    " help", "need help", "help me", "help us",
+    "pls help", "plz help", "please help",
+    "somebody help", "someone help", "i need help", "need help now",
+    # Abbreviated / typo distress
+    "i m hurt", "im hurt", "cant breathe", "cant move", "cant wake",
+    # Singlish / Sri Lankan informal distress
+    "aiya help", "ayya help", "nangi help", "akka help", "aney help",
+    "aney aney", "oyata denna", "help karanna", "hamadama help",
+    "aiya", "ayya aney",
+    # Physiological distress
+    "can't breathe", "cant breathe", "no breath", "not moving",
+    "not waking", "wont wake", "passed out", "blacking out",
+    "bleeding badly", "lot of blood", "so much blood", "too much blood",
+    "feel faint", "going to faint", "about to faint",
+    # Injury / pain distress
+    "in pain", "lot of pain", "so much pain", "really hurts",
+    "hurts a lot", "bad injury", "badly hurt", "badly injured",
+    "very hurt", "seriously hurt",
+    # Informal threat/danger
+    "going to kill", "gonna kill", "has a knife", "has knife",
+    "has a gun", "has gun", "people running", "everyone scared",
+    "very scared", "so scared",
+]
+
+# ── Model 3 — Minor complaint signals (v1.3) ──────────────────────────────────
+# Comfort and convenience issues that should never score above LOW (2).
+# Used by minor_complaint_cap() as a safety net against LightGBM over-scoring.
+# Only activates when NO real emergency keywords are present.
+MINOR_COMPLAINT_SIGNALS = [
+    # Comfort / temperature
+    "ac not working", "ac broken", "air conditioning", "no ac",
+    "too hot", "too cold", "bus is hot", "bus hot", "very hot inside",
+    "fan not working", "no fan", "windows not opening",
+    "ac doesnt work", "ac not work",
+    # Noise
+    "too loud", "loud music", "noisy bus", "loud engine", "too much noise",
+    # Minor vehicle issues
+    "seat broken", "seat uncomfortable", "dirty seat", "no seat",
+    "bad smell", "smelly bus", "bus smell", "bad odour",
+    # Minor fare / route issues
+    "wrong change", "overcharged slightly", "missed my stop",
+    "went wrong route", "wrong route", "driver missed",
+    # Minor driver complaints (not threatening)
+    "driver rude", "conductor rude", "no ticket", "driver talking phone",
+    "driver on phone", "driver speeding slightly",
+    # Sri Lankan minor complaints
+    "bus late", "very late", "always late", "not on time",
+    "bus dirty", "bus not clean", "no water",
+]
+
 
 def clean_alert_text(text):
     if not text or str(text).strip() == "": return "no comment"
@@ -542,6 +558,103 @@ def build_alert_features(etype, comment):
     }
     return pd.DataFrame([row])[alert_features], cleaned
 
+
+# ── Model 3 Stage 3 — VADER Urgency Override (v1.2) ───────────────────────────
+def vader_urgency_override(comment: str, current_priority: int,
+                            current_conf: float) -> dict:
+    """
+    Boosts priority for informal/abbreviated distress language that
+    LightGBM + SBERT under-scores due to training data mismatch.
+
+    Condition A: compound <= -0.50 AND informal signal → boost +2
+    Condition B: compound <= -0.15 AND informal signal → boost +1
+    Never activates on HIGH (4) or CRITICAL (5). Never downgrades.
+    """
+    if current_priority >= 4:
+        return {
+            "priority":       current_priority,
+            "confidence":     current_conf,
+            "vader_override": False,
+            "vader_compound": None,
+        }
+
+    scores       = vader_analyser.polarity_scores(str(comment))
+    compound     = scores["compound"]
+    lower        = str(comment).lower()
+    informal_hit = any(sig in lower for sig in INFORMAL_DISTRESS_SIGNALS)
+
+    # Condition A — strongly negative + informal distress → boost +2
+    if compound <= -0.50 and informal_hit:
+        new_priority = int(np.clip(current_priority + 2, 1, 5))
+        log.info(
+            f"[VADER Override v1.2] compound={compound:.3f} (≤-0.50) + "
+            f"informal=True → {current_priority} → {new_priority} (+2)"
+        )
+        return {
+            "priority":       new_priority,
+            "confidence":     round(abs(compound), 3),
+            "vader_override": True,
+            "vader_compound": round(compound, 3),
+        }
+
+    # Condition B — moderately negative + informal distress → boost +1
+    if compound <= -0.15 and informal_hit:
+        new_priority = int(np.clip(current_priority + 1, 1, 5))
+        log.info(
+            f"[VADER Override v1.2] compound={compound:.3f} (≤-0.15) + "
+            f"informal=True → {current_priority} → {new_priority} (+1)"
+        )
+        return {
+            "priority":       new_priority,
+            "confidence":     round(abs(compound), 3),
+            "vader_override": True,
+            "vader_compound": round(compound, 3),
+        }
+
+    return {
+        "priority":       current_priority,
+        "confidence":     current_conf,
+        "vader_override": False,
+        "vader_compound": round(compound, 3),
+    }
+
+
+# ── Model 3 Stage 4 — Minor Complaint Cap (v1.3) ──────────────────────────────
+def minor_complaint_cap(comment: str, current_priority: int) -> dict:
+    """
+    Caps priority at LOW (2) when the comment is clearly a comfort or
+    convenience complaint that LightGBM over-scored as HIGH or CRITICAL.
+
+    Safety gate: if ANY real emergency keyword (CRITICAL_KW or HIGH_KW)
+    is present in the comment, this function never activates — genuine
+    emergencies always take precedence regardless of comfort language.
+
+    Only activates when:
+      1. Current priority is HIGH (4) or CRITICAL (5)
+      2. A minor complaint signal matches
+      3. No CRITICAL_KW or HIGH_KW words are present
+    """
+    if current_priority <= 3:
+        return {"priority": current_priority, "capped": False}
+
+    lower = str(comment).lower()
+
+    # Safety gate — real emergency keywords block the cap entirely
+    real_emergency = any(kw in lower for kw in CRITICAL_KW + HIGH_KW)
+    if real_emergency:
+        return {"priority": current_priority, "capped": False}
+
+    minor_hit = any(sig in lower for sig in MINOR_COMPLAINT_SIGNALS)
+    if minor_hit:
+        log.info(
+            f"[Minor Complaint Cap v1.3] over-scored {current_priority} → "
+            f"capped at LOW (2) | comment: '{comment[:60]}'"
+        )
+        return {"priority": 2, "capped": True}
+
+    return {"priority": current_priority, "capped": False}
+
+
 # ══════════════════════════════════════════════════════════════════════════════
 #  ROUTES
 # ══════════════════════════════════════════════════════════════════════════════
@@ -549,7 +662,8 @@ def build_alert_features(etype, comment):
 def health():
     return jsonify({"status": "ok", "models": ["rating", "eta", "alert-priority"]})
 
-# ── Model 1: Rating prediction (enhanced with hybrid ensemble) ─────────────────
+
+# ── Model 1: Rating prediction ─────────────────────────────────────────────────
 @app.route("/ml/rating", methods=["POST"])
 def predict_rating():
     try:
@@ -562,7 +676,6 @@ def predict_rating():
         if not cleaned.strip():
             return jsonify({"error": "comment could not be processed"}), 422
 
-        # ── Context ───────────────────────────────────────────────────────────
         hour_v = wkend_v = night_v = peak_v = 0
         ts = body.get("timestamp")
         if ts:
@@ -579,7 +692,6 @@ def predict_rating():
         if body.get("is_night")   is not None: night_v = int(body["is_night"])
         is_raining = int(body.get("is_raining", False))
 
-        # ── Feature extraction ────────────────────────────────────────────────
         text_vec = rating_vectorizer.transform([cleaned])
         meta_raw = extract_meta(
             comment, hour=hour_v, is_peak=peak_v, is_weekend=wkend_v,
@@ -592,17 +704,14 @@ def predict_rating():
         meta_vec = csr_matrix(rating_scaler.transform(meta_row))
         combined = hstack([text_vec, meta_vec])
 
-        # ── LightGBM prediction ───────────────────────────────────────────────
         raw_pred = rating_model.predict(combined.toarray())[0]
         if rating_calibrator:
             base_pred = float(np.clip(rating_calibrator.predict([raw_pred])[0], 1, 10))
         else:
             base_pred = float(np.clip(raw_pred, 1, 10))
 
-        # ── Existing sentiment adjustment (training data bias correction) ─────
         base_pred = apply_sentiment_adjustment(comment, base_pred)
 
-        # ── Context adjustment ────────────────────────────────────────────────
         context_adjusted, reason, confidence = apply_context(
             comment, base_pred,
             is_raining=bool(is_raining),
@@ -611,10 +720,7 @@ def predict_rating():
             is_night=bool(night_v),
         )
 
-        # ── Hybrid ensemble: blend LightGBM with VADER + cultural calibration ─
-        # This is the new enhancement that corrects for pessimistic scoring
-        # on informal Sri Lankan English that LightGBM underweights.
-        ensemble = hybrid_ensemble(context_adjusted, comment)
+        ensemble    = hybrid_ensemble(context_adjusted, comment)
         final_score = ensemble["final"]
 
         ctx = []
@@ -641,7 +747,8 @@ def predict_rating():
         log.exception("Rating prediction error")
         return jsonify({"error": str(e)}), 500
 
-# ── Model 2: ETA prediction (unchanged) ───────────────────────────────────────
+
+# ── Model 2: ETA prediction ────────────────────────────────────────────────────
 @app.route("/ml/eta", methods=["POST"])
 def predict_eta():
     try:
@@ -702,7 +809,8 @@ def predict_eta():
         log.exception("ETA prediction error")
         return jsonify({"error": str(e)}), 500
 
-# ── Model 3: Alert priority (unchanged) ───────────────────────────────────────
+
+# ── Model 3: Alert priority ────────────────────────────────────────────────────
 @app.route("/ml/alert-priority", methods=["POST"])
 def predict_alert_priority():
     try:
@@ -712,7 +820,7 @@ def predict_alert_priority():
 
         X_struct, cleaned = build_alert_features(etype, comment)
 
-        # Stage 1: False alert detection
+        # Stage 1 — False alert detection
         false_prob = None
         try:
             X_tfidf    = alert_tfidf.transform([cleaned])
@@ -734,7 +842,7 @@ def predict_alert_priority():
 
         is_false = (false_prob > 0.50)
 
-        # Stage 2: Priority scoring
+        # Stage 2 — Priority scoring
         embedding = alert_sbert.encode([cleaned])
         X_prio    = np.hstack([X_struct.values, embedding])
 
@@ -746,23 +854,40 @@ def predict_alert_priority():
             priority = int(np.clip(priority, 1, 5))
             conf     = float(max(alert_prio_model.predict_proba(X_prio)[0]))
 
+        # Stage 3 — VADER Urgency Override
+        override_result = vader_urgency_override(comment, priority, conf)
+        priority        = override_result["priority"]
+        conf            = override_result["confidence"]
+
+        # Stage 4 — Minor Complaint Cap
+        cap_result = minor_complaint_cap(comment, priority)
+        priority   = cap_result["priority"]
+        if cap_result["capped"]:
+            conf = 0.85  # high confidence when rule-based cap fires
+
         log.info(
             f"Alert priority result: {PRIORITY_LABEL.get(priority)} "
-            f"(false={is_false}, conf={conf:.2f})"
+            f"(false={is_false}, conf={conf:.2f}, "
+            f"vader_override={override_result['vader_override']}, "
+            f"capped={cap_result['capped']})"
         )
 
         return jsonify({
-            "priority":        priority,
-            "priority_label":  PRIORITY_LABEL.get(priority, "UNKNOWN"),
-            "action":          RESPONSE_ACTION.get(priority, ""),
-            "is_false_alert":  is_false,
-            "false_prob":      round(false_prob, 3),
-            "confidence":      round(conf, 3),
-            "cleaned_comment": cleaned,
+            "priority":               priority,
+            "priority_label":         PRIORITY_LABEL.get(priority, "UNKNOWN"),
+            "action":                 RESPONSE_ACTION.get(priority, ""),
+            "is_false_alert":         is_false,
+            "false_prob":             round(false_prob, 3),
+            "confidence":             round(conf, 3),
+            "cleaned_comment":        cleaned,
+            "vader_override":         override_result["vader_override"],
+            "vader_compound":         override_result["vader_compound"],
+            "minor_complaint_capped": cap_result["capped"],
         })
     except Exception as e:
         log.exception("Alert priority error")
         return jsonify({"error": str(e)}), 500
+
 
 # ══════════════════════════════════════════════════════════════════════════════
 #  ENTRY POINT

@@ -536,3 +536,6 @@ class _RideHistoryScreenState extends State<RideHistoryScreen> {
       textAlign: TextAlign.center),
   ]));
 }
+
+
+

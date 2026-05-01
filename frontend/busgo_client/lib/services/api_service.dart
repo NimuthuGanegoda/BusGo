@@ -1,9 +1,10 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 
 class ApiService {
-  static const String baseUrl = 'http://192.168.1.3:5000';
+  static String get baseUrl => (dotenv.env['API_URL'] ?? 'http://192.168.1.3:5000/api').replaceAll('/api', '');
 
   Future<Map<String, dynamic>?> fetchETA({
     required String busId,
@@ -34,6 +35,10 @@ class ApiService {
     }
   }
 }
+
+
+
+
 
 
 

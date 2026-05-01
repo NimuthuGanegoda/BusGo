@@ -124,3 +124,7 @@ class ScannerTermsScreen extends StatelessWidget {
 }
 
 
+
+
+
+

@@ -11,152 +11,345 @@ class LoginScreen extends StatefulWidget {
 }
 
 class _LoginScreenState extends State<LoginScreen> {
-  final _formKey = GlobalKey<FormState>();
+  double _offset = 0.0;
+  late ScrollController _scrollController;
+
+  final _formKey              = GlobalKey<FormState>();
   final _employeeIdController = TextEditingController();
   final _passwordController   = TextEditingController();
   bool _obscurePassword = true;
 
   @override
-  void dispose() {
-    _employeeIdController.dispose(); _passwordController.dispose(); super.dispose();
+  void initState() {
+    super.initState();
+    _scrollController = ScrollController();
+    _scrollController.addListener(() {
+      setState(() => _offset = _scrollController.offset);
+    });
   }
 
   @override
-  Widget build(BuildContext context) => Scaffold(
-    body: Container(
-      width: double.infinity, height: double.infinity,
-      decoration: const BoxDecoration(gradient: LinearGradient(
-        begin: Alignment.topCenter, end: Alignment.bottomCenter,
-        colors: [Color(0xFF0A2342), Color(0xFF0D2E5C)],
-      )),
-      child: SafeArea(child: SingleChildScrollView(
-        padding: const EdgeInsets.symmetric(horizontal: 32),
-        child: Column(children: [
-          const SizedBox(height: 60),
-          _buildLogo(),
-          const SizedBox(height: 36),
-          _buildLoginCard(),
-          const SizedBox(height: 24),
-          GestureDetector(
-            onTap: () => context.push('/register'),
-            child: RichText(text: TextSpan(children: [
-              TextSpan(text: 'New driver? ', style: GoogleFonts.inter(fontSize: 12, color: const Color(0xFF90CAF9))),
-              TextSpan(text: 'Register here →', style: GoogleFonts.inter(fontSize: 12,
-                  fontWeight: FontWeight.w700, color: const Color(0xFFFFD54F))),
-            ])),
-          ),
-          const SizedBox(height: 40),
-        ]),
-      )),
-    ),
-  );
-
-  Widget _buildLogo() => Column(children: [
-    Container(width: 72, height: 72,
-      decoration: BoxDecoration(color: AppColors.primaryLight, borderRadius: BorderRadius.circular(18)),
-      child: const Icon(Icons.directions_bus_rounded, size: 36, color: Colors.white)),
-    const SizedBox(height: 16),
-    RichText(text: TextSpan(style: GoogleFonts.inter(fontSize: 28, fontWeight: FontWeight.w800, letterSpacing: 3), children: const [
-      TextSpan(text: 'BUS', style: TextStyle(color: Colors.white)),
-      TextSpan(text: 'GO',  style: TextStyle(color: Color(0xFF64B5F6))),
-    ])),
-    const SizedBox(height: 4),
-    Text('DRIVER PORTAL', style: GoogleFonts.inter(fontSize: 13, color: const Color(0xFF90CAF9), letterSpacing: 2)),
-  ]);
-
-  Widget _buildLoginCard() => Consumer<AuthProvider>(builder: (context, auth, _) =>
-    Container(
-      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20)),
-      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 28),
-      child: Form(key: _formKey, child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Text('Welcome back', style: GoogleFonts.inter(fontSize: 20, fontWeight: FontWeight.w700, color: AppColors.primary)),
-        const SizedBox(height: 4),
-        Text('Sign in to your driver account', style: GoogleFonts.inter(fontSize: 12, color: const Color(0xFF9E9E9E))),
-        const SizedBox(height: 22),
-        if (auth.error != null) Container(
-          width: double.infinity, padding: const EdgeInsets.all(12),
-          margin: const EdgeInsets.only(bottom: 16),
-          decoration: BoxDecoration(color: AppColors.dangerLight,
-              borderRadius: BorderRadius.circular(10),
-              border: Border.all(color: AppColors.danger.withValues(alpha: 0.3))),
-          child: Row(children: [
-            const Icon(Icons.error_outline, size: 16, color: AppColors.danger),
-            const SizedBox(width: 8),
-            Expanded(child: Text(auth.error!, style: GoogleFonts.inter(fontSize: 12, color: AppColors.danger))),
-          ]),
-        ),
-        _buildLabel('EMAIL ADDRESS'),
-        const SizedBox(height: 6),
-        _buildInputField(controller: _employeeIdController, hint: 'driver@busgo.lk',
-            icon: Icons.person_outline,
-            validator: (v) => v == null || v.isEmpty ? 'Driver ID is required' : null),
-        const SizedBox(height: 16),
-        _buildLabel('PASSWORD'),
-        const SizedBox(height: 6),
-        _buildInputField(controller: _passwordController, hint: 'Enter password',
-            icon: Icons.lock_outline, isPassword: true,
-            validator: (v) { if (v == null || v.isEmpty) return 'Password is required';
-                             if (v.length < 6) return 'Minimum 6 characters'; return null; }),
-        const SizedBox(height: 20),
-        SizedBox(width: double.infinity, height: 50,
-          child: ElevatedButton(
-            onPressed: auth.isLoading ? null : () => _handleLogin(auth),
-            style: ElevatedButton.styleFrom(backgroundColor: AppColors.primaryLight,
-                foregroundColor: Colors.white, elevation: 0,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
-            child: auth.isLoading
-                ? const SizedBox(height: 22, width: 22,
-                    child: CircularProgressIndicator(strokeWidth: 2.5, color: Colors.white))
-                : Text('Login', style: GoogleFonts.inter(fontSize: 15, fontWeight: FontWeight.w700)),
-          ),
-        ),
-        const SizedBox(height: 14),
-        Center(child: Text('Forgot password? Contact admin',
-            style: GoogleFonts.inter(fontSize: 12, color: AppColors.primaryLight))),
-      ])),
-    ),
-  );
-
-  Widget _buildLabel(String text) => Text(text, style: GoogleFonts.inter(
-      fontSize: 11, fontWeight: FontWeight.w600, color: const Color(0xFF757575), letterSpacing: 0.8));
-
-  Widget _buildInputField({
-    required TextEditingController controller, required String hint,
-    required IconData icon, bool isPassword = false, String? Function(String?)? validator,
-  }) => TextFormField(
-    controller: controller, obscureText: isPassword && _obscurePassword,
-    validator: validator,
-    style: GoogleFonts.inter(fontSize: 14, color: const Color(0xFF424242)),
-    decoration: InputDecoration(
-      hintText: hint,
-      hintStyle: GoogleFonts.inter(fontSize: 13, color: const Color(0xFFBDBDBD)),
-      prefixIcon: Icon(icon, size: 18, color: const Color(0xFFBDBDBD)),
-      suffixIcon: isPassword ? IconButton(
-        icon: Icon(_obscurePassword ? Icons.visibility_off_outlined : Icons.visibility_outlined,
-            size: 18, color: const Color(0xFFBDBDBD)),
-        onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
-      ) : null,
-      filled: true, fillColor: const Color(0xFFF5F7FA),
-      contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
-      border: OutlineInputBorder(borderRadius: BorderRadius.circular(10),
-          borderSide: const BorderSide(color: Color(0xFFE0E0E0), width: 1.5)),
-      enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10),
-          borderSide: const BorderSide(color: Color(0xFFE0E0E0), width: 1.5)),
-      focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10),
-          borderSide: const BorderSide(color: AppColors.primaryLight, width: 1.5)),
-      errorBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10),
-          borderSide: const BorderSide(color: AppColors.danger)),
-    ),
-  );
+  void dispose() {
+    _scrollController.dispose();
+    _employeeIdController.dispose();
+    _passwordController.dispose();
+    super.dispose();
+  }
 
   Future<void> _handleLogin(AuthProvider auth) async {
     auth.clearError();
     if (!_formKey.currentState!.validate()) return;
-    final router = GoRouter.of(context);
-    final success = await auth.login(_employeeIdController.text.trim(), _passwordController.text);
+    final router  = GoRouter.of(context);
+    final success = await auth.login(
+        _employeeIdController.text.trim(), _passwordController.text);
     if (success && mounted) router.go('/dashboard');
   }
+
+  @override
+  Widget build(BuildContext context) {
+    final screenHeight  = MediaQuery.of(context).size.height;
+    final scrollPercent = (_offset / (screenHeight * 0.7)).clamp(0.0, 1.0);
+
+    return Scaffold(
+      backgroundColor: const Color(0xFF111B29),
+      body: Stack(children: [
+
+        // ── 1. FIXED PARALLAX BACKGROUND ────────────────────────────────
+        Positioned.fill(
+          child: FittedBox(
+            fit: BoxFit.cover,
+            child: SizedBox(
+              width: 1200, height: 800,
+              child: Stack(children: [
+                _layer('assets/images/scene/sky.jpg',     0.10),
+                _layer('assets/images/scene/mountBg.png', 0.20),
+                _layer('assets/images/scene/mountMg.png', 0.40),
+                _layer('assets/images/scene/cloud2.png',  0.50),
+
+                // "DRIVE WITH US" fades out on scroll
+                _sceneText('DRIVE WITH US', Colors.white,
+                  opacity: (1.0 - scrollPercent * 2.5).clamp(0.0, 1.0),
+                  yOffset: -50 * scrollPercent),
+
+                _layer('assets/images/scene/mountFg.png', 0.70),
+                _layer('assets/images/scene/cloud1.png',  0.80),
+                _layer('assets/images/scene/cloud3.png',  0.65),
+
+                // Dark plug (navy to match card)
+                Transform.translate(
+                  offset: Offset(0, 800 - (_offset * 0.70)),
+                  child: Container(width: 1200, height: 1200,
+                      color: const Color(0xFF0A2342))),
+
+                // Fog gradient
+                Transform.translate(
+                  offset: Offset(0, 600 - (_offset * 0.70)),
+                  child: Container(
+                    width: 1200, height: 220,
+                    decoration: BoxDecoration(gradient: LinearGradient(
+                      begin: Alignment.topCenter, end: Alignment.bottomCenter,
+                      colors: [const Color(0xFF0A2342).withOpacity(0),
+                               const Color(0xFF0A2342)]))),
+                ),
+
+                // "DRIVER PORTAL" revealed through fog
+                _sceneText('DRIVER PORTAL', const Color(0xFF64B5F6),
+                  opacity: ((scrollPercent - 0.4) * 2.5).clamp(0.0, 1.0),
+                  yOffset: 20 * (1 - scrollPercent), size: 36),
+
+                // Down arrow
+                Positioned(
+                  top: 320, left: 0, right: 0,
+                  child: Opacity(
+                    opacity: (1.0 - scrollPercent * 3).clamp(0.0, 1.0),
+                    child: const Column(mainAxisSize: MainAxisSize.min, children: [
+                      Text('Scroll to Sign In', textAlign: TextAlign.center,
+                        style: TextStyle(color: Colors.white70, fontSize: 14,
+                            letterSpacing: 1.5)),
+                      SizedBox(height: 8),
+                      Icon(Icons.keyboard_arrow_down_rounded,
+                          color: Colors.white70, size: 36),
+                    ]),
+                  ),
+                ),
+              ]),
+            ),
+          ),
+        ),
+
+        // ── 2. SCROLLABLE LOGIN CONTENT ──────────────────────────────────
+        SingleChildScrollView(
+          controller: _scrollController,
+          child: Column(children: [
+            SizedBox(height: screenHeight * 0.88),
+
+            Container(
+              width: double.infinity,
+              decoration: const BoxDecoration(
+                color: Color(0xFF0A2342),
+                borderRadius: BorderRadius.only(
+                  topLeft: Radius.circular(32),
+                  topRight: Radius.circular(32))),
+              padding: const EdgeInsets.fromLTRB(28, 24, 28, 48),
+              child: Consumer<AuthProvider>(builder: (ctx, auth, _) =>
+                Form(key: _formKey, child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start, children: [
+
+                  // Handle
+                  Center(child: Container(
+                    width: 40, height: 4,
+                    margin: const EdgeInsets.only(bottom: 24),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(0.15),
+                      borderRadius: BorderRadius.circular(2)))),
+
+                  // Logo row
+                  Row(children: [
+                    Container(width: 44, height: 44,
+                      decoration: BoxDecoration(
+                        color: AppColors.primaryLight,
+                        borderRadius: BorderRadius.circular(12)),
+                      child: const Icon(Icons.directions_bus_rounded,
+                          size: 22, color: Colors.white)),
+                    const SizedBox(width: 12),
+                    Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      Text('BUSGO', style: GoogleFonts.inter(
+                        fontSize: 20, fontWeight: FontWeight.w800,
+                        color: Colors.white, letterSpacing: 3)),
+                      Text('DRIVER PORTAL', style: GoogleFonts.inter(
+                        fontSize: 10, color: const Color(0xFF90CAF9),
+                        letterSpacing: 2)),
+                    ]),
+                  ]),
+
+                  const SizedBox(height: 24),
+
+                  Text('Welcome back', style: GoogleFonts.inter(
+                    fontSize: 22, fontWeight: FontWeight.w700, color: Colors.white)),
+                  const SizedBox(height: 4),
+                  Text('Sign in to your driver account', style: GoogleFonts.inter(
+                    fontSize: 12, color: Colors.white.withOpacity(0.45))),
+
+                  const SizedBox(height: 20),
+
+                  // Error banner
+                  if (auth.error != null) Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(12),
+                    margin: const EdgeInsets.only(bottom: 16),
+                    decoration: BoxDecoration(
+                      color: Colors.red.withOpacity(0.12),
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: Colors.red.withOpacity(0.3))),
+                    child: Row(children: [
+                      const Icon(Icons.error_outline, size: 16, color: Colors.redAccent),
+                      const SizedBox(width: 8),
+                      Expanded(child: Text(auth.error!, style: GoogleFonts.inter(
+                          fontSize: 12, color: Colors.redAccent))),
+                    ])),
+
+                  // Email
+                  _field(ctrl: _employeeIdController, hint: 'driver@busgo.lk',
+                    icon: Icons.person_outline,
+                    validator: (v) => v == null || v.isEmpty ? 'Email is required' : null),
+                  const SizedBox(height: 14),
+
+                  // Password
+                  _field(ctrl: _passwordController, hint: 'Password',
+                    icon: Icons.lock_outline, obscure: _obscurePassword,
+                    suffix: _obscurePassword
+                        ? Icons.visibility_off_outlined
+                        : Icons.visibility_outlined,
+                    onSuffix: () => setState(() => _obscurePassword = !_obscurePassword),
+                    validator: (v) {
+                      if (v == null || v.isEmpty) return 'Password is required';
+                      if (v.length < 6) return 'Minimum 6 characters';
+                      return null;
+                    }),
+
+                  const SizedBox(height: 22),
+
+                  // Login button
+                  SizedBox(width: double.infinity, height: 52,
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(14),
+                        gradient: !auth.isLoading
+                            ? const LinearGradient(
+                                colors: [Color(0xFF1565C0), Color(0xFF64B5F6)])
+                            : null,
+                        color: auth.isLoading
+                            ? const Color(0xFF1565C0).withOpacity(0.4) : null,
+                        boxShadow: auth.isLoading ? null : [
+                          BoxShadow(color: const Color(0xFF64B5F6).withOpacity(0.30),
+                              blurRadius: 14, offset: const Offset(0, 5))]),
+                      child: ElevatedButton(
+                        onPressed: auth.isLoading ? null : () => _handleLogin(auth),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.transparent,
+                          shadowColor: Colors.transparent,
+                          shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(14))),
+                        child: auth.isLoading
+                            ? const SizedBox(width: 22, height: 22,
+                                child: CircularProgressIndicator(
+                                    strokeWidth: 2.5, color: Colors.white))
+                            : Text('Login', style: GoogleFonts.inter(
+                                fontSize: 15, fontWeight: FontWeight.w700,
+                                color: Colors.white))))),
+
+                  const SizedBox(height: 16),
+
+                  // Register link
+                  Center(child: GestureDetector(
+                    onTap: () => context.push('/register'),
+                    child: RichText(text: TextSpan(children: [
+                      TextSpan(text: 'New driver? ', style: GoogleFonts.inter(
+                          fontSize: 12, color: const Color(0xFF90CAF9))),
+                      TextSpan(text: 'Register here →', style: GoogleFonts.inter(
+                          fontSize: 12, fontWeight: FontWeight.w700,
+                          color: const Color(0xFFFFD54F))),
+                    ])))),
+
+                  const SizedBox(height: 10),
+
+                  Center(child: Text('Forgot password? Contact admin',
+                    style: GoogleFonts.inter(fontSize: 12,
+                        color: const Color(0xFF64B5F6)))),
+                ])),
+              ),
+            ),
+          ]),
+        ),
+      ]),
+    );
+  }
+
+
+  Widget _layer(String asset, double speed) => Transform.translate(
+    offset: Offset(0, -(_offset * speed)),
+    child: Image.asset(asset, width: 1200, height: 800,
+        fit: BoxFit.cover, gaplessPlayback: true));
+
+  Widget _sceneText(String text, Color color,
+      {required double opacity, required double yOffset, double size = 42}) {
+    return Center(
+      child: Opacity(
+        opacity: opacity.clamp(0.0, 1.0),
+        child: Transform.translate(
+          offset: Offset(0, yOffset),
+          child: Text(text,
+            style: GoogleFonts.montserrat(
+              color: color,
+              fontSize: size,
+              fontWeight: FontWeight.w900,
+              letterSpacing: 1,
+              shadows: const [
+                Shadow(color: Color(0x44000000),
+                    blurRadius: 12, offset: Offset(0, 2)),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _field({
+    required TextEditingController ctrl,
+    required String hint,
+    required IconData icon,
+    bool obscure = false,
+    IconData? suffix,
+    VoidCallback? onSuffix,
+    String? Function(String?)? validator,
+  }) {
+    return TextFormField(
+      controller: ctrl,
+      obscureText: obscure,
+      validator: validator,
+      style: GoogleFonts.inter(fontSize: 14, color: Colors.white),
+      decoration: InputDecoration(
+        hintText: hint,
+        hintStyle: GoogleFonts.inter(
+            fontSize: 13, color: Colors.white.withOpacity(0.28)),
+        filled: true,
+        fillColor: Colors.white.withOpacity(0.06),
+        contentPadding:
+            const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        prefixIcon: Icon(icon, size: 18,
+            color: const Color(0xFF64B5F6).withOpacity(0.65)),
+        suffixIcon: suffix != null
+            ? GestureDetector(
+                onTap: onSuffix,
+                child: Padding(
+                  padding: const EdgeInsets.only(right: 14),
+                  child: Icon(suffix, size: 18, color: Colors.white38),
+                ),
+              )
+            : null,
+        suffixIconConstraints:
+            const BoxConstraints(minWidth: 0, minHeight: 0),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide(color: Colors.white.withOpacity(0.09)),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide:
+              const BorderSide(color: Color(0xFF64B5F6), width: 1.5),
+        ),
+        errorBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(color: Color(0xFFFF6B6B)),
+        ),
+        focusedErrorBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(color: Color(0xFFFF6B6B)),
+        ),
+        errorStyle: GoogleFonts.inter(
+            fontSize: 11, color: const Color(0xFFFF9999)),
+      ),
+    );
+  }
 }
-
-
-

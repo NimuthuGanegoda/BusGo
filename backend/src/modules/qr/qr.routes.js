@@ -9,9 +9,12 @@ const router = Router();
 router.use(authenticate);
 
 // Passenger: get their QR card
+// ?force=true  → always generate a new token (refresh button)
+// ?force=false → only generate if expired (normal screen load)
 router.get('/my-card', async (req, res, next) => {
   try {
-    const card = await qrService.getMyQrCard(req.user.id);
+    const force = req.query.force === 'true';
+    const card  = await qrService.getMyQrCard(req.user.id, force);
     return sendSuccess(res, card, 'QR card fetched');
   } catch (err) { next(err); }
 });
@@ -19,10 +22,11 @@ router.get('/my-card', async (req, res, next) => {
 // Scanner app (driver): scan passenger QR on boarding → creates trip
 router.post('/scan-in',
   validate(z.object({
-    scanned_token:    z.string().uuid('scanned_token must be a UUID'),
-    bus_id:           z.string().uuid().optional(),
-    route_id:         z.string().uuid().optional(),
-    boarding_stop_id: z.string().uuid().optional(),
+    scanned_token:     z.string().uuid('scanned_token must be a UUID'),
+    bus_id:            z.string().uuid().optional(),
+    route_id:          z.string().uuid().optional(),
+    boarding_stop_id:  z.string().uuid().optional(),
+    alighting_stop_id: z.string().uuid().optional(),
   })),
   async (req, res, next) => {
     try {
@@ -54,6 +58,3 @@ router.post('/scan-exit',
 );
 
 export default router;
-
-
-

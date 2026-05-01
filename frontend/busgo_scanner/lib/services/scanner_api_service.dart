@@ -2,8 +2,11 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
+import '../constants/scanner_api_constants.dart';
 
-const String _kBaseUrl = 'http://192.168.1.3:5000/api';
+// ── Base URL is now read from constants/scanner_api_constants.dart ────────────
+// To change the IP: edit kScannerBaseUrl in that file and press R to restart.
+// No recompile needed. No --dart-define required.
 const _storage = FlutterSecureStorage();
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -126,8 +129,6 @@ class ScannerTokenService {
 
   Future<void> clear() => _storage.delete(key: 'scanner_access_token');
 
-  /// Returns true if a saved token exists (used by login_screen to
-  /// restore session without re-login).
   Future<bool> hasSession() async {
     final token = await getAccess();
     return token != null && token.isNotEmpty;
@@ -140,8 +141,6 @@ class ScannerTokenService {
 class ScannerApiService {
   final ScannerTokenService _tokenSvc;
 
-  /// Constructor takes the token service — matches usage in login_screen.dart:
-  ///   _api = ScannerApiService(_tokenService);
   ScannerApiService(this._tokenSvc);
 
   Future<String?> _token() => _tokenSvc.getAccess();
@@ -153,7 +152,7 @@ class ScannerApiService {
       if (token == null) return null;
 
       final res = await http.get(
-        Uri.parse('$_kBaseUrl/driver/bus'),
+        Uri.parse('$kScannerBaseUrl/driver/bus'),
         headers: {
           'Authorization': 'Bearer $token',
           'Content-Type':  'application/json',
@@ -176,15 +175,12 @@ class ScannerApiService {
   }
 
   // ── Scan IN (boarding) ─────────────────────────────────────────────────────
-  // Keeps original positional signature: scanIn(scannedToken)
-  // FR-34: internally parses JSON QR payload to extract alighting_stop_id
   Future<ScanResult> scanIn(String rawQrContent, {String? routeId}) async {
     final payload = _QrPayload.fromRaw(rawQrContent);
 
     final token = await _token();
     if (token == null) throw Exception('Not authenticated');
 
-    // Resolve route from driver bus if not provided
     routeId ??= await fetchDriverRouteId();
 
     final body = <String, dynamic>{
@@ -198,7 +194,7 @@ class ScannerApiService {
         'stop=${payload.alightingStopId ?? 'none'}');
 
     final res = await http.post(
-      Uri.parse('$_kBaseUrl/qr/scan-in'),
+      Uri.parse('$kScannerBaseUrl/qr/scan-in'),
       headers: {
         'Authorization': 'Bearer $token',
         'Content-Type':  'application/json',
@@ -215,14 +211,12 @@ class ScannerApiService {
           alightingStopName: payload.alightingStopName ?? '');
     }
 
-    // 409 = already on a trip → let caller switch to exit
     throw Exception(responseBody['code']
         ?? responseBody['message']
         ?? 'Scan failed (${res.statusCode})');
   }
 
   // ── Scan EXIT (alighting) ──────────────────────────────────────────────────
-  // Keeps original positional signature: scanExit(scannedToken)
   Future<ScanResult> scanExit(String rawQrContent) async {
     final payload = _QrPayload.fromRaw(rawQrContent);
 
@@ -233,7 +227,7 @@ class ScannerApiService {
         'token=${payload.token.length > 8 ? payload.token.substring(0, 8) : payload.token}...');
 
     final res = await http.post(
-      Uri.parse('$_kBaseUrl/qr/scan-exit'),
+      Uri.parse('$kScannerBaseUrl/qr/scan-exit'),
       headers: {
         'Authorization': 'Bearer $token',
         'Content-Type':  'application/json',
@@ -255,7 +249,7 @@ class ScannerApiService {
   // ── Login ──────────────────────────────────────────────────────────────────
   Future<void> login(String email, String password) async {
     final res = await http.post(
-      Uri.parse('$_kBaseUrl/auth/login'),
+      Uri.parse('$kScannerBaseUrl/auth/login'),
       headers: {'Content-Type': 'application/json'},
       body: jsonEncode({'email': email, 'password': password}),
     ).timeout(const Duration(seconds: 10));
@@ -279,13 +273,12 @@ class ScannerApiService {
   }
 
   // ── Logout ─────────────────────────────────────────────────────────────────
-  // Used by scanner_profile_screen.dart: widget.api.logout()
   Future<void> logout() async {
     try {
       final token = await _token();
       if (token != null) {
         await http.post(
-          Uri.parse('$_kBaseUrl/auth/logout'),
+          Uri.parse('$kScannerBaseUrl/auth/logout'),
           headers: {
             'Authorization': 'Bearer $token',
             'Content-Type':  'application/json',

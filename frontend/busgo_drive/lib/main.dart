@@ -40,17 +40,22 @@ class BusGoDriveApp extends StatelessWidget {
         ChangeNotifierProvider(create: (_) => TripProvider()),
         ChangeNotifierProvider(create: (_) => EmergencyProvider()),
       ],
-      child: DriverSplashWrapper(                      // ← ADD THIS
-        child: MaterialApp.router(
-          title:                    'BusGo Drive',
-          debugShowCheckedModeBanner: false,
-          theme:                    AppTheme.light,
-          routerConfig:             appRouter,
+      child: MaterialApp.router(
+        title: 'BusGo Drive',
+        debugShowCheckedModeBanner: false,
+        theme: AppTheme.light,
+        routerConfig: appRouter,
+        builder: (context, child) => DriverSplashWrapper(
+          child: child ?? const SizedBox(),
         ),
       ),                                                // ← AND THIS
     );
   }
 }
+
+
+
+
 
 
 

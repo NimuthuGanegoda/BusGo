@@ -1,5 +1,4 @@
 import 'dart:math';
-import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -8,956 +7,394 @@ import '../../providers/auth_provider.dart';
 import '../../providers/user_provider.dart';
 import '../../widgets/busgo_alert.dart';
 
-// ── Rain drop data ────────────────────────────────────────────────────────────
-class _Drop {
-  final double x;       // 0.0–1.0
-  final double phase;   // starting offset
-  final double speed;
-  final double len;
-  final double opacity;
-  const _Drop(this.x, this.phase, this.speed, this.len, this.opacity);
-}
-
-// ═════════════════════════════════════════════════════════════════════════════
-// LOGIN SCREEN
-// ═════════════════════════════════════════════════════════════════════════════
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
   @override
   State<LoginScreen> createState() => _LoginScreenState();
 }
 
-class _LoginScreenState extends State<LoginScreen>
-    with TickerProviderStateMixin {
+class _LoginScreenState extends State<LoginScreen> {
+  double _offset = 0.0;
+  late ScrollController _scrollController;
 
-  // Rain
-  late AnimationController _rainCtrl;
-  // Totoro bounce when tapped
-  late AnimationController _bounceCtrl;
-  late Animation<double>   _bounceAnim;
-  // Scene fade-in
-  late AnimationController _fadeCtrl;
-  late Animation<double>   _fadeAnim;
-  // Rain intensity toggle
-  bool _raining = true;
+  final _emailCtrl  = TextEditingController();
+  final _passCtrl   = TextEditingController();
+  final _formKey    = GlobalKey<FormState>();
+  bool  _obscure    = true;
 
-  static final List<_Drop> _drops = _generateDrops();
-
-  static List<_Drop> _generateDrops() {
-    final rng  = Random(77);
-    final list = <_Drop>[];
-    for (int i = 0; i < 90; i++) {
-      list.add(_Drop(
-        rng.nextDouble(),
-        rng.nextDouble(),
-        0.25 + rng.nextDouble() * 0.55,
-        0.04 + rng.nextDouble() * 0.05,
-        0.25 + rng.nextDouble() * 0.45,
-      ));
-    }
-    return list;
-  }
+  static const _teal = Color(0xFF4ECDC4);
+  static const _navy = Color(0xFF111B29);
 
   @override
   void initState() {
     super.initState();
-
-    _rainCtrl = AnimationController(
-        vsync: this, duration: const Duration(seconds: 2))..repeat();
-
-    _bounceCtrl = AnimationController(
-        vsync: this, duration: const Duration(milliseconds: 800));
-    _bounceAnim = TweenSequence<double>([
-      TweenSequenceItem(tween: Tween(begin: 0, end: -28), weight: 30),
-      TweenSequenceItem(tween: Tween(begin: -28, end: 0),  weight: 20),
-      TweenSequenceItem(tween: Tween(begin: 0, end: -12),  weight: 15),
-      TweenSequenceItem(tween: Tween(begin: -12, end: 0),  weight: 10),
-      TweenSequenceItem(tween: Tween(begin: 0, end: 0),    weight: 25),
-    ]).animate(CurvedAnimation(parent: _bounceCtrl, curve: Curves.easeOut));
-
-    _fadeCtrl = AnimationController(
-        vsync: this, duration: const Duration(milliseconds: 1200))..forward();
-    _fadeAnim = CurvedAnimation(parent: _fadeCtrl, curve: Curves.easeOut);
+    _scrollController = ScrollController();
+    _scrollController.addListener(() {
+      setState(() => _offset = _scrollController.offset);
+    });
   }
 
   @override
   void dispose() {
-    _rainCtrl.dispose();
-    _bounceCtrl.dispose();
-    _fadeCtrl.dispose();
+    _scrollController.dispose();
+    _emailCtrl.dispose();
+    _passCtrl.dispose();
     super.dispose();
   }
 
-  // Totoro tapped: bounce then show login sheet
-  void _onTotoroTap() async {
-    setState(() => _raining = true);
-    await _bounceCtrl.forward(from: 0);
-    if (!mounted) return;
-    _showLoginSheet();
-  }
-
-  void _showLoginSheet() {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      barrierColor: Colors.black45,
-      builder: (_) => _LoginSheet(
-        onLoginSuccess: (user) {
-          context.read<UserProvider>().setUser(user);
-          GoRouter.of(context).go('/home');
-        },
-      ),
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final size = MediaQuery.of(context).size;
-
-    return Scaffold(
-      backgroundColor: Colors.black,
-      body: FadeTransition(
-        opacity: _fadeAnim,
-        child: Stack(children: [
-
-          // ── Dark background ────────────────────────────────────────────────
-          Container(color: Colors.black),
-
-          // ── Moon ──────────────────────────────────────────────────────────
-          Positioned(
-            top: size.height * 0.07,
-            right: size.width * 0.18,
-            child: Container(
-              width: 52, height: 52,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: const Color(0xFFF5EBC8),
-                boxShadow: [
-                  BoxShadow(
-                    color: const Color(0xFFF5EBC8).withOpacity(0.35),
-                    blurRadius: 40, spreadRadius: 12),
-                ],
-              ),
-            ),
-          ),
-
-          // ── Stars ─────────────────────────────────────────────────────────
-          CustomPaint(
-            size: size,
-            painter: _StarsPainter(),
-          ),
-
-          // ── Rain ──────────────────────────────────────────────────────────
-          if (_raining)
-            AnimatedBuilder(
-              animation: _rainCtrl,
-              builder: (_, __) => CustomPaint(
-                size: size,
-                painter: _RainPainter(_drops, _rainCtrl.value),
-              ),
-            ),
-
-          // ── Forest glow circle (bus stop ground) ───────────────────────────
-          Positioned(
-            bottom: -size.height * 0.15,
-            left: size.width * 0.5 - size.height * 0.45,
-            child: Container(
-              width:  size.height * 0.9,
-              height: size.height * 0.9,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: const Color(0xFF1A3A1A),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.95),
-                    blurRadius: 60,
-                    spreadRadius: 80,
-                  ),
-                  BoxShadow(
-                    color: const Color(0xFF0D2A10).withOpacity(0.7),
-                    blurRadius: 30,
-                    spreadRadius: -10,
-                  ),
-                ],
-              ),
-            ),
-          ),
-
-          // ── Floor strip ───────────────────────────────────────────────────
-          Positioned(
-            bottom: 0, left: 0, right: 0,
-            height: size.height * 0.12,
-            child: Container(color: const Color(0xFF1A271A)),
-          ),
-
-          // ── Bus stop sign ─────────────────────────────────────────────────
-          Positioned(
-            bottom: size.height * 0.12,
-            right: size.width * 0.14,
-            child: _BusStopSign(),
-          ),
-
-          // ── Two girls silhouette ───────────────────────────────────────────
-          Positioned(
-            bottom: size.height * 0.12,
-            right: size.width * 0.08,
-            child: CustomPaint(
-              size: const Size(60, 80),
-              painter: _GirlsPainter(),
-            ),
-          ),
-
-          // ── Totoro (tappable) ──────────────────────────────────────────────
-          Positioned(
-            bottom: size.height * 0.11,
-            left: size.width * 0.5 - 70,
-            child: GestureDetector(
-              onTap: _onTotoroTap,
-              child: AnimatedBuilder(
-                animation: _bounceAnim,
-                builder: (_, child) => Transform.translate(
-                  offset: Offset(0, _bounceAnim.value),
-                  child: child,
-                ),
-                child: CustomPaint(
-                  size: const Size(140, 160),
-                  painter: _TotoroPainter(),
-                ),
-              ),
-            ),
-          ),
-
-          // ── Tap hint ──────────────────────────────────────────────────────
-          Positioned(
-            bottom: size.height * 0.30,
-            left: 0, right: 0,
-            child: Center(
-              child: AnimatedBuilder(
-                animation: _bounceCtrl,
-                builder: (_, __) => Opacity(
-                  opacity: _bounceCtrl.isAnimating ? 0 : 1,
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 14, vertical: 6),
-                    decoration: BoxDecoration(
-                      color: Colors.black45,
-                      borderRadius: BorderRadius.circular(20),
-                      border: Border.all(color: Colors.white12),
-                    ),
-                    child: Text('Tap Totoro to board',
-                      style: GoogleFonts.poppins(
-                          fontSize: 11,
-                          color: Colors.white38,
-                          letterSpacing: 1.2)),
-                  ),
-                ),
-              ),
-            ),
-          ),
-
-          // ── Title top ─────────────────────────────────────────────────────
-          Positioned(
-            top: size.height * 0.05,
-            left: 0, right: 0,
-            child: Column(children: [
-              Text('BUSGO',
-                textAlign: TextAlign.center,
-                style: GoogleFonts.poppins(
-                  fontSize: 32,
-                  fontWeight: FontWeight.w800,
-                  color: Colors.white,
-                  letterSpacing: 8,
-                  shadows: [Shadow(
-                      color: Colors.white.withOpacity(0.25),
-                      blurRadius: 20)],
-                )),
-              Text('Your journey starts here',
-                style: GoogleFonts.poppins(
-                    fontSize: 11,
-                    color: Colors.white30,
-                    letterSpacing: 2)),
-            ]),
-          ),
-
-          // ── Bottom buttons ─────────────────────────────────────────────────
-          Positioned(
-            bottom: 0, left: 0, right: 0,
-            child: SafeArea(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(32, 0, 32, 16),
-                child: Column(mainAxisSize: MainAxisSize.min, children: [
-
-                  // Login button
-                  GestureDetector(
-                    onTap: _showLoginSheet,
-                    child: Container(
-                      width: double.infinity, height: 52,
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF2E7D32),
-                        borderRadius: BorderRadius.circular(30),
-                        boxShadow: [BoxShadow(
-                            color: const Color(0xFF2E7D32).withOpacity(0.5),
-                            blurRadius: 18, offset: const Offset(0, 6))],
-                      ),
-                      alignment: Alignment.center,
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          const Icon(Icons.login_rounded,
-                              color: Colors.white, size: 18),
-                          const SizedBox(width: 8),
-                          Text('Begin Journey',
-                            style: GoogleFonts.poppins(
-                                fontSize: 15,
-                                fontWeight: FontWeight.w600,
-                                color: Colors.white)),
-                        ],
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-
-                  // Register link
-                  Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-                    Text("Don't have an account? ",
-                      style: GoogleFonts.poppins(
-                          fontSize: 12, color: Colors.white24)),
-                    GestureDetector(
-                      onTap: () => context.push('/register'),
-                      child: Text('Register',
-                        style: GoogleFonts.poppins(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w600,
-                            color: Colors.white54)),
-                    ),
-                  ]),
-                ]),
-              ),
-            ),
-          ),
-        ]),
-      ),
-    );
-  }
-}
-
-// ═════════════════════════════════════════════════════════════════════════════
-// LOGIN BOTTOM SHEET
-// ═════════════════════════════════════════════════════════════════════════════
-class _LoginSheet extends StatefulWidget {
-  final void Function(dynamic user) onLoginSuccess;
-  const _LoginSheet({required this.onLoginSuccess});
-
-  @override
-  State<_LoginSheet> createState() => _LoginSheetState();
-}
-
-class _LoginSheetState extends State<_LoginSheet> {
-  final _formKey           = GlobalKey<FormState>();
-  final _emailController   = TextEditingController();
-  final _passwordController = TextEditingController();
-  bool _obscurePassword = true;
-
-  @override
-  void dispose() {
-    _emailController.dispose();
-    _passwordController.dispose();
-    super.dispose();
-  }
-
-  TextStyle _poppins({
-    double size = 14,
-    FontWeight weight = FontWeight.w400,
-    Color color = Colors.white,
-  }) =>
-      GoogleFonts.poppins(fontSize: size, fontWeight: weight, color: color);
-
-  Future<void> _handleLogin() async {
+  Future<void> _doLogin() async {
+    FocusScope.of(context).unfocus();
+    if (!_formKey.currentState!.validate()) return;
     final auth = context.read<AuthProvider>();
     auth.clearError();
-    if (!_formKey.currentState!.validate()) return;
-
-    final success = await auth.login(
-      _emailController.text.trim(),
-      _passwordController.text,
-    );
-
+    final ok = await auth.login(_emailCtrl.text.trim(), _passCtrl.text);
     if (!mounted) return;
-
-    if (success) {
-      Navigator.pop(context);
-      widget.onLoginSuccess(auth.currentUser!);
+    if (ok) {
+      context.read<UserProvider>().setUser(auth.currentUser!);
+      context.go('/home');
     } else {
-      final error = auth.errorMessage ?? '';
-      String title  = 'Login Failed';
-      String message = 'Something went wrong. Please try again.';
-
-      if (error == 'LOGIN_RESTRICTED') {
-        title   = 'Access Denied';
-        message = 'This account is not authorized to use this app.';
-      } else if (error.contains('EMAIL_NOT_VERIFIED') ||
-                 error.contains('verify your email')) {
-        title   = 'Email Not Verified';
-        message = 'Please verify your email first.';
-      } else if (error.contains('invalid') ||
-                 error.contains('credentials') ||
-                 error.contains('401')) {
-        message = 'Invalid email or password.';
-      } else if (error == 'ACCOUNT_LOCKED') {
-        title   = 'Account Locked';
-        message = 'Too many attempts. Try again in 15 minutes.';
-      } else if (error.contains('socket') ||
-                 error.contains('connection') ||
-                 error.contains('timeout')) {
-        title   = 'Connection Error';
-        message = 'Could not reach the server.';
-      } else if (error.isNotEmpty) {
-        message = error;
-      }
-
-      BusgoAlert.show(context,
-          type: BusgoAlertType.error,
-          title: title,
-          message: message);
+      final e = auth.errorMessage ?? '';
+      String title = 'Login Failed', msg = 'Something went wrong.';
+      if (e == 'LOGIN_RESTRICTED')                       { title = 'Access Denied';   msg = 'Not authorised for this app.'; }
+      else if (e.contains('verify'))                     { title = 'Verify Email';     msg = 'Please verify your email.'; }
+      else if (e.contains('invalid') || e.contains('401')) {                           msg = 'Invalid email or password.'; }
+      else if (e == 'ACCOUNT_LOCKED')                    { title = 'Account Locked';   msg = 'Too many attempts. Try in 15 min.'; }
+      else if (e.contains('socket') || e.contains('timeout')) { title = 'No Connection'; msg = 'Cannot reach server.'; }
+      else if (e.isNotEmpty)                             { msg = e; }
+      BusgoAlert.show(context, type: BusgoAlertType.error, title: title, message: msg);
       auth.clearError();
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    final bottom = MediaQuery.of(context).viewInsets.bottom;
+    final screenHeight  = MediaQuery.of(context).size.height;
+    final scrollPercent = (_offset / (screenHeight * 0.7)).clamp(0.0, 1.0);
 
-    return Padding(
-      padding: EdgeInsets.only(bottom: bottom),
-      child: ClipRRect(
-        borderRadius: const BorderRadius.only(
-            topLeft: Radius.circular(28), topRight: Radius.circular(28)),
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
-          child: Container(
-            decoration: BoxDecoration(
-              color: const Color(0xFF0D1F0E).withOpacity(0.92),
-              borderRadius: const BorderRadius.only(
-                  topLeft: Radius.circular(28),
-                  topRight: Radius.circular(28)),
-              border: Border.all(color: Colors.white10, width: 1.5),
+    return Scaffold(
+      backgroundColor: const Color(0xFF111B29),
+      body: Stack(children: [
+
+        // ── 1. FIXED PARALLAX BACKGROUND ─────────────────────────────────
+        Positioned.fill(
+          child: FittedBox(
+            fit: BoxFit.cover,
+            child: SizedBox(
+              width: 1200,
+              height: 800,
+              child: Stack(children: [
+
+                // Sky
+                _layer('assets/images/scene/sky.jpg',      0.10),
+                // Background mountains
+                _layer('assets/images/scene/mountBg.png',  0.20),
+                // Mid mountains
+                _layer('assets/images/scene/mountMg.png',  0.40),
+                // Cloud 2 (behind foreground)
+                _layer('assets/images/scene/cloud2.png',   0.50),
+
+                // "RIDE WITH US" — fades out as user scrolls
+                _buildSceneText(
+                  'RIDE WITH US',
+                  Colors.white,
+                  opacity: (1.0 - scrollPercent * 2.5).clamp(0.0, 1.0),
+                  yOffset: -50 * scrollPercent,
+                ),
+
+                // Foreground mountains — moves fastest
+                _layer('assets/images/scene/mountFg.png',  0.70),
+                // Cloud 1
+                _layer('assets/images/scene/cloud1.png',   0.80),
+                // Cloud 3
+                _layer('assets/images/scene/cloud3.png',   0.65),
+
+                // White plug — stays pinned to mountFg bottom
+                Transform.translate(
+                  offset: Offset(0, 800 - (_offset * 0.70)),
+                  child: Container(
+                    width: 1200, height: 1200,
+                    color: const Color(0xFF0A1628)),
+                ),
+
+                // Fog gradient — blends mountains into the dark card
+                Transform.translate(
+                  offset: Offset(0, 600 - (_offset * 0.70)),
+                  child: Container(
+                    width: 1200, height: 220,
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: [
+                          const Color(0xFF0A1628).withOpacity(0),
+                          const Color(0xFF0A1628),
+                        ])),
+                  ),
+                ),
+
+                // "WELCOME BACK" — revealed through the fog
+                _buildSceneText(
+                  'WELCOME',
+                  _teal,
+                  opacity: ((scrollPercent - 0.4) * 2.5).clamp(0.0, 1.0),
+                  yOffset: 20 * (1 - scrollPercent),
+                ),
+
+                // Down arrow (fades out as user scrolls)
+                Positioned(
+                  top: 320,
+                  left: 0, right: 0,
+                  child: Opacity(
+                    opacity: (1.0 - scrollPercent * 3).clamp(0.0, 1.0),
+                    child: const Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text('Scroll to Sign In',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            color: Colors.white70, fontSize: 14,
+                            letterSpacing: 1.5)),
+                        SizedBox(height: 8),
+                        Icon(Icons.keyboard_arrow_down_rounded,
+                            color: Colors.white70, size: 36),
+                      ],
+                    ),
+                  ),
+                ),
+              ]),
             ),
-            padding: const EdgeInsets.fromLTRB(28, 16, 28, 28),
-            child: Consumer<AuthProvider>(
-              builder: (context, auth, _) {
-                return Form(
+          ),
+        ),
+
+        // ── 2. SCROLLABLE LOGIN CONTENT ───────────────────────────────────
+        SingleChildScrollView(
+          controller: _scrollController,
+          child: Column(children: [
+
+            // Spacer — lets parallax animate before card appears
+            SizedBox(height: screenHeight * 0.88),
+
+            // Login card
+            Container(
+              width: double.infinity,
+              decoration: const BoxDecoration(
+                color: Color(0xFF0A1628),
+                borderRadius: BorderRadius.only(
+                  topLeft:  Radius.circular(32),
+                  topRight: Radius.circular(32))),
+              padding: const EdgeInsets.fromLTRB(28, 24, 28, 48),
+              child: Consumer<AuthProvider>(
+                builder: (_, auth, __) => Form(
                   key: _formKey,
-                  child: Column(mainAxisSize: MainAxisSize.min, children: [
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
 
-                    // Handle
-                    Container(
-                      width: 40, height: 4,
-                      margin: const EdgeInsets.only(bottom: 20),
-                      decoration: BoxDecoration(
-                          color: Colors.white24,
-                          borderRadius: BorderRadius.circular(2))),
+                      // Handle bar
+                      Center(child: Container(
+                        width: 40, height: 4,
+                        margin: const EdgeInsets.only(bottom: 24),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withOpacity(0.15),
+                          borderRadius: BorderRadius.circular(2)))),
 
-                    // Logo
-                    Text('BUSGO',
-                      style: _poppins(
-                          size: 22,
-                          weight: FontWeight.w800,
-                          color: const Color(0xFF81C784))
-                          .copyWith(letterSpacing: 4)),
-                    const SizedBox(height: 4),
-                    Text('Welcome back',
-                      style: _poppins(size: 12, color: Colors.white38)),
-                    const SizedBox(height: 24),
+                      // Heading
+                      Text('Welcome back',
+                        style: GoogleFonts.poppins(
+                          fontSize: 26, fontWeight: FontWeight.w700,
+                          color: Colors.white)),
+                      const SizedBox(height: 4),
+                      Text('Sign in to continue your journey',
+                        style: GoogleFonts.poppins(
+                          fontSize: 13,
+                          color: Colors.white.withOpacity(0.40))),
 
-                    // Email
-                    _buildField(
-                      controller: _emailController,
-                      hint: 'Email Address',
-                      icon: Icons.email_outlined,
-                      keyboard: TextInputType.emailAddress,
-                      validator: (v) {
-                        if (v == null || v.trim().isEmpty)
-                          return 'Email is required';
-                        final rx = RegExp(
-                            r'^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$');
-                        if (!rx.hasMatch(v.trim()))
-                          return 'Enter a valid email';
-                        return null;
-                      },
-                    ),
-                    const SizedBox(height: 14),
+                      const SizedBox(height: 28),
 
-                    // Password
-                    _buildField(
-                      controller: _passwordController,
-                      hint: 'Password',
-                      icon: _obscurePassword
-                          ? Icons.visibility_off_outlined
-                          : Icons.visibility_outlined,
-                      obscure: _obscurePassword,
-                      onIconTap: () => setState(
-                          () => _obscurePassword = !_obscurePassword),
-                      validator: (v) {
-                        if (v == null || v.isEmpty) return 'Password is required';
-                        if (v.length < 8) return 'Minimum 8 characters';
-                        return null;
-                      },
-                    ),
-                    const SizedBox(height: 10),
+                      // Email
+                      _field(
+                        ctrl: _emailCtrl,
+                        hint: 'Email Address',
+                        icon: Icons.email_outlined,
+                        keyboard: TextInputType.emailAddress,
+                        validator: (v) {
+                          if (v == null || v.trim().isEmpty) return 'Email required';
+                          if (!RegExp(r'^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$')
+                              .hasMatch(v.trim())) return 'Enter a valid email';
+                          return null;
+                        }),
 
-                    // Forgot password
-                    Align(
-                      alignment: Alignment.centerRight,
-                      child: GestureDetector(
-                        onTap: () {
-                          Navigator.pop(context);
-                          context.push('/forgot-password');
-                        },
-                        child: Text('Forgot Password?',
-                          style: _poppins(
-                              size: 12,
-                              color: const Color(0xFF81C784))),
-                      ),
-                    ),
-                    const SizedBox(height: 22),
+                      const SizedBox(height: 14),
 
-                    // Login button
-                    SizedBox(
-                      width: double.infinity, height: 52,
-                      child: ElevatedButton(
-                        onPressed: auth.isLoading ? null : _handleLogin,
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFF2E7D32),
-                          disabledBackgroundColor: Colors.green.withOpacity(0.3),
-                          elevation: 0,
-                          shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(28)),
-                        ),
-                        child: auth.isLoading
-                            ? const SizedBox(
-                                width: 22, height: 22,
-                                child: CircularProgressIndicator(
-                                    strokeWidth: 2, color: Colors.white))
-                            : Text('Login',
-                                style: _poppins(
-                                    size: 15, weight: FontWeight.w600)),
-                      ),
-                    ),
-                    const SizedBox(height: 16),
+                      // Password
+                      _field(
+                        ctrl: _passCtrl,
+                        hint: 'Password',
+                        icon: Icons.lock_outline_rounded,
+                        obscure: _obscure,
+                        suffix: _obscure
+                            ? Icons.visibility_off_outlined
+                            : Icons.visibility_outlined,
+                        onSuffix: () => setState(() => _obscure = !_obscure),
+                        validator: (v) {
+                          if (v == null || v.isEmpty) return 'Password required';
+                          if (v.length < 8) return 'Minimum 8 characters';
+                          return null;
+                        }),
 
-                    // Register
-                    Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-                      Text("Don't have an account? ",
-                        style: _poppins(size: 12, color: Colors.white30)),
-                      GestureDetector(
-                        onTap: () {
-                          Navigator.pop(context);
-                          context.push('/register');
-                        },
-                        child: Text('Register',
-                          style: _poppins(
-                              size: 12,
-                              weight: FontWeight.w600,
-                              color: const Color(0xFF81C784))),
-                      ),
-                    ]),
-                  ]),
-                );
-              },
-            ),
-          ),
-        ),
-      ),
-    );
-  }
+                      const SizedBox(height: 10),
 
-  Widget _buildField({
-    required TextEditingController controller,
-    required String hint,
-    required IconData icon,
-    bool obscure = false,
-    VoidCallback? onIconTap,
-    TextInputType? keyboard,
-    String? Function(String?)? validator,
-  }) {
-    return TextFormField(
-      controller:   controller,
-      obscureText:  obscure,
-      keyboardType: keyboard,
-      validator:    validator,
-      style: GoogleFonts.poppins(fontSize: 14, color: Colors.white),
-      decoration: InputDecoration(
-        hintText:  hint,
-        hintStyle: GoogleFonts.poppins(
-            fontSize: 14, color: Colors.white30),
-        filled:    true,
-        fillColor: Colors.white.withOpacity(0.07),
-        contentPadding: const EdgeInsets.symmetric(
-            horizontal: 20, vertical: 15),
-        suffixIcon: GestureDetector(
-          onTap: onIconTap,
-          child: Padding(
-            padding: const EdgeInsets.only(right: 16),
-            child: Icon(icon, size: 20, color: Colors.white38),
-          ),
-        ),
-        suffixIconConstraints: const BoxConstraints(
-            minWidth: 0, minHeight: 0),
-        border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(28),
-            borderSide: BorderSide(
-                color: Colors.white.withOpacity(0.15))),
-        enabledBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(28),
-            borderSide: BorderSide(
-                color: Colors.white.withOpacity(0.15))),
-        focusedBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(28),
-            borderSide: const BorderSide(
-                color: Color(0xFF4CAF50), width: 1.5)),
-        errorBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(28),
-            borderSide: const BorderSide(
-                color: Color(0xFFEF5350))),
-        focusedErrorBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(28),
-            borderSide: const BorderSide(
-                color: Color(0xFFEF5350))),
-        errorStyle: GoogleFonts.poppins(
-            fontSize: 11, color: const Color(0xFFEF9A9A)),
-      ),
-    );
-  }
-}
+                      // Forgot password
+                      Align(
+                        alignment: Alignment.centerRight,
+                        child: GestureDetector(
+                          onTap: () => context.push('/forgot-password'),
+                          child: Text('Forgot Password?',
+                            style: GoogleFonts.poppins(
+                              fontSize: 12, color: _teal,
+                              fontWeight: FontWeight.w500)))),
 
-// ═════════════════════════════════════════════════════════════════════════════
-// PAINTERS
-// ═════════════════════════════════════════════════════════════════════════════
+                      const SizedBox(height: 24),
 
-class _StarsPainter extends CustomPainter {
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint()..color = Colors.white;
-    final rng   = Random(13);
-    for (int i = 0; i < 60; i++) {
-      final x  = rng.nextDouble() * size.width;
-      final y  = rng.nextDouble() * size.height * 0.55;
-      final r  = 0.5 + rng.nextDouble() * 1.2;
-      final op = 0.3 + rng.nextDouble() * 0.6;
-      canvas.drawCircle(Offset(x, y), r, paint..color = Colors.white.withOpacity(op));
-    }
-  }
-  @override
-  bool shouldRepaint(_StarsPainter old) => false;
-}
+                      // Sign In button
+                      SizedBox(
+                        width: double.infinity, height: 54,
+                        child: DecoratedBox(
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(14),
+                            gradient: !auth.isLoading
+                                ? const LinearGradient(colors: [Color(0xFF3BBFB8), _teal])
+                                : null,
+                            color: auth.isLoading ? _teal.withOpacity(0.3) : null,
+                            boxShadow: auth.isLoading ? null : [
+                              BoxShadow(color: _teal.withOpacity(0.35),
+                                  blurRadius: 16, offset: const Offset(0, 5))]),
+                          child: ElevatedButton(
+                            onPressed: auth.isLoading ? null : _doLogin,
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.transparent,
+                              shadowColor: Colors.transparent,
+                              shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(14))),
+                            child: auth.isLoading
+                                ? const SizedBox(width: 22, height: 22,
+                                    child: CircularProgressIndicator(
+                                        strokeWidth: 2.5, color: Colors.white))
+                                : Text('Sign In', style: GoogleFonts.poppins(
+                                    fontSize: 15, fontWeight: FontWeight.w700,
+                                    color: Colors.white))))),
 
-class _RainPainter extends CustomPainter {
-  final List<_Drop> drops;
-  final double progress;
-  _RainPainter(this.drops, this.progress);
+                      const SizedBox(height: 16),
 
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint()..strokeWidth = 1.2..strokeCap = StrokeCap.round;
-    for (final d in drops) {
-      final t  = (d.phase + progress * d.speed) % 1.0;
-      final x  = d.x * size.width + t * size.height * 0.18;
-      final y  = t * (size.height + 60) - 30;
-      final dx = d.len * size.width * 0.12;
-      final dy = d.len * size.height * 0.55;
-      paint.color = const Color(0xFFB3D9FF).withOpacity(d.opacity * 0.55);
-      canvas.drawLine(Offset(x, y), Offset(x + dx, y + dy), paint);
-    }
-  }
+                      // Divider
+                      Row(children: [
+                        Expanded(child: Divider(color: Colors.white.withOpacity(0.09))),
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 12),
+                          child: Text('or', style: GoogleFonts.poppins(
+                              fontSize: 11, color: Colors.white.withOpacity(0.30)))),
+                        Expanded(child: Divider(color: Colors.white.withOpacity(0.09))),
+                      ]),
 
-  @override
-  bool shouldRepaint(_RainPainter old) => old.progress != progress;
-}
+                      const SizedBox(height: 16),
 
-// ── Bus Stop Sign ─────────────────────────────────────────────────────────────
-class _BusStopSign extends StatelessWidget {
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      width: 70, height: 130,
-      child: Stack(children: [
-        // Pole
-        Positioned(
-          left: 32, top: 30,
-          child: Container(
-            width: 5, height: 100,
-            color: const Color(0xFF5D4037),
-          ),
-        ),
-        // Sign board
-        Positioned(
-          left: 0, top: 0,
-          child: Container(
-            width: 70, height: 35,
-            decoration: BoxDecoration(
-              color: const Color(0xFF1A3A5C),
-              borderRadius: BorderRadius.circular(4),
-              border: Border.all(color: Colors.white24, width: 1),
-            ),
-            alignment: Alignment.center,
-            child: Text('BUS\nSTOP',
-              textAlign: TextAlign.center,
-              style: GoogleFonts.poppins(
-                  fontSize: 8,
-                  fontWeight: FontWeight.w800,
-                  color: Colors.white,
-                  height: 1.3,
-                  letterSpacing: 1.5)),
-          ),
+                      // Create account
+                      SizedBox(
+                        width: double.infinity, height: 54,
+                        child: OutlinedButton(
+                          onPressed: () => context.push('/register'),
+                          style: OutlinedButton.styleFrom(
+                            side: BorderSide(color: _teal.withOpacity(0.45), width: 1.5),
+                            shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(14))),
+                          child: Text('Create Account', style: GoogleFonts.poppins(
+                              fontSize: 14, fontWeight: FontWeight.w600,
+                              color: _teal)))),
+                    ])))),
+          ]),
         ),
       ]),
     );
   }
-}
 
-// ── Girls silhouette ──────────────────────────────────────────────────────────
-class _GirlsPainter extends CustomPainter {
-  @override
-  void paint(Canvas canvas, Size size) {
-    final dark = Paint()..color = const Color(0xFF0D1F0D);
-
-    // Big girl (Satsuki)
-    canvas.drawOval(Rect.fromLTWH(5, 5, 18, 18), dark); // head
-    canvas.drawRRect(RRect.fromRectAndRadius(
-        Rect.fromLTWH(3, 22, 22, 30), const Radius.circular(4)), dark); // body
-    // dress
-    final path = Path()
-      ..moveTo(3, 42)
-      ..lineTo(-2, 70)
-      ..lineTo(28, 70)
-      ..lineTo(25, 42)
-      ..close();
-    canvas.drawPath(path, dark);
-
-    // Small girl (Mei)
-    canvas.drawOval(Rect.fromLTWH(28, 18, 14, 14), dark); // head
-    canvas.drawRRect(RRect.fromRectAndRadius(
-        Rect.fromLTWH(26, 31, 18, 22), const Radius.circular(3)), dark);
-    final path2 = Path()
-      ..moveTo(26, 48)
-      ..lineTo(22, 70)
-      ..lineTo(46, 70)
-      ..lineTo(44, 48)
-      ..close();
-    canvas.drawPath(path2, dark);
-
-    // Umbrellas (simplified)
-    final umbPaint = Paint()
-      ..color = const Color(0xFF1A3A1A)
-      ..style  = PaintingStyle.fill;
-    // Big umbrella
-    canvas.drawPath(
-      Path()
-        ..moveTo(-10, 10)
-        ..quadraticBezierTo(14, -8, 38, 10)
-        ..quadraticBezierTo(14, 2, -10, 10)
-        ..close(),
-      umbPaint,
-    );
-    // Small umbrella
-    canvas.drawPath(
-      Path()
-        ..moveTo(20, 22)
-        ..quadraticBezierTo(35, 10, 52, 22)
-        ..quadraticBezierTo(35, 16, 20, 22)
-        ..close(),
-      umbPaint,
+  // Parallax layer — matches Gemini's _parallaxLayer exactly
+  Widget _layer(String asset, double speed) {
+    return Transform.translate(
+      offset: Offset(0, -(_offset * speed)),
+      child: Image.asset(asset,
+        width: 1200, height: 800,
+        fit: BoxFit.cover,
+        gaplessPlayback: true),
     );
   }
 
-  @override
-  bool shouldRepaint(_GirlsPainter old) => false;
-}
-
-// ── Totoro Painter ────────────────────────────────────────────────────────────
-class _TotoroPainter extends CustomPainter {
-  @override
-  void paint(Canvas canvas, Size sz) {
-    final cx = sz.width  / 2;
-    final cy = sz.height * 0.54;
-
-    // ─ Body ─
-    final bodyPaint = Paint()..color = const Color(0xFF2D2D3C);
-    canvas.drawOval(
-        Rect.fromCenter(center: Offset(cx, cy),
-            width: sz.width * 0.82, height: sz.height * 0.72),
-        bodyPaint);
-
-    // ─ Ears ─
-    _drawEar(canvas, cx - 24, cy - sz.height * 0.28,
-        cx - 40, cy - sz.height * 0.50, cx - 10, bodyPaint);
-    _drawEar(canvas, cx + 24, cy - sz.height * 0.28,
-        cx + 40, cy - sz.height * 0.50, cx + 10, bodyPaint);
-
-    // ─ Inner ear pink ─
-    final innerEarPaint = Paint()..color = const Color(0xFF5A3A4A);
-    _drawEar(canvas, cx - 22, cy - sz.height * 0.29,
-        cx - 36, cy - sz.height * 0.46, cx - 12, innerEarPaint,
-        scale: 0.6);
-    _drawEar(canvas, cx + 22, cy - sz.height * 0.29,
-        cx + 36, cy - sz.height * 0.46, cx + 12, innerEarPaint,
-        scale: 0.6);
-
-    // ─ Belly ─
-    final bellyPaint = Paint()..color = const Color(0xFFDDD8BC);
-    canvas.drawOval(
-        Rect.fromCenter(center: Offset(cx + 4, cy + 8),
-            width: sz.width * 0.5, height: sz.height * 0.46),
-        bellyPaint);
-
-    // ─ Belly stripe pattern (dark chevrons) ─
-    final chevPaint = Paint()
-      ..color      = const Color(0xFF2D2D3C)
-      ..strokeWidth = 2.5
-      ..style       = PaintingStyle.stroke
-      ..strokeCap   = StrokeCap.round;
-    for (int i = 0; i < 3; i++) {
-      final y = cy + 4 + i * 14.0;
-      final w = 18.0 - i * 4;
-      canvas.drawPath(
-        Path()
-          ..moveTo(cx - w, y)
-          ..quadraticBezierTo(cx + 4, y - 9, cx + 4 + w, y),
-        chevPaint,
-      );
-    }
-
-    // ─ Nature marks (green spirit dots) ─
-    final dotPaint = Paint()..color = const Color(0xFF2E5C28);
-    for (final pos in [
-      [cx - 18.0, cy - 12.0, 6.0],
-      [cx + 26.0, cy - 8.0,  5.0],
-      [cx + 22.0, cy - 22.0, 4.0],
-      [cx - 10.0, cy + 28.0, 4.0],
-      [cx + 35.0, cy + 20.0, 3.5],
-    ]) {
-      canvas.drawCircle(Offset(pos[0], pos[1]), pos[2], dotPaint);
-    }
-
-    // ─ Eyes white ─
-    final eyeWhite = Paint()..color = Colors.white;
-    canvas.drawOval(
-        Rect.fromCenter(center: Offset(cx - 18, cy - sz.height * 0.12),
-            width: 24, height: 28),
-        eyeWhite);
-    canvas.drawOval(
-        Rect.fromCenter(center: Offset(cx + 18, cy - sz.height * 0.12),
-            width: 24, height: 28),
-        eyeWhite);
-
-    // ─ Pupils ─
-    final pupil = Paint()..color = const Color(0xFF18181E);
-    canvas.drawOval(
-        Rect.fromCenter(center: Offset(cx - 16, cy - sz.height * 0.10),
-            width: 15, height: 19),
-        pupil);
-    canvas.drawOval(
-        Rect.fromCenter(center: Offset(cx + 20, cy - sz.height * 0.10),
-            width: 15, height: 19),
-        pupil);
-
-    // ─ Eye shine ─
-    final shine = Paint()..color = Colors.white;
-    canvas.drawCircle(Offset(cx - 12, cy - sz.height * 0.13), 4, shine);
-    canvas.drawCircle(Offset(cx + 24, cy - sz.height * 0.13), 4, shine);
-
-    // ─ Nose ─
-    final nose = Paint()..color = const Color(0xFF1A0A20);
-    canvas.drawOval(
-        Rect.fromCenter(center: Offset(cx + 3, cy + 2), width: 9, height: 5),
-        nose);
-
-    // ─ Whiskers ─
-    final w = Paint()
-      ..color      = Colors.white30
-      ..strokeWidth = 1.3;
-    canvas.drawLine(Offset(cx - 38, cy + 6),  Offset(cx - 8, cy + 5),  w);
-    canvas.drawLine(Offset(cx - 38, cy + 14), Offset(cx - 8, cy + 13), w);
-    canvas.drawLine(Offset(cx + 10, cy + 5),  Offset(cx + 40, cy + 6),  w);
-    canvas.drawLine(Offset(cx + 10, cy + 13), Offset(cx + 40, cy + 14), w);
-
-    // ─ Umbrella leaf (stem) ─
-    final stemPaint = Paint()
-      ..color      = const Color(0xFF4E3415)
-      ..strokeWidth = 3
-      ..strokeCap   = StrokeCap.round;
-    canvas.drawLine(
-        Offset(cx + 18, cy - sz.height * 0.28),
-        Offset(cx + 30, cy - sz.height * 0.56),
-        stemPaint);
-
-    // ─ Leaf ─
-    final leafPaint = Paint()..color = const Color(0xFF2E7D32);
-    final leaf = Path()
-      ..moveTo(cx,      cy - sz.height * 0.54)
-      ..quadraticBezierTo(cx + 18, cy - sz.height * 0.76, cx + 56, cy - sz.height * 0.54)
-      ..quadraticBezierTo(cx + 18, cy - sz.height * 0.42, cx,      cy - sz.height * 0.54)
-      ..close();
-    canvas.drawPath(leaf, leafPaint);
-    // leaf highlight
-    canvas.drawPath(leaf,
-        Paint()
-          ..color   = const Color(0xFF1B5E20).withOpacity(0.4)
-          ..style   = PaintingStyle.stroke
-          ..strokeWidth = 1.5);
-    // vein
-    final veinP = Paint()
-      ..color      = const Color(0xFF1B5E20).withOpacity(0.5)
-      ..strokeWidth = 1;
-    canvas.drawLine(
-        Offset(cx + 28, cy - sz.height * 0.54),
-        Offset(cx + 28, cy - sz.height * 0.70),
-        veinP);
-    for (int i = 0; i < 3; i++) {
-      final y2 = cy - sz.height * (0.56 + i * 0.04);
-      canvas.drawLine(Offset(cx + 28, y2), Offset(cx + 28 + 10, y2 - 6), veinP);
-      canvas.drawLine(Offset(cx + 28, y2), Offset(cx + 28 - 8, y2 - 5), veinP);
-    }
-
-    // ─ Feet ─
-    final feetPaint = Paint()..color = const Color(0xFF23232F);
-    canvas.drawOval(
-        Rect.fromCenter(center: Offset(cx - 22, cy + sz.height * 0.35),
-            width: 32, height: 14),
-        feetPaint);
-    canvas.drawOval(
-        Rect.fromCenter(center: Offset(cx + 24, cy + sz.height * 0.35),
-            width: 32, height: 14),
-        feetPaint);
-
-    // ─ Claws ─
-    final claw = Paint()
-      ..color      = const Color(0xFF18181E)
-      ..strokeWidth = 1.8;
-    for (int i = 0; i < 4; i++) {
-      canvas.drawLine(
-          Offset(cx - 30 + i * 7.0, cy + sz.height * 0.37),
-          Offset(cx - 32 + i * 7.0, cy + sz.height * 0.43), claw);
-      canvas.drawLine(
-          Offset(cx + 14 + i * 7.0, cy + sz.height * 0.37),
-          Offset(cx + 12 + i * 7.0, cy + sz.height * 0.43), claw);
-    }
+  // Scene text — matches Gemini's _buildText exactly
+  Widget _buildSceneText(String text, Color color,
+      {required double opacity, required double yOffset}) {
+    return Center(
+      child: Opacity(
+        opacity: opacity.clamp(0.0, 1.0),
+        child: Transform.translate(
+          offset: Offset(0, yOffset),
+          child: Text(text,
+            style: GoogleFonts.montserrat(
+              color: color, fontSize: 42,
+              fontWeight: FontWeight.w900,
+              letterSpacing: 1,
+              shadows: const [Shadow(
+                  color: Color(0x44000000),
+                  blurRadius: 12, offset: Offset(0, 2))])))));
   }
 
-  void _drawEar(Canvas canvas, double tx, double ty, double tipX, double tipY,
-      double bx, Paint paint, {double scale = 1.0}) {
-    final path = Path()
-      ..moveTo(tx, ty)
-      ..lineTo(tipX, tipY)
-      ..lineTo(bx,  ty)
-      ..close();
-    canvas.drawPath(path, paint);
+  // Form field
+  Widget _field({
+    required TextEditingController ctrl,
+    required String hint,
+    required IconData icon,
+    IconData? suffix,
+    VoidCallback? onSuffix,
+    bool obscure = false,
+    TextInputType? keyboard,
+    String? Function(String?)? validator,
+  }) {
+    return TextFormField(
+      controller: ctrl,
+      obscureText: obscure,
+      keyboardType: keyboard,
+      validator: validator,
+      style: GoogleFonts.poppins(fontSize: 14, color: Colors.white),
+      decoration: InputDecoration(
+        hintText: hint,
+        hintStyle: GoogleFonts.poppins(
+            fontSize: 13, color: Colors.white.withOpacity(0.25)),
+        filled: true,
+        fillColor: Colors.white.withOpacity(0.06),
+        contentPadding:
+            const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+        prefixIcon: Icon(icon, size: 18,
+            color: const Color(0xFF4ECDC4).withOpacity(0.65)),
+        suffixIcon: suffix != null
+            ? GestureDetector(
+                onTap: onSuffix,
+                child: Padding(
+                  padding: const EdgeInsets.only(right: 14),
+                  child: Icon(suffix, size: 18, color: Colors.white38)))
+            : null,
+        suffixIconConstraints:
+            const BoxConstraints(minWidth: 0, minHeight: 0),
+        enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: BorderSide(color: Colors.white.withOpacity(0.09))),
+        focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: const BorderSide(color: Color(0xFF4ECDC4), width: 1.5)),
+        errorBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: const BorderSide(color: Color(0xFFFF6B6B))),
+        focusedErrorBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: const BorderSide(color: Color(0xFFFF6B6B))),
+        errorStyle: GoogleFonts.poppins(
+            fontSize: 11, color: const Color(0xFFFF9999))));
   }
-
-  @override
-  bool shouldRepaint(_TotoroPainter old) => false;
 }
-
-
-

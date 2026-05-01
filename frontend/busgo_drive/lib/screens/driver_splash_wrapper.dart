@@ -1,17 +1,16 @@
 import 'package:flutter/material.dart';
-import 'kitkat_splash_screen.dart';
-import 'busgo_driver_logo_splash.dart';
+import '../widgets/drift_splash_screen.dart';
+import '../widgets/busgo_splash.dart';
 
 class DriverSplashWrapper extends StatefulWidget {
   final Widget child;
   const DriverSplashWrapper({super.key, required this.child});
-
   @override
   State<DriverSplashWrapper> createState() => _DriverSplashWrapperState();
 }
 
 class _DriverSplashWrapperState extends State<DriverSplashWrapper> {
-  int _phase = 0;
+  int _phase = 0; // 0=drift, 1=BUSGO, 2=main app
 
   @override
   Widget build(BuildContext context) {
@@ -19,15 +18,19 @@ class _DriverSplashWrapperState extends State<DriverSplashWrapper> {
       case 0:
         return MaterialApp(
           debugShowCheckedModeBanner: false,
-          home: KitkatSplashScreen(
+          home: DriftSplashScreen(
             onComplete: () => setState(() => _phase = 1),
           ),
         );
       case 1:
         return MaterialApp(
           debugShowCheckedModeBanner: false,
-          home: BusgoDriverLogoSplash(
-            onComplete: () => setState(() => _phase = 2),
+          home: Scaffold(
+            backgroundColor: const Color(0xFF0B0E1A),
+            body: BusgoSplashScreen(
+              subtitle: 'D  R  I  V  E  R',
+              onDone: () => setState(() => _phase = 2),
+            ),
           ),
         );
       default:
@@ -35,6 +38,3 @@ class _DriverSplashWrapperState extends State<DriverSplashWrapper> {
     }
   }
 }
-
-
-
