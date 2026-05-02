@@ -459,3 +459,4 @@ class _EmergencyScreenState extends State<EmergencyScreen>
                   fontSize: 14, fontWeight: FontWeight.w600)))),
     ]));
 }
+

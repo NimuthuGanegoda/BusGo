@@ -398,3 +398,4 @@ class _LoginScreenState extends State<LoginScreen> {
             fontSize: 11, color: const Color(0xFFFF9999))));
   }
 }
+

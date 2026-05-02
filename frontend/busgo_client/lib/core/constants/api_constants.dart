@@ -1,10 +1,10 @@
 /// Base URLs — switch by changing kBaseUrl
 /// Emulator:    http://10.0.2.2:5000/api
-/// Real device: http://192.168.1.3:5000/api
+/// Real device: https://busgo-production.up.railway.app/api
 /// Production:  https://api.busgo.lk/api
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 
-String get kBaseUrlDev => dotenv.env['API_URL'] ?? 'http://192.168.1.3:5000/api';
+String get kBaseUrlDev => dotenv.env['API_URL'] ?? 'https://busgo-production.up.railway.app/api';
 const String kBaseUrlProd = 'https://your-api-domain.com/api';
 
 /// All API endpoint paths
@@ -70,6 +70,7 @@ class ApiEndpoints {
   // Searches
   static const recentSearches = '/searches/recent';
 }
+
 
 
 

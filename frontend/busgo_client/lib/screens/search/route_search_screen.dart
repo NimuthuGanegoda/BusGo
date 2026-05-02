@@ -962,3 +962,4 @@ class _StopRouteEntry {
   final BusRoute route;
   const _StopRouteEntry({required this.stop, required this.route});
 }
+

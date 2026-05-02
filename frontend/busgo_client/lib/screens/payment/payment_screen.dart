@@ -17,7 +17,7 @@ class PaymentScreen extends StatefulWidget {
 }
 
 class _PaymentScreenState extends State<PaymentScreen> {
-  static String get _baseUrl => (dotenv.env['API_URL'] ?? 'http://192.168.1.3:5000/api').replaceAll('/api', '');
+  static String get _baseUrl => (dotenv.env['API_URL'] ?? 'https://busgo-production.up.railway.app/api').replaceAll('/api', '');
 
   List<dynamic> _routes    = [];
   List<dynamic> _stops     = [];
@@ -670,3 +670,4 @@ class _PaymentScreenState extends State<PaymentScreen> {
     catch (_) { return AppColors.secondary; }
   }
 }
+
