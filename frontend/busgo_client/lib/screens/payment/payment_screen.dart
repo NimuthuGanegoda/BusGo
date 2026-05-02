@@ -17,7 +17,7 @@ class PaymentScreen extends StatefulWidget {
 }
 
 class _PaymentScreenState extends State<PaymentScreen> {
-  static String get _baseUrl => (dotenv.env['API_URL'] ?? 'https://busgo-production.up.railway.app/api').replaceAll('/api', '');
+  static String get _baseUrl => (dotenv.env['API_URL'] ?? 'http://192.168.1.3:5000/api').replaceAll('/api', '');
 
   List<dynamic> _routes    = [];
   List<dynamic> _stops     = [];
@@ -618,13 +618,6 @@ class _PaymentScreenState extends State<PaymentScreen> {
                   backgroundColor: Colors.white)),
             const SizedBox(height: 16),
 
-            Text('VERIFICATION CODE', style: TextStyle(fontSize: 10,
-                fontWeight: FontWeight.w600, color: Colors.white.withOpacity(0.4),
-                letterSpacing: 1)),
-            const SizedBox(height: 6),
-            Text(ticket['verification_code'] ?? '',
-                style: const TextStyle(fontSize: 36, fontWeight: FontWeight.w900,
-                    color: Colors.white, letterSpacing: 10)),
             const SizedBox(height: 20),
 
             Divider(color: Colors.white.withOpacity(0.1)),
@@ -670,4 +663,3 @@ class _PaymentScreenState extends State<PaymentScreen> {
     catch (_) { return AppColors.secondary; }
   }
 }
-
