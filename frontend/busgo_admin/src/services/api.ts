@@ -151,7 +151,7 @@ export interface User {
   full_name: string;
   username?: string;
   phone?: string;
-  role: 'passenger' | 'driver' | 'admin';
+  role: 'passenger' | 'driver' | 'admin' | 'developer';
   membership_type: string;
   is_active: boolean;
   created_at: string;
