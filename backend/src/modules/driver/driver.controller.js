@@ -80,3 +80,4 @@ export async function uploadLicense(req, res, next) {
     return sendSuccess(res, result, 'License uploaded successfully');
   } catch (err) { next(err); }
 }
+

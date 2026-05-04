@@ -3,7 +3,7 @@ import 'package:flutter/foundation.dart';
 
 class ApiService {
   static const String _baseUrl = kDebugMode
-      ? 'http://192.168.1.2:5000/api'
+      ? 'https://busgo-production.up.railway.app/api'
       : 'https://your-api-domain.com/api';
 
   late final Dio _dio;
@@ -21,6 +21,7 @@ class ApiService {
     _dio.options.headers['Authorization'] = 'Bearer $token';
   }
 }
+
 
 
 

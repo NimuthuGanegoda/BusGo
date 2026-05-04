@@ -34,7 +34,7 @@ const TYPE_ICONS: Record<string, string> = {
 
 // ── CORRECT endpoint: /api/admin/emergency returns ALL alerts with user joins
 //    /api/emergency only returns alerts for the logged-in user (wrong for admin)
-const ADMIN_API = 'http://localhost:5000/api/admin';
+const ADMIN_API = 'https://busgo-production.up.railway.app/api/admin';
 
 export default function Emergencies() {
   const [alerts,       setAlerts]       = useState<any[]>([]);
@@ -375,6 +375,8 @@ export default function Emergencies() {
     </div>
   );
 }
+
+
 
 
 

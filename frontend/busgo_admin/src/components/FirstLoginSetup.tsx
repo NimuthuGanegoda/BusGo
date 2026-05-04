@@ -20,7 +20,7 @@ export default function FirstLoginSetup({ email, accessToken, onComplete }: Prop
   const [loading, setLoading]         = useState(false);
   const [error, setError]             = useState('');
 
-  const API = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+  const API = import.meta.env.VITE_API_URL || 'https://busgo-production.up.railway.app/api';
 
   const handlePasswordNext = () => {
     setError('');
@@ -268,3 +268,5 @@ export default function FirstLoginSetup({ email, accessToken, onComplete }: Prop
     </div>
   );
 }
+
+

@@ -306,3 +306,4 @@ class TripProvider extends ChangeNotifier {
     super.dispose();
   }
 }
+

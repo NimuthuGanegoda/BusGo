@@ -151,3 +151,4 @@ class RouteProvider extends ChangeNotifier {
   void selectRoute(BusRoute route) { _selectedRoute = route; notifyListeners(); }
   void clearSelection() { _selectedRoute = null; notifyListeners(); }
 }
+

@@ -26,7 +26,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       const payload = JSON.parse(atob(token.split('.')[1]));
       if (payload.exp * 1000 > Date.now()) {
-        fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5000/api'}/users/me`, {
+        fetch(`${import.meta.env.VITE_API_URL || 'https://busgo-production.up.railway.app/api'}/users/me`, {
           headers: { Authorization: `Bearer ${token}` },
         })
           .then(r => r.json())
@@ -88,3 +88,5 @@ export function useAuth() {
   if (!ctx) throw new Error('useAuth must be inside AuthProvider');
   return ctx;
 }
+
+

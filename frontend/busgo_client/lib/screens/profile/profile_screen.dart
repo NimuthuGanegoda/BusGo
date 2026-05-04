@@ -293,3 +293,4 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     shape: BoxShape.circle))))),
         ]));
 }
+

@@ -197,3 +197,4 @@ export async function uploadDriverLicense(userId, fileBuffer, mimeType) {
   if (dbError) throw dbError;
   return { license_url: filePath, signed_url: signedData.signedUrl };
 }
+

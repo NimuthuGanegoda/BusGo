@@ -3,8 +3,8 @@ import { KeyRound, RefreshCw, CheckCircle, Clock, Copy } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
 
-const API   = 'http://localhost:5000/api';
-const ADMIN = 'http://localhost:5000/api/admin';
+const API   = 'https://busgo-production.up.railway.app/api';
+const ADMIN = 'https://busgo-production.up.railway.app/api/admin';
 
 type RecoveryEntry = {
   id: string;
@@ -255,3 +255,5 @@ export default function RecoveryRequests() {
     </div>
   );
 }
+
+
