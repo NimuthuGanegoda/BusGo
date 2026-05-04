@@ -2,7 +2,6 @@ import { supabase } from '../../config/supabase.js';
 import { predictRating } from '../../utils/ml.client.js';
 
 // ── Exponential decay weight ───────────────────────────────────────────────
-// λ = 0.1 → half-life ≈ 7 days (recent comments matter more)
 const DECAY_LAMBDA = 0.1;
 
 function decayWeight(createdAt) {
@@ -10,7 +9,6 @@ function decayWeight(createdAt) {
   return Math.exp(-DECAY_LAMBDA * daysSince);
 }
 
-// ── Weighted ML rating calculation ─────────────────────────────────────────
 function calcWeightedRating(ratings) {
   const mlRatings = ratings.filter(r => r.ml_rating != null);
   if (!mlRatings.length) return null;
@@ -29,7 +27,6 @@ function calcWeightedRating(ratings) {
     : null;
 }
 
-// ── Get my ratings ─────────────────────────────────────────────────────────
 export async function getMyRatings(userId) {
   const { data, error } = await supabase
     .from('ratings')
@@ -44,9 +41,7 @@ export async function getMyRatings(userId) {
   return data;
 }
 
-// ── Create rating (comment only — ML scores it) ────────────────────────────
 export async function createRating(userId, dto) {
-  // Verify trip belongs to user and is completed
   const { data: trip } = await supabase
     .from('trips')
     .select('id, status, bus_id')
@@ -63,10 +58,8 @@ export async function createRating(userId, dto) {
     err.statusCode = 409; err.code = 'TRIP_NOT_COMPLETED'; throw err;
   }
 
-  // Use bus_id from trip record if client did not send it
   const busId = dto.bus_id || trip.bus_id;
 
-  // Get driver history for ML context
   const { data: driverStats } = await supabase
     .from('ratings')
     .select('ml_rating')
@@ -79,7 +72,6 @@ export async function createRating(userId, dto) {
     driver_history = { [busId]: { avg_rating: avg, count: driverStats.length } };
   }
 
-  // Call ML rating model if comment provided
   let mlResult = null;
   if (dto.comment?.trim()) {
     mlResult = await predictRating({
@@ -90,7 +82,6 @@ export async function createRating(userId, dto) {
     });
   }
 
-  // Insert rating — stars defaults to 3 if not provided (comment-only flow)
   const { data, error } = await supabase
     .from('ratings')
     .insert({
@@ -115,14 +106,12 @@ export async function createRating(userId, dto) {
     throw error;
   }
 
-  // Update rating aggregates after new rating
   await updateRatingAggregate(busId).catch(e =>
     console.warn('Aggregate update failed:', e.message));
 
   return { ...data, ml_prediction: mlResult };
 }
 
-// ── Get bus rating stats (time-weighted) ───────────────────────────────────
 export async function getBusRatingStats(busId) {
   const { data, error } = await supabase
     .from('ratings')
@@ -150,7 +139,6 @@ export async function getBusRatingStats(busId) {
   };
 }
 
-// ── Get weighted rating for driver screen ──────────────────────────────────
 export async function getWeightedDriverRating(busId) {
   const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
 
@@ -185,7 +173,6 @@ export async function getWeightedDriverRating(busId) {
   };
 }
 
-// ── Archive old ratings (run monthly) ─────────────────────────────────────
 export async function archiveOldRatings(busId) {
   const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
   const ninetyDaysAgo = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString();
@@ -221,7 +208,7 @@ export async function archiveOldRatings(busId) {
   return { archived: toArchive.length };
 }
 
-// ── Update aggregate after new rating ─────────────────────────────────────
+// ── FIX: write avg_rating back to users table so client map shows real rating
 async function updateRatingAggregate(busId) {
   const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
 
@@ -248,7 +235,18 @@ async function updateRatingAggregate(busId) {
     comment_count:  recent.length,
     weighted_score: weighted,
   }, { onConflict: 'bus_id,period_start' });
+
+  // ── Write back to users.avg_rating so client map shows real rating ────────
+  const { data: bus } = await supabase
+    .from('buses')
+    .select('driver_user_id')
+    .eq('id', busId)
+    .single();
+
+  if (bus?.driver_user_id && weighted != null) {
+    await supabase
+      .from('users')
+      .update({ avg_rating: weighted })
+      .eq('id', bus.driver_user_id);
+  }
 }
-
-
-

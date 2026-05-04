@@ -117,7 +117,7 @@ class BusModel {
       routeColor:    color,
       driverName:    json['driver_name'] as String? ?? 'Driver',
       driverId:      driverId,
-      driverRating:  4.0,
+      driverRating:  (json['users']?['avg_rating'] as num?)?.toDouble() ?? 4.0,
       passengerCount: _crowdToPassengers(crowd),
       capacity:       40,
     );
@@ -175,6 +175,7 @@ class BusModel {
         passengerCount: passengerCount, capacity: capacity,
       );
 }
+
 
 
 

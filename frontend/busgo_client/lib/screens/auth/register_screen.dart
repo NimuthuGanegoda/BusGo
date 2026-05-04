@@ -31,6 +31,18 @@ class _RegisterScreenState extends State<RegisterScreen>
   static const _teal = Color(0xFF4ECDC4);
   static const _panel= Color(0xFF0A1628);
 
+  // ── Common passwords list (UFR_13) ──────────────────────────────────────────
+  static const _commonPasswords = [
+    'password', 'password1', 'password123', '12345678', '123456789',
+    'qwerty123', 'iloveyou', 'admin123', 'letmein', 'welcome',
+    'monkey123', 'dragon', 'master', 'abc12345', 'pass1234',
+    '11111111', '00000000', 'test1234', 'busgo123', 'busgo1234',
+    'qwerty', 'abc123', '1234567890', 'sunshine', 'princess',
+  ];
+
+  bool _isCommonPassword(String pass) =>
+      _commonPasswords.contains(pass.toLowerCase());
+
   @override
   void initState() {
     super.initState();
@@ -60,18 +72,58 @@ class _RegisterScreenState extends State<RegisterScreen>
     return n / 6;
   }
 
+  // ── Password strength score (UFR_12) ────────────────────────────────────────
+  int _strengthScore(String pass) {
+    int score = 0;
+    if (pass.length >= 8)  score++;
+    if (pass.length >= 12) score++;
+    if (RegExp(r'[A-Z]').hasMatch(pass)) score++;
+    if (RegExp(r'[0-9]').hasMatch(pass)) score++;
+    if (RegExp(r'[!@#\$%^&*]').hasMatch(pass)) score++;
+    return score;
+  }
+
+  Widget _buildPasswordStrength(String pass) {
+    if (pass.isEmpty) return const SizedBox.shrink();
+    final score = _strengthScore(pass);
+    final label = score <= 1 ? 'Weak' : score <= 3 ? 'Fair' : 'Strong';
+    final color = score <= 1
+        ? const Color(0xFFEF4444)
+        : score <= 3 ? const Color(0xFFF59E0B) : const Color(0xFF22C55E);
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Row(children: [
+        Expanded(child: ClipRRect(
+          borderRadius: BorderRadius.circular(2),
+          child: LinearProgressIndicator(
+            value: score / 5,
+            backgroundColor: Colors.white.withOpacity(0.08),
+            valueColor: AlwaysStoppedAnimation<Color>(color),
+            minHeight: 3))),
+        const SizedBox(width: 8),
+        Text(label, style: GoogleFonts.poppins(
+            fontSize: 10, color: color, fontWeight: FontWeight.w600)),
+      ]),
+    );
+  }
+
   bool _validate() {
     _errors.clear();
     if (_fullNameCtrl.text.trim().isEmpty)
       _errors['name'] = 'Full name is required';
-    final emailRx = RegExp(r'^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$');
+    final emailRx = RegExp(r'^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}\$');
     if (_emailCtrl.text.trim().isEmpty) _errors['email'] = 'Email is required';
     else if (!emailRx.hasMatch(_emailCtrl.text.trim())) _errors['email'] = 'Enter a valid email';
     if (_usernameCtrl.text.trim().isEmpty) _errors['username'] = 'Username is required';
     else if (_usernameCtrl.text.trim().length < 3) _errors['username'] = 'Min 3 characters';
     if (_phoneCtrl.text.trim().isEmpty) _errors['phone'] = 'Phone is required';
-    if (_passCtrl.text.isEmpty) _errors['pass'] = 'Password is required';
-    else if (_passCtrl.text.length < 8) _errors['pass'] = 'Min 8 characters';
+    if (_passCtrl.text.isEmpty) {
+      _errors['pass'] = 'Password is required';
+    } else if (_passCtrl.text.length < 8) {
+      _errors['pass'] = 'Min 8 characters';
+    } else if (_isCommonPassword(_passCtrl.text)) {
+      _errors['pass'] = 'Password is too common. Choose something unique.';
+    }
     if (_confirmCtrl.text.isEmpty) _errors['confirm'] = 'Please confirm your password';
     else if (_confirmCtrl.text != _passCtrl.text) _errors['confirm'] = 'Passwords do not match';
     setState(() {});
@@ -88,26 +140,20 @@ class _RegisterScreenState extends State<RegisterScreen>
       body: FadeTransition(
         opacity: CurvedAnimation(parent: _enterCtrl, curve: Curves.easeOut),
         child: Stack(children: [
-          // Background
           Container(decoration: const BoxDecoration(gradient: RadialGradient(
             center: Alignment(0.3, -0.5), radius: 1.2,
             colors: [Color(0xFF0A1E30), Color(0xFF040D18)]))),
-
-          // Dot grid
           CustomPaint(size: size, painter: _GridPainter()),
-
-          // Teal glow top-left
           Positioned(top: -40, left: -40, child: Container(
             width: 200, height: 200,
             decoration: BoxDecoration(shape: BoxShape.circle,
               gradient: RadialGradient(colors: [
                 _teal.withOpacity(0.07), Colors.transparent])))),
 
-          // Header (fixed)
+          // Header
           Positioned(
             top: 0, left: 0, right: 0,
-            child: SafeArea(
-              bottom: false,
+            child: SafeArea(bottom: false,
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
                 child: Row(children: [
@@ -116,8 +162,7 @@ class _RegisterScreenState extends State<RegisterScreen>
                     child: Container(
                       width: 38, height: 38,
                       decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: _panel,
+                        shape: BoxShape.circle, color: _panel,
                         border: Border.all(color: _teal.withOpacity(0.2))),
                       child: const Icon(Icons.arrow_back_rounded,
                           size: 18, color: Colors.white70))),
@@ -130,7 +175,6 @@ class _RegisterScreenState extends State<RegisterScreen>
                         fontSize: 11, color: Colors.white.withOpacity(0.35))),
                   ]),
                   const Spacer(),
-                  // Progress indicator (circular)
                   SizedBox(width: 38, height: 38,
                     child: Stack(alignment: Alignment.center, children: [
                       CircularProgressIndicator(
@@ -138,10 +182,9 @@ class _RegisterScreenState extends State<RegisterScreen>
                         backgroundColor: Colors.white.withOpacity(0.08),
                         valueColor: AlwaysStoppedAnimation<Color>(_teal),
                         strokeWidth: 3),
-                      Text('${(_progress * 100).round()}%',
+                      Text('\${(_progress * 100).round()}%',
                         style: GoogleFonts.poppins(
-                          fontSize: 8, color: _teal,
-                          fontWeight: FontWeight.w700)),
+                          fontSize: 8, color: _teal, fontWeight: FontWeight.w700)),
                     ])),
                 ]),
               ),
@@ -157,7 +200,6 @@ class _RegisterScreenState extends State<RegisterScreen>
                 child: Consumer<AuthProvider>(builder: (ctx, auth, _) =>
                   Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
 
-                    // Progress bar
                     const SizedBox(height: 12),
                     ClipRRect(
                       borderRadius: BorderRadius.circular(4),
@@ -172,24 +214,29 @@ class _RegisterScreenState extends State<RegisterScreen>
                         style: GoogleFonts.poppins(fontSize: 10,
                             color: Colors.white.withOpacity(0.25))),
                       const Spacer(),
-                      Text('${(_progress * 100).round()}% complete',
-                        style: GoogleFonts.poppins(fontSize: 10, color: _teal.withOpacity(0.7))),
+                      Text('\${(_progress * 100).round()}% complete',
+                        style: GoogleFonts.poppins(fontSize: 10,
+                            color: _teal.withOpacity(0.7))),
                     ]),
 
                     const SizedBox(height: 20),
 
                     _section('Personal'),
-                    _field('Full Name',   'Your full name', Icons.person_rounded,       _fullNameCtrl, error: _errors['name']),
-                    _field('Email',       'you@example.com', Icons.email_outlined,       _emailCtrl,    error: _errors['email'], keyboard: TextInputType.emailAddress),
-                    _field('Username',    '@username',        Icons.alternate_email_rounded, _usernameCtrl, error: _errors['username']),
-                    _field('Phone',       '07X XXX XXXX',    Icons.phone_rounded,         _phoneCtrl,    error: _errors['phone'], keyboard: TextInputType.phone),
+                    _field('Full Name',   'Your full name', Icons.person_rounded,           _fullNameCtrl, error: _errors['name']),
+                    _field('Email',       'you@example.com', Icons.email_outlined,           _emailCtrl,    error: _errors['email'], keyboard: TextInputType.emailAddress),
+                    _field('Username',    '@username',        Icons.alternate_email_rounded,  _usernameCtrl, error: _errors['username']),
+                    _field('Phone',       '07X XXX XXXX',    Icons.phone_rounded,             _phoneCtrl,    error: _errors['phone'], keyboard: TextInputType.phone),
                     _field('Date of Birth (optional)', 'YYYY-MM-DD', Icons.calendar_month_rounded, _dobCtrl, keyboard: TextInputType.datetime),
 
                     const SizedBox(height: 8),
                     _section('Security'),
-                    _field('Password',         'Min. 8 characters', Icons.lock_outline_rounded, _passCtrl,    error: _errors['pass'], obscure: _obscurePass,
+                    _field('Password', 'Min. 8 characters', Icons.lock_outline_rounded,
+                      _passCtrl, error: _errors['pass'], obscure: _obscurePass,
                       onToggle: () => setState(() => _obscurePass = !_obscurePass)),
-                    _field('Confirm Password', 'Re-enter password',  Icons.lock_outline_rounded, _confirmCtrl, error: _errors['confirm'], obscure: _obscureConfirm,
+                    // ── Password strength bar (UFR_12 / UFR_13) ──────────────
+                    _buildPasswordStrength(_passCtrl.text),
+                    _field('Confirm Password', 'Re-enter password', Icons.lock_outline_rounded,
+                      _confirmCtrl, error: _errors['confirm'], obscure: _obscureConfirm,
                       onToggle: () => setState(() => _obscureConfirm = !_obscureConfirm)),
 
                     if (auth.errorMessage != null) ...[
@@ -199,7 +246,8 @@ class _RegisterScreenState extends State<RegisterScreen>
                         decoration: BoxDecoration(
                           color: const Color(0xFFFF6B6B).withOpacity(0.1),
                           borderRadius: BorderRadius.circular(10),
-                          border: Border.all(color: const Color(0xFFFF6B6B).withOpacity(0.3))),
+                          border: Border.all(
+                              color: const Color(0xFFFF6B6B).withOpacity(0.3))),
                         child: Row(children: [
                           const Icon(Icons.warning_amber_rounded, size: 14,
                               color: Color(0xFFFF9999)),
@@ -212,7 +260,6 @@ class _RegisterScreenState extends State<RegisterScreen>
 
                     const SizedBox(height: 20),
 
-                    // Register button
                     SizedBox(
                       width: double.infinity, height: 52,
                       child: DecoratedBox(
@@ -230,7 +277,8 @@ class _RegisterScreenState extends State<RegisterScreen>
                             auth.clearError();
                             if (!_validate()) return;
                             if (_dobCtrl.text.trim().isNotEmpty &&
-                                !RegExp(r'^\d{4}-\d{2}-\d{2}$').hasMatch(_dobCtrl.text.trim())) {
+                                !RegExp(r'^\d{4}-\d{2}-\d{2}\$')
+                                    .hasMatch(_dobCtrl.text.trim())) {
                               setState(() => _errors['dob'] = 'Use YYYY-MM-DD');
                               return;
                             }

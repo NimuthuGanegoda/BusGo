@@ -10,6 +10,14 @@ import '../../core/config/api_config.dart';
 import '../../core/constants/app_colors.dart';
 import 'package:http_parser/http_parser.dart';
 
+const List<String> kSriLankaAreas = [
+  'Colombo', 'Kandy', 'Galle', 'Negombo', 'Kaduwela', 'Moratuwa',
+  'Ratnapura', 'Kurunegala', 'Anuradhapura', 'Trincomalee', 'Batticaloa',
+  'Jaffna', 'Matara', 'Hambantota', 'Nuwara Eliya', 'Badulla',
+  'Kegalle', 'Kalutara', 'Puttalam', 'Polonnaruwa', 'Ampara',
+  'Monaragala', 'Vavuniya', 'Mannar', 'Mullaitivu', 'Kilinochchi',
+];
+
 class RegisterScreen extends StatefulWidget {
   const RegisterScreen({super.key});
   @override State<RegisterScreen> createState() => _RegisterScreenState();
@@ -29,7 +37,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
   String? _error;
   bool    _submitted       = false;
 
-  // License photo
+  final Set<String> _selectedAreas = {};
+  String? _areasError;
+
   File?   _licenseFile;
   bool    _licenseUploading = false;
   String? _licenseUrl;
@@ -59,7 +69,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
     ),
   );
 
-  // ── Success screen ─────────────────────────────────────────────────────────
   Widget _buildSuccessView() => Center(child: Padding(
     padding: const EdgeInsets.symmetric(horizontal: 32),
     child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
@@ -87,7 +96,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
     ]),
   ));
 
-  // ── Main form ──────────────────────────────────────────────────────────────
   Widget _buildForm() => SingleChildScrollView(
     padding: const EdgeInsets.symmetric(horizontal: 32),
     child: Column(children: [
@@ -137,7 +145,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
           style: GoogleFonts.inter(fontSize: 12, color: const Color(0xFF9E9E9E))),
       const SizedBox(height: 20),
 
-      // Error banner
       if (_error != null) Container(
         width: double.infinity, padding: const EdgeInsets.all(12),
         margin: const EdgeInsets.only(bottom: 16),
@@ -152,7 +159,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
         ]),
       ),
 
-      // Pending info banner
       Container(
         width: double.infinity, padding: const EdgeInsets.all(12),
         margin: const EdgeInsets.only(bottom: 20),
@@ -168,7 +174,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
         ]),
       ),
 
-      // Form fields
       _buildLabel('FULL NAME'),
       const SizedBox(height: 6),
       _buildField(controller: _fullNameController, hint: 'e.g. Nimal Perera',
@@ -196,7 +201,23 @@ class _RegisterScreenState extends State<RegisterScreen> {
           if (v.trim().length < 7) return 'Enter a valid phone number';
           return null;
         }),
-      const SizedBox(height: 14),
+      const SizedBox(height: 20),
+
+      _buildLabel('AREAS OF ROUTE EXPERIENCE'),
+      const SizedBox(height: 4),
+      Text('Select all areas you have driving experience in',
+          style: GoogleFonts.inter(fontSize: 11, color: const Color(0xFF9E9E9E))),
+      const SizedBox(height: 10),
+      _buildAreaChips(),
+      if (_areasError != null) ...[
+        const SizedBox(height: 6),
+        Row(children: [
+          const Icon(Icons.error_outline, size: 14, color: AppColors.danger),
+          const SizedBox(width: 4),
+          Text(_areasError!, style: GoogleFonts.inter(fontSize: 12, color: AppColors.danger)),
+        ]),
+      ],
+      const SizedBox(height: 20),
 
       _buildLabel('PASSWORD'),
       const SizedBox(height: 6),
@@ -222,13 +243,11 @@ class _RegisterScreenState extends State<RegisterScreen> {
         }),
       const SizedBox(height: 20),
 
-      // ── License photo picker ─────────────────────────────────────────────
       _buildLabel('DRIVER\'S LICENSE PHOTO'),
       const SizedBox(height: 6),
       _buildLicensePicker(),
       const SizedBox(height: 24),
 
-      // Submit button
       SizedBox(width: double.infinity, height: 50,
         child: ElevatedButton(
           onPressed: _isLoading ? null : _handleRegister,
@@ -245,12 +264,62 @@ class _RegisterScreenState extends State<RegisterScreen> {
     ])),
   );
 
-  // ── License picker widget ──────────────────────────────────────────────────
-  Widget _buildLicensePicker() {
-    final hasImage  = _licenseFile != null;
-    final hasUrl    = _licenseUrl != null;
-    final isUploaded = hasUrl;
+  Widget _buildAreaChips() => Container(
+    width: double.infinity,
+    padding: const EdgeInsets.all(12),
+    decoration: BoxDecoration(
+      color: const Color(0xFFF5F7FA),
+      borderRadius: BorderRadius.circular(12),
+      border: Border.all(
+        color: _areasError != null ? AppColors.danger : const Color(0xFFE0E0E0),
+        width: 1.5,
+      ),
+    ),
+    child: Wrap(
+      spacing: 8, runSpacing: 8,
+      children: kSriLankaAreas.map((area) {
+        final isSelected = _selectedAreas.contains(area);
+        return GestureDetector(
+          onTap: () => setState(() {
+            if (isSelected) _selectedAreas.remove(area);
+            else _selectedAreas.add(area);
+            _areasError = null;
+          }),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 180),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            decoration: BoxDecoration(
+              color: isSelected ? AppColors.primaryLight : Colors.white,
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(
+                color: isSelected ? AppColors.primaryLight : const Color(0xFFD0D0D0),
+                width: isSelected ? 1.5 : 1,
+              ),
+              boxShadow: isSelected ? [BoxShadow(
+                color: AppColors.primaryLight.withValues(alpha: 0.3),
+                blurRadius: 4, offset: const Offset(0, 2),
+              )] : null,
+            ),
+            child: Row(mainAxisSize: MainAxisSize.min, children: [
+              if (isSelected) ...[
+                const Icon(Icons.check_circle_rounded, size: 13, color: Colors.white),
+                const SizedBox(width: 4),
+              ],
+              Text(area, style: GoogleFonts.inter(
+                fontSize: 12,
+                fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
+                color: isSelected ? Colors.white : const Color(0xFF4A5568),
+              )),
+            ]),
+          ),
+        );
+      }).toList(),
+    ),
+  );
 
+  Widget _buildLicensePicker() {
+    final hasImage   = _licenseFile != null;
+    final isUploaded = _licenseUrl != null;
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       GestureDetector(
         onTap: _licenseUploading ? null : _pickAndUploadLicense,
@@ -258,13 +327,11 @@ class _RegisterScreenState extends State<RegisterScreen> {
           duration: const Duration(milliseconds: 200),
           width: double.infinity, height: 160,
           decoration: BoxDecoration(
-            color: isUploaded
-                ? const Color(0xFFE8F5E9)
+            color: isUploaded ? const Color(0xFFE8F5E9)
                 : hasImage ? const Color(0xFFFFF8E1) : const Color(0xFFF5F7FA),
             borderRadius: BorderRadius.circular(12),
             border: Border.all(
-              color: isUploaded
-                  ? AppColors.success
+              color: isUploaded ? AppColors.success
                   : hasImage ? const Color(0xFFFFD54F)
                   : _licenseError != null ? AppColors.danger
                   : const Color(0xFFE0E0E0),
@@ -275,20 +342,17 @@ class _RegisterScreenState extends State<RegisterScreen> {
               ? const Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
                   CircularProgressIndicator(strokeWidth: 2.5),
                   SizedBox(height: 10),
-                  Text('Uploading license...', style: TextStyle(fontSize: 12, color: Color(0xFF9E9E9E))),
+                  Text('Uploading...', style: TextStyle(fontSize: 12, color: Color(0xFF9E9E9E))),
                 ]))
               : hasImage
                   ? Stack(fit: StackFit.expand, children: [
-                      ClipRRect(
-                        borderRadius: BorderRadius.circular(11),
-                        child: Image.file(_licenseFile!, fit: BoxFit.cover)),
-                      // Overlay status
+                      ClipRRect(borderRadius: BorderRadius.circular(11),
+                          child: Image.file(_licenseFile!, fit: BoxFit.cover)),
                       Positioned(bottom: 0, left: 0, right: 0,
                         child: Container(
                           padding: const EdgeInsets.symmetric(vertical: 6),
                           decoration: BoxDecoration(
-                            color: isUploaded
-                                ? AppColors.success.withValues(alpha: 0.9)
+                            color: isUploaded ? AppColors.success.withValues(alpha: 0.9)
                                 : Colors.black.withValues(alpha: 0.5),
                             borderRadius: const BorderRadius.vertical(bottom: Radius.circular(11)),
                           ),
@@ -301,7 +365,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
                                     fontWeight: FontWeight.w600, color: Colors.white)),
                           ]),
                         )),
-                      // Retake button
                       Positioned(top: 8, right: 8,
                         child: GestureDetector(
                           onTap: _pickAndUploadLicense,
@@ -310,16 +373,13 @@ class _RegisterScreenState extends State<RegisterScreen> {
                             decoration: BoxDecoration(
                                 color: Colors.black.withValues(alpha: 0.5),
                                 shape: BoxShape.circle),
-                            child: const Icon(Icons.refresh_rounded,
-                                size: 16, color: Colors.white)))),
+                            child: const Icon(Icons.refresh_rounded, size: 16, color: Colors.white)))),
                     ])
                   : Column(mainAxisAlignment: MainAxisAlignment.center, children: [
                       Container(width: 48, height: 48,
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFE8EDF2),
-                          borderRadius: BorderRadius.circular(12)),
-                        child: const Icon(Icons.credit_card_rounded,
-                            size: 24, color: Color(0xFF9E9E9E))),
+                        decoration: BoxDecoration(color: const Color(0xFFE8EDF2),
+                            borderRadius: BorderRadius.circular(12)),
+                        child: const Icon(Icons.credit_card_rounded, size: 24, color: Color(0xFF9E9E9E))),
                       const SizedBox(height: 10),
                       Text('Tap to take photo or upload',
                           style: GoogleFonts.inter(fontSize: 13,
@@ -335,16 +395,13 @@ class _RegisterScreenState extends State<RegisterScreen> {
         Row(children: [
           const Icon(Icons.error_outline, size: 14, color: AppColors.danger),
           const SizedBox(width: 4),
-          Text(_licenseError!,
-              style: GoogleFonts.inter(fontSize: 12, color: AppColors.danger)),
+          Text(_licenseError!, style: GoogleFonts.inter(fontSize: 12, color: AppColors.danger)),
         ]),
       ],
     ]);
   }
 
-  // ── Pick image from camera or gallery ─────────────────────────────────────
   Future<void> _pickAndUploadLicense() async {
-    // Show bottom sheet to choose source
     final source = await showModalBottomSheet<ImageSource>(
       context: context,
       shape: const RoundedRectangleBorder(
@@ -381,63 +438,33 @@ class _RegisterScreenState extends State<RegisterScreen> {
         ]),
       )),
     );
-
     if (source == null) return;
-
     try {
-      final picked = await _picker.pickImage(
-        source: source,
-        imageQuality: 85,
-        maxWidth: 1920,
-      );
+      final picked = await _picker.pickImage(source: source, imageQuality: 85, maxWidth: 1920);
       if (picked == null) return;
-
       final file = File(picked.path);
-      setState(() {
-        _licenseFile    = file;
-        _licenseUrl     = null;
-        _licenseError   = null;
-        _licenseUploading = true;
-      });
-
-      // Upload to backend
+      setState(() { _licenseFile = file; _licenseUrl = null; _licenseError = null; _licenseUploading = true; });
       await _uploadLicense(file);
     } catch (e) {
-      setState(() {
-        _licenseError     = 'Failed to pick image. Please try again.';
-        _licenseUploading = false;
-      });
+      setState(() { _licenseError = 'Failed to pick image. Please try again.'; _licenseUploading = false; });
     }
   }
 
   Future<void> _uploadLicense(File file) async {
-    try {
-      // We upload after registration using a temp endpoint
-      // Store file locally — will upload during registration
-      setState(() {
-        _licenseUrl       = 'pending_upload';
-        _licenseUploading = false;
-      });
-    } catch (e) {
-      setState(() {
-        _licenseError     = 'Upload failed. Please try again.';
-        _licenseUploading = false;
-        _licenseUrl       = null;
-      });
-    }
+    setState(() { _licenseUrl = 'pending_upload'; _licenseUploading = false; });
   }
 
-  // ── Submit registration ────────────────────────────────────────────────────
   Future<void> _handleRegister() async {
     if (!_formKey.currentState!.validate()) return;
-
-    // Check license
+    if (_selectedAreas.isEmpty) {
+      setState(() => _areasError = 'Please select at least one area of experience');
+      return;
+    }
     if (_licenseFile == null) {
       setState(() => _licenseError = 'License photo is required');
       return;
     }
-
-    setState(() { _isLoading = true; _error = null; _licenseError = null; });
+    setState(() { _isLoading = true; _error = null; _licenseError = null; _areasError = null; });
     HapticFeedback.lightImpact();
 
     try {
@@ -446,61 +473,48 @@ class _RegisterScreenState extends State<RegisterScreen> {
         Uri.parse('${ApiConfig.baseUrl}/auth/register'),
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({
-          'full_name':       _fullNameController.text.trim(),
-          'email':           _emailController.text.trim().toLowerCase(),
-          'phone':           _phoneController.text.trim(),
-          'password':        _passwordController.text,
-          'role':            'driver',
-          'membership_type': 'standard',
+          'full_name':        _fullNameController.text.trim(),
+          'email':            _emailController.text.trim().toLowerCase(),
+          'phone':            _phoneController.text.trim(),
+          'password':         _passwordController.text,
+          'role':             'driver',
+          'membership_type':  'standard',
+          'experience_areas': _selectedAreas.toList(),
         }),
-      ).timeout(const Duration(seconds: 10));
+      ).timeout(const Duration(seconds: 15));
 
       final regBody = jsonDecode(regResponse.body) as Map<String, dynamic>;
 
       if (regResponse.statusCode != 201 && regResponse.statusCode != 200) {
-        setState(() {
-          _error = regBody['message'] as String? ?? 'Registration failed.';
-          _isLoading = false;
-        });
+        setState(() { _error = regBody['message'] as String? ?? 'Registration failed.'; _isLoading = false; });
         return;
       }
 
-      // Step 2 — Upload license using a temporary token from registration
-      // Since driver is pending, we use a multipart upload with email as identifier
-      // Step 2 — Upload license
-      final bytes  = await _licenseFile!.readAsBytes();
-      final isPng  = _licenseFile!.path.toLowerCase().endsWith('.png');
-      final ext    = isPng ? 'png' : 'jpg';
-
-      final uploadRequest = http.MultipartRequest(
-        'POST',
-        Uri.parse('${ApiConfig.baseUrl}/auth/upload-license'),
-      );
-
-      uploadRequest.fields['email'] = _emailController.text.trim().toLowerCase();
-      uploadRequest.headers['Accept'] = 'application/json';
-      uploadRequest.files.add(
-        http.MultipartFile.fromBytes(
-          'license',
-          bytes,
+      // Step 2 — Upload license (best effort — don't fail registration if this times out)
+      try {
+        final bytes = await _licenseFile!.readAsBytes();
+        final isPng = _licenseFile!.path.toLowerCase().endsWith('.png');
+        final ext   = isPng ? 'png' : 'jpg';
+        final uploadRequest = http.MultipartRequest(
+          'POST', Uri.parse('${ApiConfig.baseUrl}/auth/upload-license'));
+        uploadRequest.fields['email'] = _emailController.text.trim().toLowerCase();
+        uploadRequest.headers['Accept'] = 'application/json';
+        uploadRequest.files.add(http.MultipartFile.fromBytes(
+          'license', bytes,
           filename: 'license.$ext',
           contentType: MediaType('image', isPng ? 'png' : 'jpeg'),
-        ),
-      );
-
-      final uploadRes  = await uploadRequest.send().timeout(const Duration(seconds: 30));
-      final uploadBody = await uploadRes.stream.bytesToString();
-
-      if (uploadRes.statusCode != 200 && uploadRes.statusCode != 201) {
-        debugPrint('[License Upload] Failed: ${uploadRes.statusCode} $uploadBody');
+        ));
+        await uploadRequest.send().timeout(const Duration(seconds: 60));
+      } catch (uploadErr) {
+        // License upload failed — registration still succeeded
+        debugPrint('[License Upload] Failed: $uploadErr');
       }
 
+      // ── Always show success if registration succeeded ──────────────────
       setState(() { _submitted = true; _isLoading = false; });
+
     } catch (e) {
-      setState(() {
-        _error = 'Connection failed. Is the backend running?';
-        _isLoading = false;
-      });
+      setState(() { _error = 'Connection failed. Is the backend running?'; _isLoading = false; });
     }
   }
 
@@ -518,10 +532,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
     TextInputType? keyboardType,
     String? Function(String?)? validator,
   }) => TextFormField(
-    controller:   controller,
-    obscureText:  isPassword && obscure,
-    keyboardType: keyboardType,
-    validator:    validator,
+    controller: controller, obscureText: isPassword && obscure,
+    keyboardType: keyboardType, validator: validator,
     style: GoogleFonts.inter(fontSize: 14, color: const Color(0xFF424242)),
     decoration: InputDecoration(
       hintText: hint,
@@ -545,11 +557,3 @@ class _RegisterScreenState extends State<RegisterScreen> {
     ),
   );
 }
-
-
-
-
-
-
-
-

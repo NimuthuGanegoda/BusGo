@@ -20,37 +20,33 @@ class _RouteMapScreenState extends State<RouteMapScreen>
     with SingleTickerProviderStateMixin {
   late final MapController _mapController;
   late AnimationController _pulseController;
-  double _currentZoom  = 15.0; // ← closer zoom so driver sees their street
-  bool   _followDriver = true; // ← auto-follow toggle
+  double _currentZoom  = 15.0;
+  bool   _followDriver = true;
+  bool   _mapReady     = false;
 
   @override
   void initState() {
     super.initState();
-    _mapController  = MapController();
+    _mapController   = MapController();
     _pulseController = AnimationController(
         vsync: this, duration: const Duration(seconds: 2))
       ..repeat();
 
-    // ── Start GPS as soon as the map tab opens ─────────────────────────────
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final trip = context.read<TripProvider>();
       if (!trip.gpsReady) trip.initGps();
-
-      // ── Listen to TripProvider — re-center map on every GPS update ────────
       trip.addListener(_onLocationUpdate);
     });
   }
 
   void _onLocationUpdate() {
-    if (!mounted || !_followDriver) return;
+    if (!mounted || !_followDriver || !_mapReady) return;
     final trip = context.read<TripProvider>();
-    // Move map to real GPS position
     _mapController.move(trip.currentLocation, _currentZoom);
   }
 
   @override
   void dispose() {
-    // Remove listener to avoid memory leaks
     context.read<TripProvider>().removeListener(_onLocationUpdate);
     _pulseController.dispose();
     _mapController.dispose();
@@ -67,7 +63,6 @@ class _RouteMapScreenState extends State<RouteMapScreen>
         final route = trip.currentRoute ?? routeProvider.assignedRoute;
 
         if (route == null) {
-          // Route not loaded yet — trigger load and show spinner
           WidgetsBinding.instance.addPostFrameCallback((_) {
             if (routeProvider.assignedRoute == null && !routeProvider.isLoading) {
               routeProvider.loadDriverAssignedRoute();
@@ -86,69 +81,57 @@ class _RouteMapScreenState extends State<RouteMapScreen>
             )),
           );
         }
-        final busLocation = trip.currentLocation;
-        final nextStop = trip.nextStop ?? (route.stops.isNotEmpty ? route.stops.first : null);
+
+        final busLocation  = trip.currentLocation;
+        final nextStop     = trip.nextStop ?? (route.stops.isNotEmpty ? route.stops.first : null);
         final traveledPath = trip.traveledPath;
 
-        // Build remaining route polyline ahead of bus
-        final remainingPath = <LatLng>[busLocation];
-        if (route.polyline.isNotEmpty) {
-          double minDist = double.infinity;
-          int startIdx = 0;
-          for (int i = 0; i < route.polyline.length; i++) {
-            final d = _calcDistanceKm(busLocation, route.polyline[i]);
-            if (d < minDist) { minDist = d; startIdx = i; }
-          }
-          for (int i = startIdx; i < route.polyline.length; i++) {
-            remainingPath.add(route.polyline[i]);
-          }
-        }
+        final remainingPath = route.polyline;
 
-        final origin = route.stops.isNotEmpty ? route.stops.first : null;
-        final distToOrigin   = origin != null ? _calcDistanceKm(busLocation, origin.location) : 0.0;
-        final etaToOrigin    = (distToOrigin / 0.5).round();
-        final distToNext     = nextStop != null ? _calcDistanceKm(busLocation, nextStop.location) : 0.0;
-        final etaToNext      = (distToNext / 0.5).round();
+        final origin       = route.stops.isNotEmpty ? route.stops.first : null;
+        final distToOrigin = origin != null ? _calcDistanceKm(busLocation, origin.location) : 0.0;
+        final etaToOrigin  = (distToOrigin / 0.5).round();
+        final distToNext   = nextStop != null ? _calcDistanceKm(busLocation, nextStop.location) : 0.0;
+        final etaToNext    = (distToNext / 0.5).round();
 
         return Scaffold(body: Stack(children: [
 
-          // ── Map ────────────────────────────────────────────────────────────
           FlutterMap(
             mapController: _mapController,
             options: MapOptions(
               initialCenter: busLocation,
               initialZoom:   _currentZoom,
+              onMapReady:    () => setState(() => _mapReady = true),
               interactionOptions: const InteractionOptions(
                   flags: InteractiveFlag.all & ~InteractiveFlag.rotate),
               onMapEvent: (event) {
                 if (event is MapEventMoveEnd) {
                   _currentZoom = _mapController.camera.zoom;
                 }
-                // If driver manually drags the map, pause auto-follow
                 if (event is MapEventScrollWheelZoom ||
-                    event is MapEventMove && event.source == MapEventSource.dragStart) {
+                    event is MapEventMove &&
+                        event.source == MapEventSource.dragStart) {
                   _followDriver = false;
                 }
               },
             ),
             children: [
               TileLayer(
-                urlTemplate: 'https://api.maptiler.com/maps/streets-v2-dark/{z}/{x}/{y}.png?key=${ApiConfig.mapTilerKey}',
+                urlTemplate:
+                    'https://api.maptiler.com/maps/streets-v2-dark/{z}/{x}/{y}.png'
+                    '?key=${ApiConfig.mapTilerKey}',
                 userAgentPackageName: 'com.busgo.drive',
               ),
-              // Remaining route ahead — faded blue
               if (remainingPath.length >= 2)
                 PolylineLayer(polylines: [
                   Polyline(points: remainingPath, strokeWidth: 5,
                       color: AppColors.primaryLight.withValues(alpha: 0.4)),
                 ]),
-              // Traveled path — green trail
               if (traveledPath.length >= 2)
                 PolylineLayer(polylines: [
                   Polyline(points: traveledPath, strokeWidth: 6,
                       color: const Color(0xFF00C853)),
                 ]),
-              // Bus stop markers
               if (route.stops.isNotEmpty)
                 MarkerLayer(markers: List.generate(route.stops.length, (i) {
                   final stop        = route.stops[i];
@@ -171,7 +154,6 @@ class _RouteMapScreenState extends State<RouteMapScreen>
                                   : isCurrent    ? AppColors.warning
                                   : AppColors.primaryLight)))));
                 })),
-              // Animated bus marker at REAL GPS position
               MarkerLayer(markers: [
                 Marker(point: busLocation, width: 48, height: 48,
                   child: AnimatedBuilder(
@@ -197,9 +179,10 @@ class _RouteMapScreenState extends State<RouteMapScreen>
             ],
           ),
 
-          // ── GPS error banner ───────────────────────────────────────────────
           if (trip.gpsError != null)
-            Positioned(top: MediaQuery.of(context).padding.top + 60, left: 16, right: 16,
+            Positioned(
+              top: MediaQuery.of(context).padding.top + 60,
+              left: 16, right: 16,
               child: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                 decoration: BoxDecoration(color: AppColors.danger,
@@ -213,8 +196,9 @@ class _RouteMapScreenState extends State<RouteMapScreen>
                 ]),
               )),
 
-          // ── Title bar ─────────────────────────────────────────────────────
-          Positioned(top: MediaQuery.of(context).padding.top + 14, left: 0, right: 0,
+          Positioned(
+            top: MediaQuery.of(context).padding.top + 14,
+            left: 0, right: 0,
             child: Center(child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 7),
               decoration: BoxDecoration(
@@ -233,8 +217,9 @@ class _RouteMapScreenState extends State<RouteMapScreen>
                       fontWeight: FontWeight.w700, color: Colors.white)),
               ])))),
 
-          // ── Zoom + re-center controls ──────────────────────────────────────
-          Positioned(right: 12, top: MediaQuery.of(context).padding.top + 56,
+          Positioned(
+            right: 12,
+            top: MediaQuery.of(context).padding.top + 56,
             child: Column(children: [
               _mapCtrlBtn(Icons.add, () {
                 _currentZoom = (_currentZoom + 1).clamp(5.0, 18.0);
@@ -246,31 +231,36 @@ class _RouteMapScreenState extends State<RouteMapScreen>
                 _mapController.move(_mapController.camera.center, _currentZoom);
               }),
               const SizedBox(height: 6),
-              // Re-center on driver and resume auto-follow
               _mapCtrlBtn(Icons.my_location, () {
                 setState(() => _followDriver = true);
                 _mapController.move(busLocation, 15);
               }),
             ])),
 
-          // ── Follow indicator (shows when auto-follow is paused) ───────────
           if (!_followDriver)
-            Positioned(top: MediaQuery.of(context).padding.top + 56, left: 12,
+            Positioned(
+              top: MediaQuery.of(context).padding.top + 56,
+              left: 12,
               child: GestureDetector(
-                onTap: () { setState(() => _followDriver = true); _mapController.move(busLocation, 15); },
+                onTap: () {
+                  setState(() => _followDriver = true);
+                  _mapController.move(busLocation, 15);
+                },
                 child: Container(
                   padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                   decoration: BoxDecoration(color: AppColors.warning,
                       borderRadius: BorderRadius.circular(8)),
                   child: Row(mainAxisSize: MainAxisSize.min, children: [
-                    const Icon(Icons.location_searching, color: Colors.white, size: 14),
+                    const Icon(Icons.location_searching,
+                        color: Colors.white, size: 14),
                     const SizedBox(width: 4),
                     Text('Tap to follow', style: GoogleFonts.inter(
-                        fontSize: 11, fontWeight: FontWeight.w700, color: Colors.white)),
+                        fontSize: 11, fontWeight: FontWeight.w700,
+                        color: Colors.white)),
                   ])))),
 
-          // ── Emergency FAB ──────────────────────────────────────────────────
-          Positioned(right: 14, bottom: 190,
+          Positioned(
+            right: 14, bottom: 190,
             child: GestureDetector(
               onTap: () => context
                   .findAncestorStateOfType<MainShellState>()
@@ -284,8 +274,8 @@ class _RouteMapScreenState extends State<RouteMapScreen>
                 child: const Icon(Icons.emergency_rounded,
                     size: 24, color: Colors.white)))),
 
-          // ── Bottom stop info panel ─────────────────────────────────────────
-          Positioned(left: 0, right: 0, bottom: 0,
+          Positioned(
+            left: 0, right: 0, bottom: 0,
             child: Container(
               decoration: BoxDecoration(color: Colors.white,
                   borderRadius:
@@ -296,14 +286,15 @@ class _RouteMapScreenState extends State<RouteMapScreen>
               child: SafeArea(top: false, child: Padding(
                 padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
                 child: Column(mainAxisSize: MainAxisSize.min, children: [
-                  // Speed indicator
                   Container(
                     margin: const EdgeInsets.only(bottom: 12),
-                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 14, vertical: 8),
                     decoration: BoxDecoration(
                         color: const Color(0xFFF0F4FF),
                         borderRadius: BorderRadius.circular(10)),
-                    child: Row(mainAxisAlignment: MainAxisAlignment.center,
+                    child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
                         children: [
                       const Icon(Icons.speed_rounded, size: 16,
                           color: AppColors.primaryLight),
@@ -317,18 +308,22 @@ class _RouteMapScreenState extends State<RouteMapScreen>
                     ])),
                   if (origin != null)
                     _stopInfoRow(
-                      icon: Icons.flag_rounded, iconColor: AppColors.primaryLight,
+                      icon: Icons.flag_rounded,
+                      iconColor: AppColors.primaryLight,
                       name: origin.name, etaMin: etaToOrigin,
                       distKm: distToOrigin, label: 'ORIGIN'),
                   if (nextStop?.id != origin?.id) ...[
-                    Padding(padding: const EdgeInsets.symmetric(vertical: 8),
-                        child: Divider(height: 1,
-                            color: const Color(0xFFEEEEEE))),
+                    Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 8),
+                        child: const Divider(
+                            height: 1, color: Color(0xFFEEEEEE))),
                     _stopInfoRow(
                       icon: Icons.navigation_rounded,
                       iconColor: AppColors.success,
-                      name: nextStop?.name ?? '', etaMin: etaToNext,
-                      distKm: distToNext, label: 'NEXT STOP'),
+                      name: nextStop?.name ?? '',
+                      etaMin: etaToNext,
+                      distKm: distToNext,
+                      label: 'NEXT STOP'),
                   ],
                 ]),
               )),
@@ -350,8 +345,8 @@ class _RouteMapScreenState extends State<RouteMapScreen>
         Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start,
             children: [
           Text(label, style: GoogleFonts.inter(fontSize: 9,
-              fontWeight: FontWeight.w700, color: const Color(0xFF9E9E9E),
-              letterSpacing: 0.8)),
+              fontWeight: FontWeight.w700,
+              color: const Color(0xFF9E9E9E), letterSpacing: 0.8)),
           const SizedBox(height: 2),
           Text(name, style: GoogleFonts.inter(fontSize: 14,
               fontWeight: FontWeight.w700, color: AppColors.primary)),
@@ -380,13 +375,3 @@ class _RouteMapScreenState extends State<RouteMapScreen>
                   blurRadius: 8, offset: const Offset(0, 2))]),
           child: Icon(icon, size: 20, color: AppColors.primary)));
 }
-
-
-
-
-
-
-
-
-
-

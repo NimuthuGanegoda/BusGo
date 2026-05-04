@@ -9,7 +9,7 @@ import '../services/token_service.dart';
 class RouteProvider extends ChangeNotifier {
   List<BusRoute> _routes        = [];
   BusRoute?      _selectedRoute;
-  BusRoute?      _assignedRoute; // ← the driver's specific assigned route
+  BusRoute?      _assignedRoute;
   bool           _isLoading     = false;
   String?        _error;
 
@@ -21,10 +21,6 @@ class RouteProvider extends ChangeNotifier {
   bool           get isLoading       => _isLoading;
   String?        get error           => _error;
 
-  // ── Load the specific route assigned to this driver ────────────────────────
-  // Calls GET /driver/bus which returns the bus with its nested bus_routes
-  // including full waypoints. This is the correct approach — each driver
-  // only loads their own route, not all routes.
   Future<void> loadDriverAssignedRoute() async {
     _isLoading = true;
     _error     = null;
@@ -47,6 +43,8 @@ class RouteProvider extends ChangeNotifier {
         },
       ).timeout(const Duration(seconds: 15));
 
+      debugPrint('[RouteProvider] /driver/bus status=${res.statusCode} bytes=${res.body.length}');
+
       if (res.statusCode == 200) {
         final body = jsonDecode(res.body) as Map<String, dynamic>;
         final data = body['data'] as Map<String, dynamic>?;
@@ -54,20 +52,20 @@ class RouteProvider extends ChangeNotifier {
         if (data != null) {
           final busRoutes = data['bus_routes'] as Map<String, dynamic>?;
           if (busRoutes != null) {
+            debugPrint('[RouteProvider] bus_routes keys: ${busRoutes.keys.toList()}');
+            debugPrint('[RouteProvider] waypoints type: ${busRoutes['waypoints']?.runtimeType}');
             _assignedRoute = _parseRouteFromBus(busRoutes);
             _routes        = [_assignedRoute!];
-            debugPrint('[RouteProvider] Assigned route: '
-                '${_assignedRoute!.routeNumber} — '
-                '${_assignedRoute!.name} '
-                '(${_assignedRoute!.polyline.length} waypoints, '
-                '${_assignedRoute!.stops.length} stops)');
+            debugPrint('[RouteProvider] ✅ Route ${_assignedRoute!.routeNumber} — '
+                '${_assignedRoute!.polyline.length} waypoints, '
+                '${_assignedRoute!.stops.length} stops');
           } else {
-            debugPrint('[RouteProvider] No route assigned to this driver');
+            debugPrint('[RouteProvider] ❌ bus_routes is null in response');
           }
         }
       } else {
-        _error = 'Failed to load assigned route (${res.statusCode})';
-        debugPrint('[RouteProvider] Error: $_error');
+        _error = 'Failed to load route (${res.statusCode})';
+        debugPrint('[RouteProvider] Error: ${res.body}');
       }
     } catch (e) {
       _error = 'Connection error: $e';
@@ -78,89 +76,78 @@ class RouteProvider extends ChangeNotifier {
     }
   }
 
-  // ── Also keep loadRoutes for any backward compatibility ────────────────────
-  Future<void> loadRoutes() async {
-    await loadDriverAssignedRoute();
-  }
+  Future<void> loadRoutes() async => loadDriverAssignedRoute();
 
   BusRoute _parseRouteFromBus(Map<String, dynamic> j) {
-    // ── Color ──────────────────────────────────────────────────────────────
     Color routeColor = Colors.blue;
     final colorStr = j['color'] as String?;
     if (colorStr != null && colorStr.startsWith('#')) {
-      try {
-        routeColor = Color(int.parse(colorStr.replaceFirst('#', '0xFF')));
-      } catch (_) {}
+      try { routeColor = Color(int.parse(colorStr.replaceFirst('#', '0xFF'))); } catch (_) {}
     }
 
-    // ── Waypoints → polyline ───────────────────────────────────────────────
+    // Parse waypoints — handle both jsonb (List) and text (String) column types
     final List<LatLng> polyline = [];
-    final rawWaypoints = j['waypoints'];
-    if (rawWaypoints is List) {
-      for (final wp in rawWaypoints) {
+    dynamic raw = j['waypoints'];
+
+    if (raw is String && raw.trim().isNotEmpty) {
+      try { raw = jsonDecode(raw); } catch (e) {
+        debugPrint('[RouteProvider] waypoints JSON parse failed: $e');
+        raw = null;
+      }
+    }
+
+    if (raw is List) {
+      for (final wp in raw) {
         if (wp is Map) {
-          final lat = (wp['lat'] as num?)?.toDouble();
-          final lng = (wp['lng'] as num?)?.toDouble();
-          if (lat != null && lng != null) {
-            polyline.add(LatLng(lat, lng));
-          }
+          final lat = ((wp['lat'] ?? wp['latitude']) as num?)?.toDouble();
+          final lng = ((wp['lng'] ?? wp['longitude'] ?? wp['lon']) as num?)?.toDouble();
+          if (lat != null && lng != null) polyline.add(LatLng(lat, lng));
         }
       }
     }
+    debugPrint('[RouteProvider] Parsed ${polyline.length} waypoints (raw type: ${raw?.runtimeType})');
 
-    // ── Stops ──────────────────────────────────────────────────────────────
+    // Parse stops
     final List<RouteStop> stops = [];
     final rawStops = j['bus_stop_routes'] as List<dynamic>?;
     if (rawStops != null) {
-      final sorted = rawStops
-          .whereType<Map<String, dynamic>>()
-          .toList()
-        ..sort((a, b) =>
-            ((a['stop_order'] as int?) ?? 0)
-                .compareTo((b['stop_order'] as int?) ?? 0));
-
+      final sorted = rawStops.whereType<Map<String, dynamic>>().toList()
+        ..sort((a, b) => ((a['stop_order'] as int?) ?? 0).compareTo((b['stop_order'] as int?) ?? 0));
       for (final s in sorted) {
-        final busStop = s['bus_stops'] as Map<String, dynamic>?;
-        if (busStop == null) continue;
-        final lat = (busStop['latitude']  as num?)?.toDouble();
-        final lng = (busStop['longitude'] as num?)?.toDouble();
+        final bs  = s['bus_stops'] as Map<String, dynamic>?;
+        if (bs == null) continue;
+        final lat = (bs['latitude']  as num?)?.toDouble();
+        final lng = (bs['longitude'] as num?)?.toDouble();
         if (lat == null || lng == null) continue;
         stops.add(RouteStop(
-          id:       busStop['id']        as String? ?? '',
-          name:     busStop['stop_name'] as String? ?? 'Stop',
+          id: bs['id'] as String? ?? '',
+          name: bs['stop_name'] as String? ?? 'Stop',
           location: LatLng(lat, lng),
-          sequence: (s['stop_order']     as int?)  ?? 0,
+          sequence: (s['stop_order'] as int?) ?? 0,
         ));
       }
     }
+    debugPrint('[RouteProvider] Parsed ${stops.length} stops');
+
+    final effectivePolyline = polyline.isNotEmpty
+        ? polyline
+        : stops.map((s) => s.location).toList();
 
     return BusRoute(
-      id:               j['id']           as String? ?? '',
-      routeNumber:      j['route_number'] as String? ?? '?',
-      name:             j['route_name']   as String? ?? '',
-      from:             j['origin']       as String? ?? '',
-      to:               j['destination']  as String? ?? '',
-      totalStops:       stops.length,
-      distanceKm:       0,
-      estimatedMinutes: 0,
-      color:            routeColor,
-      stops:            stops,
-      polyline:         polyline,
-      isAssigned:       true,
+      id: j['id'] as String? ?? '',
+      routeNumber: j['route_number'] as String? ?? '?',
+      name: j['route_name'] as String? ?? '',
+      from: j['origin'] as String? ?? '',
+      to: j['destination'] as String? ?? '',
+      totalStops: stops.length,
+      distanceKm: 0, estimatedMinutes: 0,
+      color: routeColor,
+      stops: stops,
+      polyline: effectivePolyline,
+      isAssigned: true,
     );
   }
 
-  void selectRoute(BusRoute route) {
-    _selectedRoute = route;
-    notifyListeners();
-  }
-
-  void clearSelection() {
-    _selectedRoute = null;
-    notifyListeners();
-  }
+  void selectRoute(BusRoute route) { _selectedRoute = route; notifyListeners(); }
+  void clearSelection() { _selectedRoute = null; notifyListeners(); }
 }
-
-
-
-

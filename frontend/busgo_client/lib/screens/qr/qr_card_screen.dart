@@ -71,15 +71,6 @@ class _QrCardScreenState extends State<QrCardScreen> {
   }
 
   Future<void> _loadQrCard() async {
-    await _fetchQrCard(force: false);
-  }
-
-  // Called by the refresh button — always generates a brand-new token
-  Future<void> _refreshQrCard() async {
-    await _fetchQrCard(force: true);
-  }
-
-  Future<void> _fetchQrCard({required bool force}) async {
     setState(() { _isLoading = true; _error = null; });
     final auth  = context.read<AuthProvider>();
     final token = await auth.getAccessToken();
@@ -87,12 +78,8 @@ class _QrCardScreenState extends State<QrCardScreen> {
       setState(() { _error = 'Not logged in'; _isLoading = false; }); return;
     }
     try {
-      // force=true → refresh button pressed → always get a new token
-      // force=false → screen load or auto-refresh → only new token if expired
-      final uri = Uri.parse('$kBaseUrlDev/qr/my-card')
-          .replace(queryParameters: force ? {'force': 'true'} : {});
       final res = await http.get(
-        uri,
+        Uri.parse('$kBaseUrlDev/qr/my-card'),
         headers: {'Authorization': 'Bearer $token'},
       ).timeout(const Duration(seconds: 10));
 
@@ -172,7 +159,7 @@ class _QrCardScreenState extends State<QrCardScreen> {
                           fontWeight: FontWeight.w700, color: Colors.white)),
                 ]),
                 GestureDetector(
-                  onTap: _refreshQrCard,
+                  onTap: _loadQrCard,
                   child: Container(
                     padding: const EdgeInsets.all(6),
                     decoration: BoxDecoration(
@@ -320,9 +307,14 @@ class _QrCardScreenState extends State<QrCardScreen> {
                           style: TextStyle(fontSize: 11,
                               color: _cyan.withOpacity(0.7))),
                       const SizedBox(height: 2),
-                      Text(user.validUntil,
-                          style: const TextStyle(fontSize: 13,
-                              fontWeight: FontWeight.w600, color: Colors.white)),
+                      Text(
+                        _expiresAt != null
+                          ? '${_expiresAt!.day}/${_expiresAt!.month}/${_expiresAt!.year} '
+                            '${_expiresAt!.hour.toString().padLeft(2,'0')}:'
+                            '${_expiresAt!.minute.toString().padLeft(2,'0')}'
+                          : '—',
+                        style: const TextStyle(fontSize: 13,
+                            fontWeight: FontWeight.w600, color: Colors.white)),
                       const SizedBox(height: 2),
                       Container(
                         padding: const EdgeInsets.symmetric(

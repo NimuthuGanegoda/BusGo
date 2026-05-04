@@ -30,7 +30,7 @@ router.post('/scan-in',
   })),
   async (req, res, next) => {
     try {
-      const result = await qrService.scanIn(req.body.scanned_token, req.user.id, req.body);
+      const result = await qrService.scanIn(req.body.scanned_token, req.user.id, req.body, req);
       return sendSuccess(res, result, result.message, 201);
     } catch (err) {
       if (err.statusCode) return sendError(res, err.message, err.statusCode, err.code);

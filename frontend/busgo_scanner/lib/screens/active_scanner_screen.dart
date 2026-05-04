@@ -23,6 +23,11 @@ class _ActiveScannerScreenState extends State<ActiveScannerScreen>
   bool      _isScanning = false;
   int       _scanCount  = 0;
 
+  // UFR_48: retry tracking per token
+  // token → retry count for system errors only
+  static const int _maxRetries = 5;
+  final Map<String, int> _retryCount = {};
+
   // Tracks last scan per token for auto boarding/alighting:
   // token → 'boarding' or 'alighting'
   final Map<String, String> _tokenScanHistory = {};
@@ -91,22 +96,31 @@ class _ActiveScannerScreenState extends State<ActiveScannerScreen>
     });
   }
 
+  // ── UFR_48: Check if error is a system error (5xx / network) ─────────────
+  bool _isSystemError(String msg) {
+    final lower = msg.toLowerCase();
+    return lower.contains('500') ||
+          lower.contains('502') ||
+          lower.contains('503') ||
+          lower.contains('504') ||
+          lower.contains('timeout') ||
+          lower.contains('socketexception') ||
+          lower.contains('connection refused') ||
+          lower.contains('network') ||
+          lower.contains('future not completed');
+  }
+
   // ══════════════════════════════════════════════════════════════════════════
   // AUTO BOARDING / ALIGHTING DETECTION
   //
-  // How it works:
-  //   1. First scan of a token → Boarding  (POST /payments/verify-scan)
-  //   2. Same token scanned again → Alighting  (POST /qr/scan-exit)
-  //   3. After alighting, token is reset — next scan of same token = boarding
-  //
-  // This means the driver NEVER needs to manually switch modes.
-  // The scanner automatically knows whether the passenger is boarding or
-  // alighting based on their scan history in this session.
+  // UFR_48: On system error (5xx/network), allow up to 5 retries.
+  //         On business logic error (4xx), reject immediately — no retry.
+  //         Same logic applies for both Normal QR and Payment QR.
+  // UFR_51: Repeated scan logging is handled server-side in qr.service.js
   // ══════════════════════════════════════════════════════════════════════════
   Future<void> _processScan(String scannedToken) async {
     if (_isScanning) return;
 
-    // Accept either plain UUID or JSON QR payload (FR-34 destination encoding)
     final uuidPattern = RegExp(
         r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$',
         caseSensitive: false);
@@ -120,7 +134,6 @@ class _ActiveScannerScreenState extends State<ActiveScannerScreen>
     setState(() => _isScanning = true);
     await _cameraCtrl.stop();
 
-    // Determine if this is boarding or alighting
     final previousScan = _tokenScanHistory[scannedToken];
     final isExit       = previousScan == 'boarding';
 
@@ -128,13 +141,14 @@ class _ActiveScannerScreenState extends State<ActiveScannerScreen>
       final ScanResult result;
       if (isExit) {
         result = await widget.api.scanExit(scannedToken);
-        // After alighting, reset so next scan of same token = boarding
         _tokenScanHistory.remove(scannedToken);
       } else {
         result = await widget.api.scanIn(scannedToken);
-        // Mark as boarded so next scan = alighting
         _tokenScanHistory[scannedToken] = 'boarding';
       }
+
+      // Success — reset retry counter for this token
+      _retryCount.remove(scannedToken);
 
       setState(() { _scanCount++; });
       if (!mounted) return;
@@ -151,10 +165,52 @@ class _ActiveScannerScreenState extends State<ActiveScannerScreen>
           .replaceFirst('Exception: ', '')
           .replaceFirst('DioException: ', '');
 
+      // ── UFR_48: System error → retry up to 5 times ──────────────────────
+      if (_isSystemError(msg)) {
+        final currentRetries = _retryCount[scannedToken] ?? 0;
+        if (currentRetries < _maxRetries) {
+          _retryCount[scannedToken] = currentRetries + 1;
+          final remaining = _maxRetries - currentRetries - 1;
+
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+              content: Row(children: [
+                const Icon(Icons.wifi_off_rounded,
+                    color: Colors.white, size: 18),
+                const SizedBox(width: 10),
+                Expanded(child: Text(
+                  'System error — retrying... '
+                  '(attempt ${currentRetries + 1}/$_maxRetries, '
+                  '$remaining retries left)',
+                  style: const TextStyle(
+                      color: Colors.white, fontSize: 13, height: 1.4))),
+              ]),
+              backgroundColor: const Color(0xFFD97706),
+              behavior:        SnackBarBehavior.floating,
+              margin:          const EdgeInsets.fromLTRB(16, 0, 16, 24),
+              duration:        const Duration(seconds: 3),
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10)),
+            ));
+            setState(() { _isScanning = false; _lastScannedValue = null; });
+            await _restartCamera();
+          }
+          return;
+        } else {
+          // Exhausted all 5 retries
+          _retryCount.remove(scannedToken);
+          await _navigateError(
+              'System error after $_maxRetries attempts.\n'
+              'Please contact support — this is not a passenger issue.');
+          return;
+        }
+      }
+
+      // ── Business logic errors — no retry ──────────────────────────────────
+
       // 409 = passenger already on board → auto-switch to alighting
       final is409 = msg.contains('409') || msg.contains('TRIP_ALREADY_ONGOING');
       if (is409) {
-        // Automatically try exit scan
         try {
           final result = await widget.api.scanExit(scannedToken);
           _tokenScanHistory.remove(scannedToken);
@@ -229,9 +285,6 @@ class _ActiveScannerScreenState extends State<ActiveScannerScreen>
     );
   }
 
-  // ═══════════════════════════════════════════════════════════════════════════
-  // TOP BAR — no mode toggle needed anymore
-  // ═══════════════════════════════════════════════════════════════════════════
   Widget _buildTopBar() {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
@@ -279,9 +332,6 @@ class _ActiveScannerScreenState extends State<ActiveScannerScreen>
     );
   }
 
-  // ═══════════════════════════════════════════════════════════════════════════
-  // VIEWFINDER
-  // ═══════════════════════════════════════════════════════════════════════════
   Widget _buildViewfinder() {
     return Stack(fit: StackFit.expand, children: [
       MobileScanner(controller: _cameraCtrl, onDetect: _onDetect),
@@ -368,7 +418,6 @@ class _ActiveScannerScreenState extends State<ActiveScannerScreen>
           Positioned(top: top, left: left, width: boxSize, height: boxSize,
               child: CustomPaint(painter: _GridPainter())),
 
-          // Info badge — shows auto-detect hint
           Positioned(bottom: 20, left: 0, right: 0,
             child: Center(child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 8),
@@ -400,9 +449,6 @@ class _ActiveScannerScreenState extends State<ActiveScannerScreen>
             pos: pos, glow: glow, color: _cyan)));
   }
 
-  // ═══════════════════════════════════════════════════════════════════════════
-  // BOTTOM PANEL
-  // ═══════════════════════════════════════════════════════════════════════════
   Widget _buildBottomPanel() {
     return Container(
       padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
@@ -445,7 +491,6 @@ class _ActiveScannerScreenState extends State<ActiveScannerScreen>
   }
 }
 
-// ═══════════════════════════════════════════════════════════════════════════════
 class _GlowCornerPainter extends CustomPainter {
   final int    pos;
   final double glow;
@@ -500,10 +545,3 @@ class _GridPainter extends CustomPainter {
   @override
   bool shouldRepaint(_GridPainter old) => false;
 }
-
-
-
-
-
-
-

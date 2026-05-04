@@ -50,10 +50,8 @@ class _DashboardScreenState extends State<DashboardScreen>
       }
 
       if (tp.currentTrip == null && rp.routes.isNotEmpty) {
-        final route138 = rp.routes
-            .where((r) => r.routeNumber == '138')
-            .firstOrNull;
-        if (route138 != null) tp.startTrip(route138);
+        final assignedRoute = rp.assignedRoute ?? rp.routes.first;
+        tp.startTrip(assignedRoute);
       }
 
       await _setBusStatus('inactive');
@@ -467,7 +465,8 @@ class _DashboardScreenState extends State<DashboardScreen>
   }
 
   Widget _buildMapPreview(TripProvider trip) {
-    final route       = trip.currentRoute ?? MockDataService.routes.first;
+    final routeProvider = context.read<RouteProvider>();
+    final route = trip.currentRoute ?? routeProvider.assignedRoute ?? MockDataService.routes.first;
     final busLocation = trip.currentLocation;
     final traveledPath= trip.traveledPath;
 
@@ -654,6 +653,7 @@ class _GaugeRingPainter extends CustomPainter {
   bool shouldRepaint(covariant _GaugeRingPainter old) =>
       old.fillPercent != fillPercent || old.fillColor != fillColor;
 }
+
 
 
 

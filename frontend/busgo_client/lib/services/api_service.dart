@@ -4,7 +4,7 @@ import 'package:http/http.dart' as http;
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 
 class ApiService {
-  static String get baseUrl => (dotenv.env['API_URL'] ?? 'https://busgo-production.up.railway.app/api').replaceAll('/api', '');
+  static String get baseUrl => (dotenv.env['API_URL'] ?? 'http://192.168.1.2:5000/api').replaceAll('/api', '');
 
   Future<Map<String, dynamic>?> fetchETA({
     required String busId,
@@ -35,6 +35,7 @@ class ApiService {
     }
   }
 }
+
 
 
 

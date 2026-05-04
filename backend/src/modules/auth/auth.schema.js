@@ -10,6 +10,7 @@ export const registerSchema = z.object({
   membership_type: z.enum(['standard', 'premium', 'student']).default('standard'),
   // ← Allows Drive app to register as driver, Client app as passenger
   role:            z.enum(['passenger', 'driver']).default('passenger'),
+  experience_areas: z.array(z.string()).optional().default([]),
 });
 
 export const loginSchema = z.object({

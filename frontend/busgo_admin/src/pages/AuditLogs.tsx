@@ -36,6 +36,7 @@ const securityStyles: Record<string, { bg: string; color: string; label: string 
   ADMIN_ACTION:     { bg: '#ebf3ff', color: '#1a6cf0', label: '⚙ ADMIN ACTION' },
   ROLE_VIOLATION:   { bg: '#fef2f2', color: '#dc2626', label: '⚠ ROLE VIOLATION' },
   RATE_LIMITED:     { bg: '#fffbeb', color: '#d97706', label: '⏱ RATE LIMITED' },
+  
 };
 
 const severityColors: Record<string, { bg: string; color: string }> = {

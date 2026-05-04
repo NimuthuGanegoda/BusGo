@@ -29,7 +29,7 @@ class TripProvider extends ChangeNotifier {
   int          _currentPassengers = 0;
   int          _busCapacity       = 50;
   bool         _isExpressMode     = false;
-  List<Map<String, dynamic>> _mustStopAt = []; // [{ id, name }]
+  List<Map<String, dynamic>> _mustStopAt = [];
   String?      _busId;
 
   Timer? _passengerPollTimer;
@@ -97,7 +97,7 @@ class TripProvider extends ChangeNotifier {
           final count        = data['active_passengers'] as int? ?? 0;
           final capacity     = data['bus_capacity']      as int? ?? 50;
           final expressMode  = data['is_express_mode']   as bool? ?? false;
-          final busId        = data['bus_id']            as String?;  // ← ADD THIS
+          final busId        = data['bus_id']            as String?;
           if (busId != null) _busId = busId;
           final rawMustStop  = data['must_stop_at']      as List<dynamic>? ?? [];
           final mustStopList = rawMustStop
@@ -177,8 +177,10 @@ class TripProvider extends ChangeNotifier {
     _positionStream = Geolocator.getPositionStream(locationSettings: settings)
         .listen((Position pos) {
       _applyPosition(pos);
-      if (_gpsReady) {
+      // FIX: pass _busId — skip if not yet loaded
+      if (_gpsReady && _busId != null) {
         _locationService.updateLocation(
+          busId:    _busId!,
           lat:      pos.latitude,
           lng:      pos.longitude,
           speedKmh: (pos.speed * 3.6).clamp(0, 200),
@@ -304,8 +306,3 @@ class TripProvider extends ChangeNotifier {
     super.dispose();
   }
 }
-
-
-
-
-
