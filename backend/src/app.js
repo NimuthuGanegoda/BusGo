@@ -28,6 +28,7 @@ import etaRoutes           from './modules/eta/eta.routes.js';
 import { sanitizeInputs } from './middleware/sanitize.middleware.js';
 
 const app = express();
+app.set('trust proxy', 1);
 
 
 
