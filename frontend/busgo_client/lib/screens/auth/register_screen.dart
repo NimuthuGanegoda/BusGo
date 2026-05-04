@@ -111,7 +111,7 @@ class _RegisterScreenState extends State<RegisterScreen>
     _errors.clear();
     if (_fullNameCtrl.text.trim().isEmpty)
       _errors['name'] = 'Full name is required';
-    final emailRx = RegExp(r'^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}\$');
+    final emailRx = RegExp(r'^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$');
     if (_emailCtrl.text.trim().isEmpty) _errors['email'] = 'Email is required';
     else if (!emailRx.hasMatch(_emailCtrl.text.trim())) _errors['email'] = 'Enter a valid email';
     if (_usernameCtrl.text.trim().isEmpty) _errors['username'] = 'Username is required';
