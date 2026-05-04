@@ -8,6 +8,7 @@ class LocationService {
   final TokenService _tokenService = TokenService();
 
   Future<void> updateLocation({
+    required String busId,
     required double lat,
     required double lng,
     required double speedKmh,
@@ -18,10 +19,10 @@ class LocationService {
       debugPrint('[LocationService] No token — skipping location update');
       return;
     }
-
     try {
+      // FIX: was PATCH /driver/location — backend expects PUT /buses/:id/location
       final response = await http.patch(
-        Uri.parse('${ApiConfig.baseUrl}/driver/location'),
+        Uri.parse('${ApiConfig.baseUrl}/buses/$busId/location'),
         headers: {
           'Content-Type':  'application/json',
           'Authorization': 'Bearer $token',
@@ -37,18 +38,10 @@ class LocationService {
       if (response.statusCode == 200 || response.statusCode == 201) {
         debugPrint('[LocationService] Updated: lat=$lat lng=$lng speed=${speedKmh.toStringAsFixed(1)}km/h');
       } else {
-        debugPrint('[LocationService] Backend error ${response.statusCode}');
+        debugPrint('[LocationService] Backend error ${response.statusCode}: ${response.body}');
       }
     } catch (e) {
       debugPrint('[LocationService] Network error: $e');
     }
   }
 }
-
-
-
-
-
-
-
-

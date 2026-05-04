@@ -99,6 +99,13 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _sendCurrentLocation() async {
+    // FIX: get busId from loaded bus data
+    final busId = _bus?['id'] as String?;
+    if (busId == null) {
+      debugPrint('[HomeScreen] No busId — cannot send location');
+      return;
+    }
+
     try {
       final position = await Geolocator.getCurrentPosition(
         desiredAccuracy: LocationAccuracy.high,
@@ -109,6 +116,7 @@ class _HomeScreenState extends State<HomeScreen> {
           : 0.0;
 
       await _locationService.updateLocation(
+        busId:    busId,
         lat:      position.latitude,
         lng:      position.longitude,
         speedKmh: speed,
@@ -428,11 +436,3 @@ class _ActionCard extends StatelessWidget {
         ),
       );
 }
-
-
-
-
-
-
-
-

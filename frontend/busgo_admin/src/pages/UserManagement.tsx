@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import {
   Plus, Search, Power, Check, X,
   UserPlus, Shield, Users, RefreshCw,
-  FileImage, Phone, Mail, Calendar, Eye,
+  FileImage, Phone, Mail, Calendar, Eye, MapPin,
 } from 'lucide-react';
 import './UserManagement.css';
 
@@ -19,6 +19,7 @@ type User = {
   is_active: boolean;
   membership_type: string;
   license_url: string | null;
+  experience_areas?: string[];
   created_at: string;
 };
 
@@ -36,7 +37,6 @@ export default function UserManagement() {
   const [licenseUrl,     setLicenseUrl]     = useState<string | null>(null);
   const [licenseLoading, setLicenseLoading] = useState(false);
 
-  // Add user modal
   const [showAddModal, setShowAddModal] = useState(false);
   const [addForm,      setAddForm]      = useState({
     full_name: '', email: '', phone: '', password: '',
@@ -70,22 +70,17 @@ export default function UserManagement() {
 
   useEffect(() => { fetchUsers(); }, [fetchUsers]);
 
-  // ── Fetch signed license URL from backend ──────────────────────────────────
   const openDriverPanel = async (user: User) => {
     setSelectedDriver(user);
     setLicenseUrl(null);
-
     if (!user.license_url) return;
-
     setLicenseLoading(true);
     try {
       const res  = await fetch(`${API}/users/${user.id}/license-url`, {
         headers: { Authorization: `Bearer ${token()}` },
       });
       const json = await res.json();
-      if (res.ok && json.data?.signed_url) {
-        setLicenseUrl(json.data.signed_url);
-      }
+      if (res.ok && json.data?.signed_url) setLicenseUrl(json.data.signed_url);
     } catch (e) {
       console.error('[License]', e);
     } finally {
@@ -93,12 +88,8 @@ export default function UserManagement() {
     }
   };
 
-  const closePanel = () => {
-    setSelectedDriver(null);
-    setLicenseUrl(null);
-  };
+  const closePanel = () => { setSelectedDriver(null); setLicenseUrl(null); };
 
-  // ── Filtered list ──────────────────────────────────────────────────────────
   const filtered = users.filter(u => {
     const q           = searchQuery.toLowerCase();
     const matchSearch = !q ||
@@ -113,12 +104,10 @@ export default function UserManagement() {
 
   const pendingCount = users.filter(u => u.role === 'driver' && !u.is_active).length;
 
-  // ── Actions ────────────────────────────────────────────────────────────────
   const approveDriver = async (id: string) => {
     try {
       const res = await fetch(`${API}/users/${id}/reactivate`, {
-        method: 'PATCH',
-        headers: { Authorization: `Bearer ${token()}` },
+        method: 'PATCH', headers: { Authorization: `Bearer ${token()}` },
       });
       if (!res.ok) throw new Error();
       setUsers(prev => prev.map(u => u.id === id ? { ...u, is_active: true } : u));
@@ -130,8 +119,7 @@ export default function UserManagement() {
   const rejectDriver = async (id: string) => {
     try {
       await fetch(`${API}/users/${id}`, {
-        method: 'DELETE',
-        headers: { Authorization: `Bearer ${token()}` },
+        method: 'DELETE', headers: { Authorization: `Bearer ${token()}` },
       });
       setUsers(prev => prev.filter(u => u.id !== id));
       closePanel();
@@ -142,8 +130,7 @@ export default function UserManagement() {
   const deactivateUser = async (id: string) => {
     try {
       const res = await fetch(`${API}/users/${id}/deactivate`, {
-        method: 'PATCH',
-        headers: { Authorization: `Bearer ${token()}` },
+        method: 'PATCH', headers: { Authorization: `Bearer ${token()}` },
       });
       if (!res.ok) throw new Error();
       setUsers(prev => prev.map(u => u.id === id ? { ...u, is_active: false } : u));
@@ -154,8 +141,7 @@ export default function UserManagement() {
   const reactivateUser = async (id: string) => {
     try {
       const res = await fetch(`${API}/users/${id}/reactivate`, {
-        method: 'PATCH',
-        headers: { Authorization: `Bearer ${token()}` },
+        method: 'PATCH', headers: { Authorization: `Bearer ${token()}` },
       });
       if (!res.ok) throw new Error();
       setUsers(prev => prev.map(u => u.id === id ? { ...u, is_active: true } : u));
@@ -163,7 +149,6 @@ export default function UserManagement() {
     } catch { showToast('❌ Failed to activate user', 'error'); }
   };
 
-  // ── Add user ───────────────────────────────────────────────────────────────
   const handleAddUser = async () => {
     if (!addForm.full_name || !addForm.email || !addForm.password) {
       setAddError('Full name, email and password are required'); return;
@@ -181,14 +166,11 @@ export default function UserManagement() {
       });
       const json = await res.json();
       if (!res.ok) { setAddError(json.message || 'Failed to create user'); return; }
-
       if (addForm.role === 'driver' && json.data?.user?.id) {
         await fetch(`${API}/users/${json.data.user.id}/reactivate`, {
-          method: 'PATCH',
-          headers: { Authorization: `Bearer ${token()}` },
+          method: 'PATCH', headers: { Authorization: `Bearer ${token()}` },
         });
       }
-
       setShowAddModal(false);
       setAddForm({ full_name: '', email: '', phone: '', password: '', role: 'driver' });
       showToast(`✅ ${addForm.role.charAt(0).toUpperCase() + addForm.role.slice(1)} created`);
@@ -201,7 +183,6 @@ export default function UserManagement() {
     if (u.role === 'driver' && !u.is_active) return 'pending';
     return u.is_active ? 'active' : 'inactive';
   };
-
   const getStatusText = (u: User) => {
     if (u.role === 'driver' && !u.is_active) return 'Pending';
     return u.is_active ? 'Active' : 'Inactive';
@@ -209,8 +190,6 @@ export default function UserManagement() {
 
   return (
     <div className="users-page">
-
-      {/* Toast */}
       {toast && (
         <div className="users-toast"
           style={{ background: toastType === 'error' ? '#dc2626' : '#16a34a' }}>
@@ -220,15 +199,12 @@ export default function UserManagement() {
         </div>
       )}
 
-      {/* Add User Modal */}
       {showAddModal && (
         <div className="em-modal-overlay" onClick={() => setShowAddModal(false)}>
           <div className="em-modal" onClick={e => e.stopPropagation()} style={{ maxWidth: '440px' }}>
             <div className="em-modal-header">
               <h3>Add New User</h3>
-              <button className="em-modal-close" onClick={() => setShowAddModal(false)}>
-                <X size={20} />
-              </button>
+              <button className="em-modal-close" onClick={() => setShowAddModal(false)}><X size={20} /></button>
             </div>
             <div className="em-modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
               {addError && (
@@ -277,7 +253,6 @@ export default function UserManagement() {
         </div>
       )}
 
-      {/* Header */}
       <div className="users-header">
         <h1>User Management</h1>
         <div className="users-header-actions">
@@ -290,7 +265,6 @@ export default function UserManagement() {
         </div>
       </div>
 
-      {/* Tabs */}
       <div className="users-tabs">
         <button className={`users-tab ${activeTab === 'passengers' ? 'active' : ''}`}
           onClick={() => { setActiveTab('passengers'); setSearchQuery(''); setStatusFilter('all'); closePanel(); }}>
@@ -309,7 +283,6 @@ export default function UserManagement() {
         </button>
       </div>
 
-      {/* Filters */}
       <div className="users-filters">
         <div className="users-search-wrap">
           <Search size={16} className="search-icon" />
@@ -324,31 +297,20 @@ export default function UserManagement() {
           <option value="inactive">Inactive</option>
           {activeTab === 'drivers' && <option value="pending">Pending Approval</option>}
         </select>
-        <span className="users-showing">
-          Showing {filtered.length} of {users.length} {activeTab}
-        </span>
+        <span className="users-showing">Showing {filtered.length} of {users.length} {activeTab}</span>
       </div>
 
-      {/* Main layout — table + side panel */}
       <div style={{ display: 'flex', gap: '16px', alignItems: 'flex-start' }}>
-
-        {/* Table */}
         <div style={{ flex: 1, minWidth: 0 }}>
           {loading ? (
-            <div style={{ textAlign: 'center', padding: '40px', color: '#6b7280' }}>
-              Loading {activeTab}...
-            </div>
+            <div style={{ textAlign: 'center', padding: '40px', color: '#6b7280' }}>Loading {activeTab}...</div>
           ) : (
             <div className="users-table-wrap">
               <table className="users-table">
                 <thead>
                   <tr>
-                    <th>NAME</th>
-                    <th>EMAIL</th>
-                    <th>PHONE</th>
-                    <th>JOINED</th>
-                    <th>STATUS</th>
-                    <th>ACTIONS</th>
+                    <th>NAME</th><th>EMAIL</th><th>PHONE</th>
+                    <th>JOINED</th><th>STATUS</th><th>ACTIONS</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -356,13 +318,9 @@ export default function UserManagement() {
                     const statusLabel = getStatusLabel(user);
                     const isPending   = user.role === 'driver' && !user.is_active;
                     const isSelected  = selectedDriver?.id === user.id;
-
                     return (
                       <tr key={user.id}
-                        style={{
-                          background: isSelected ? '#eff6ff' : undefined,
-                          cursor: 'pointer',
-                        }}
+                        style={{ background: isSelected ? '#eff6ff' : undefined, cursor: 'pointer' }}
                         onClick={() => openDriverPanel(user)}>
                         <td>
                           <div className="driver-name-cell">
@@ -387,30 +345,25 @@ export default function UserManagement() {
                           <div className="user-action-btns">
                             {isPending ? (
                               <>
-                                <button className="user-action-btn green"
-                                  onClick={() => approveDriver(user.id)}>
+                                <button className="user-action-btn green" onClick={() => approveDriver(user.id)}>
                                   <Check size={14} /> Approve
                                 </button>
-                                <button className="user-action-btn red-outline"
-                                  onClick={() => rejectDriver(user.id)}>
+                                <button className="user-action-btn red-outline" onClick={() => rejectDriver(user.id)}>
                                   <X size={14} /> Reject
                                 </button>
                               </>
                             ) : (
                               user.is_active ? (
-                                <button className="user-action-btn gray"
-                                  onClick={() => deactivateUser(user.id)}>
+                                <button className="user-action-btn gray" onClick={() => deactivateUser(user.id)}>
                                   <Power size={14} /> Deactivate
                                 </button>
                               ) : (
-                                <button className="user-action-btn green"
-                                  onClick={() => reactivateUser(user.id)}>
+                                <button className="user-action-btn green" onClick={() => reactivateUser(user.id)}>
                                   <Check size={14} /> Activate
                                 </button>
                               )
                             )}
-                            <button className="user-action-btn blue"
-                              onClick={() => openDriverPanel(user)}>
+                            <button className="user-action-btn blue" onClick={() => openDriverPanel(user)}>
                               <Eye size={14} /> View
                             </button>
                           </div>
@@ -436,34 +389,25 @@ export default function UserManagement() {
         {/* ── Driver Detail Side Panel ─────────────────────────────────────── */}
         {selectedDriver && (
           <div style={{
-            width: '340px', flexShrink: 0,
-            background: '#fff', borderRadius: '16px',
-            border: '1px solid #e5e7eb',
-            boxShadow: '0 4px 24px rgba(0,0,0,0.08)',
-            overflow: 'hidden',
+            width: '340px', flexShrink: 0, background: '#fff',
+            borderRadius: '16px', border: '1px solid #e5e7eb',
+            boxShadow: '0 4px 24px rgba(0,0,0,0.08)', overflow: 'hidden',
           }}>
-
-            {/* Panel header */}
+            {/* Header */}
             <div style={{
               background: selectedDriver.is_active
                 ? 'linear-gradient(135deg, #0a2342, #1565c0)'
                 : 'linear-gradient(135deg, #78350f, #d97706)',
-              padding: '20px',
-              color: '#fff',
+              padding: '20px', color: '#fff',
             }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                 <div>
-                  <div style={{ fontSize: '11px', fontWeight: 700, letterSpacing: '1px',
-                    opacity: 0.8, marginBottom: '6px' }}>
+                  <div style={{ fontSize: '11px', fontWeight: 700, letterSpacing: '1px', opacity: 0.8, marginBottom: '6px' }}>
                     {selectedDriver.role === 'driver' && !selectedDriver.is_active
                       ? '⏳ PENDING APPROVAL' : selectedDriver.role === 'driver' ? '👤 DRIVER PROFILE' : '👤 USER PROFILE'}
                   </div>
-                  <div style={{ fontSize: '18px', fontWeight: 800 }}>
-                    {selectedDriver.full_name}
-                  </div>
-                  <div style={{ fontSize: '12px', opacity: 0.8, marginTop: '4px' }}>
-                    {selectedDriver.email}
-                  </div>
+                  <div style={{ fontSize: '18px', fontWeight: 800 }}>{selectedDriver.full_name}</div>
+                  <div style={{ fontSize: '12px', opacity: 0.8, marginTop: '4px' }}>{selectedDriver.email}</div>
                 </div>
                 <button onClick={closePanel} style={{
                   background: 'rgba(255,255,255,0.2)', border: 'none',
@@ -474,13 +418,13 @@ export default function UserManagement() {
               </div>
             </div>
 
-            {/* Driver details */}
+            {/* Details */}
             <div style={{ padding: '16px', borderBottom: '1px solid #f3f4f6' }}>
               {[
-                { icon: <Mail size={14} />,     label: 'Email',   value: selectedDriver.email },
-                { icon: <Phone size={14} />,    label: 'Phone',   value: selectedDriver.phone || '—' },
-                { icon: <Calendar size={14} />, label: 'Joined',  value: new Date(selectedDriver.created_at).toLocaleDateString('en-LK') },
-                { icon: <Shield size={14} />,   label: 'Role',    value: selectedDriver.role },
+                { icon: <Mail size={14} />,     label: 'Email',  value: selectedDriver.email },
+                { icon: <Phone size={14} />,    label: 'Phone',  value: selectedDriver.phone || '—' },
+                { icon: <Calendar size={14} />, label: 'Joined', value: new Date(selectedDriver.created_at).toLocaleDateString('en-LK') },
+                { icon: <Shield size={14} />,   label: 'Role',   value: selectedDriver.role },
               ].map(({ icon, label, value }) => (
                 <div key={label} style={{
                   display: 'flex', alignItems: 'center', gap: '10px',
@@ -493,104 +437,111 @@ export default function UserManagement() {
               ))}
             </div>
 
-            {/* License image */}
+            {/* ── Experience Areas ─────────────────────────────────────────── */}
             {selectedDriver.role === 'driver' && (
-            <div style={{ padding: '16px', borderBottom: '1px solid #f3f4f6' }}>
-              <div style={{ fontSize: '11px', fontWeight: 700, color: '#6b7280',
-                letterSpacing: '0.8px', marginBottom: '10px', display: 'flex',
-                alignItems: 'center', gap: '6px' }}>
-                <FileImage size={14} /> DRIVER'S LICENSE
+              <div style={{ padding: '16px', borderBottom: '1px solid #f3f4f6' }}>
+                <div style={{
+                  fontSize: '11px', fontWeight: 700, color: '#6b7280',
+                  letterSpacing: '0.8px', marginBottom: '10px',
+                  display: 'flex', alignItems: 'center', gap: '6px',
+                }}>
+                  <MapPin size={14} /> ROUTE EXPERIENCE AREAS
+                </div>
+                {selectedDriver.experience_areas && selectedDriver.experience_areas.length > 0 ? (
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                    {selectedDriver.experience_areas.map((area: string) => (
+                      <span key={area} style={{
+                        background: '#eff6ff', color: '#1d4ed8',
+                        border: '1px solid #bfdbfe',
+                        padding: '3px 10px', borderRadius: '12px',
+                        fontSize: '12px', fontWeight: 600,
+                      }}>
+                        📍 {area}
+                      </span>
+                    ))}
+                  </div>
+                ) : (
+                  <div style={{
+                    background: '#f9fafb', borderRadius: '8px',
+                    padding: '10px 14px', fontSize: '13px', color: '#9ca3af',
+                  }}>
+                    No experience areas specified
+                  </div>
+                )}
               </div>
-
-              {!selectedDriver.license_url ? (
-                <div style={{
-                  background: '#fef2f2', border: '1px solid #fecaca',
-                  borderRadius: '10px', padding: '20px', textAlign: 'center',
-                }}>
-                  <FileImage size={24} style={{ color: '#f87171', margin: '0 auto 8px' }} />
-                  <div style={{ fontSize: '13px', color: '#dc2626', fontWeight: 600 }}>
-                    No license uploaded
-                  </div>
-                  <div style={{ fontSize: '11px', color: '#f87171', marginTop: '4px' }}>
-                    Driver did not upload a license
-                  </div>
-                </div>
-              ) : licenseLoading ? (
-                <div style={{
-                  background: '#f9fafb', borderRadius: '10px', padding: '40px',
-                  textAlign: 'center', color: '#6b7280', fontSize: '13px',
-                }}>
-                  Loading license image...
-                </div>
-              ) : licenseUrl ? (
-                <div>
-                  <img
-                    src={licenseUrl}
-                    alt="Driver License"
-                    style={{
-                      width: '100%', borderRadius: '10px',
-                      border: '1px solid #e5e7eb',
-                      objectFit: 'cover', maxHeight: '200px',
-                    }}
-                  />
-                  <a href={licenseUrl} target="_blank" rel="noopener noreferrer"
-                    style={{
-                      display: 'block', textAlign: 'center', marginTop: '8px',
-                      fontSize: '12px', color: '#1a6cf0', textDecoration: 'none',
-                      fontWeight: 600,
-                    }}>
-                    Open full image ↗
-                  </a>
-                </div>
-              ) : (
-                <div style={{
-                  background: '#fef2f2', borderRadius: '10px', padding: '20px',
-                  textAlign: 'center', fontSize: '13px', color: '#dc2626',
-                }}>
-                  Failed to load license image
-                </div>
-              )}
-            </div>
             )}
 
-            {/* Approve / Reject actions */}
+            {/* License */}
+            {selectedDriver.role === 'driver' && (
+              <div style={{ padding: '16px', borderBottom: '1px solid #f3f4f6' }}>
+                <div style={{
+                  fontSize: '11px', fontWeight: 700, color: '#6b7280',
+                  letterSpacing: '0.8px', marginBottom: '10px',
+                  display: 'flex', alignItems: 'center', gap: '6px',
+                }}>
+                  <FileImage size={14} /> DRIVER'S LICENSE
+                </div>
+                {!selectedDriver.license_url ? (
+                  <div style={{ background: '#fef2f2', border: '1px solid #fecaca',
+                    borderRadius: '10px', padding: '20px', textAlign: 'center' }}>
+                    <FileImage size={24} style={{ color: '#f87171', margin: '0 auto 8px' }} />
+                    <div style={{ fontSize: '13px', color: '#dc2626', fontWeight: 600 }}>No license uploaded</div>
+                  </div>
+                ) : licenseLoading ? (
+                  <div style={{ background: '#f9fafb', borderRadius: '10px', padding: '40px',
+                    textAlign: 'center', color: '#6b7280', fontSize: '13px' }}>
+                    Loading license image...
+                  </div>
+                ) : licenseUrl ? (
+                  <div>
+                    <img src={licenseUrl} alt="Driver License" style={{
+                      width: '100%', borderRadius: '10px', border: '1px solid #e5e7eb',
+                      objectFit: 'cover', maxHeight: '200px',
+                    }} />
+                    <a href={licenseUrl} target="_blank" rel="noopener noreferrer"
+                      style={{ display: 'block', textAlign: 'center', marginTop: '8px',
+                        fontSize: '12px', color: '#1a6cf0', textDecoration: 'none', fontWeight: 600 }}>
+                      Open full image ↗
+                    </a>
+                  </div>
+                ) : (
+                  <div style={{ background: '#fef2f2', borderRadius: '10px', padding: '20px',
+                    textAlign: 'center', fontSize: '13px', color: '#dc2626' }}>
+                    Failed to load license image
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Approve / Reject */}
             {selectedDriver.role === 'driver' && !selectedDriver.is_active && (
               <div style={{ padding: '16px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
                 <div style={{ fontSize: '11px', fontWeight: 700, color: '#6b7280',
-                  letterSpacing: '0.8px', marginBottom: '2px' }}>
-                  APPROVAL DECISION
-                </div>
+                  letterSpacing: '0.8px', marginBottom: '2px' }}>APPROVAL DECISION</div>
                 <button onClick={() => approveDriver(selectedDriver.id)}
-                  style={{
-                    width: '100%', padding: '12px', background: '#16a34a',
-                    color: '#fff', border: 'none', borderRadius: '10px',
-                    fontSize: '14px', fontWeight: 700, cursor: 'pointer',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
-                  }}>
+                  style={{ width: '100%', padding: '12px', background: '#16a34a', color: '#fff',
+                    border: 'none', borderRadius: '10px', fontSize: '14px', fontWeight: 700,
+                    cursor: 'pointer', display: 'flex', alignItems: 'center',
+                    justifyContent: 'center', gap: '8px' }}>
                   <Check size={16} /> Approve Driver
                 </button>
                 <button onClick={() => rejectDriver(selectedDriver.id)}
-                  style={{
-                    width: '100%', padding: '12px', background: '#fff',
-                    color: '#dc2626', border: '2px solid #dc2626', borderRadius: '10px',
-                    fontSize: '14px', fontWeight: 700, cursor: 'pointer',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
-                  }}>
+                  style={{ width: '100%', padding: '12px', background: '#fff', color: '#dc2626',
+                    border: '2px solid #dc2626', borderRadius: '10px', fontSize: '14px',
+                    fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center',
+                    justifyContent: 'center', gap: '8px' }}>
                   <X size={16} /> Reject Application
                 </button>
               </div>
             )}
 
-            {/* Active driver actions */}
             {selectedDriver.is_active && (
               <div style={{ padding: '16px' }}>
                 <button onClick={() => deactivateUser(selectedDriver.id)}
-                  style={{
-                    width: '100%', padding: '12px', background: '#fff',
-                    color: '#6b7280', border: '1px solid #e5e7eb', borderRadius: '10px',
-                    fontSize: '14px', fontWeight: 600, cursor: 'pointer',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
-                  }}>
+                  style={{ width: '100%', padding: '12px', background: '#fff', color: '#6b7280',
+                    border: '1px solid #e5e7eb', borderRadius: '10px', fontSize: '14px',
+                    fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center',
+                    justifyContent: 'center', gap: '8px' }}>
                   <Power size={16} /> Deactivate Driver
                 </button>
               </div>
@@ -601,6 +552,3 @@ export default function UserManagement() {
     </div>
   );
 }
-
-
-

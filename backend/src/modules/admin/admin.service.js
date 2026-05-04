@@ -11,7 +11,7 @@ export async function listUsers(filters) {
   let query = supabase
     .from('users')
     .select(
-      'id, email, full_name, username, phone, membership_type, role, is_active, license_url, created_at, updated_at',
+      'id, email, full_name, username, phone, membership_type, role, is_active, license_url, experience_areas, created_at, updated_at',
       { count: 'exact' }
     )
     .order('created_at', { ascending: false })

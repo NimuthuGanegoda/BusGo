@@ -48,6 +48,8 @@ class _LiveMapScreenState extends State<LiveMapScreen>
       _initLocation();
       _loadBuses();
       _loadBusStops();
+      // ── FIX: subscribe to real-time bus location broadcasts ──────────────
+      context.read<BusProvider>().subscribeToLiveLocations();
       _pollTimer = Timer.periodic(
           const Duration(seconds: 15), (_) => _loadBuses(silent: true));
     });
@@ -69,6 +71,7 @@ class _LiveMapScreenState extends State<LiveMapScreen>
           _gotGps = true;
         });
         _moveMapToUser();
+        _loadBusStops();
       }
 
       try {
@@ -81,6 +84,7 @@ class _LiveMapScreenState extends State<LiveMapScreen>
           _gotGps = true;
         });
         _moveMapToUser();
+        _loadBusStops();
       } catch (e) {
         if (!_gotGps) {
           try {
@@ -93,6 +97,7 @@ class _LiveMapScreenState extends State<LiveMapScreen>
               _gotGps = true;
             });
             _moveMapToUser();
+            _loadBusStops();
           } catch (_) {}
         }
       }
@@ -105,14 +110,24 @@ class _LiveMapScreenState extends State<LiveMapScreen>
   Future<void> _loadBusStops() async {
     if (_stopsLoaded) return;
     try {
+      // Only load stops within bounding box of ~5km around user
+      final lat = _userLocation.latitude;
+      final lng = _userLocation.longitude;
+      const delta = 0.045; // ~5km
+
       final result = await Supabase.instance.client
           .from('bus_stops')
           .select('id, stop_name, latitude, longitude')
-          .limit(500);
+          .gte('latitude',  lat - delta)
+          .lte('latitude',  lat + delta)
+          .gte('longitude', lng - delta)
+          .lte('longitude', lng + delta)
+          .limit(100);
+
       if (mounted) {
         setState(() {
-          _busStops   = List<Map<String, dynamic>>.from(result);
-          _stopsLoaded = true;
+          _busStops    = List<Map<String, dynamic>>.from(result);
+          _stopsLoaded = false; // allow reload when user moves far away
         });
       }
     } catch (e) {
@@ -296,12 +311,11 @@ class _LiveMapScreenState extends State<LiveMapScreen>
                   final pos       = LatLng(bus.currentLat!, bus.currentLng!);
                   final isSelected = selectedBus?.busId == bus.busId;
                   final color     = _crowdColor(bus.crowdLevel);
-                  final rating    = bus.driverRating; // may be null
+                  final rating    = bus.driverRating;
 
-                  // Height increases to make room for rating badge above icon
                   final markerH = rating != null && rating > 0
-                      ? (isSelected ? 74.0 : 66.0)
-                      : (isSelected ? 56.0 : 48.0);
+                      ? (isSelected ? 82.0 : 74.0)
+                      : (isSelected ? 60.0 : 52.0);
 
                   return Marker(
                     point: pos,
@@ -320,13 +334,10 @@ class _LiveMapScreenState extends State<LiveMapScreen>
                       child: Column(
                         mainAxisAlignment: MainAxisAlignment.end,
                         children: [
-                          // ── Rating badge above bus icon ──────────────────
                           if (rating != null && rating > 0)
                             _ratingBadge(rating),
                           if (rating != null && rating > 0)
                             const SizedBox(height: 2),
-
-                          // ── Bus icon ─────────────────────────────────────
                           AnimatedContainer(
                             duration: const Duration(milliseconds: 300),
                             width:  isSelected ? 56 : 48,

@@ -1,4 +1,3 @@
-// driver.controller.js
 import * as driverService from './driver.service.js';
 import { sendSuccess, sendError } from '../../utils/response.utils.js';
 
@@ -63,22 +62,21 @@ export async function getCurrentTrip(req, res, next) {
   } catch (err) { next(err); }
 }
 
-export async function uploadLicense(req, res, next) {
+// ── NEW: Trip history for driver ──────────────────────────────────────────
+export async function getTripHistory(req, res, next) {
   try {
-    if (!req.file) {
-      return sendError(res, 'License image is required', 400, 'NO_FILE');
-    }
-    const result = await driverService.uploadDriverLicense(
-      req.user.id,
-      req.file.buffer,
-      req.file.mimetype,
-    );
-    return sendSuccess(res, result, 'License uploaded successfully');
+    const page     = parseInt(req.query.page     ?? '1',  10);
+    const pageSize = parseInt(req.query.page_size ?? '50', 10);
+    const result   = await driverService.getDriverTripHistory(req.user.id, page, pageSize);
+    return sendSuccess(res, result, `${result.total} trips found`);
   } catch (err) { next(err); }
 }
 
-
-
-
-
-
+export async function uploadLicense(req, res, next) {
+  try {
+    if (!req.file) return sendError(res, 'License image is required', 400, 'NO_FILE');
+    const result = await driverService.uploadDriverLicense(
+      req.user.id, req.file.buffer, req.file.mimetype);
+    return sendSuccess(res, result, 'License uploaded successfully');
+  } catch (err) { next(err); }
+}

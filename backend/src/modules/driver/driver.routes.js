@@ -14,6 +14,7 @@ router.get('/me',           controller.getProfile);
 router.get('/bus',          controller.getMyBus);
 router.get('/rating',       controller.getMyRating);
 router.get('/trip/current', controller.getCurrentTrip);
+router.get('/trip/history', controller.getTripHistory);   // ← NEW
 
 router.patch('/location',
   validate(z.object({
@@ -24,23 +25,14 @@ router.patch('/location',
   })),
   controller.updateLocation
 );
-
 router.patch('/crowd',
   validate(z.object({ crowd_level: z.enum(['low', 'medium', 'high', 'full']) })),
   controller.updateCrowd
 );
-
 router.patch('/status',
   validate(z.object({ status: z.enum(['active', 'inactive']) })),
   controller.updateStatus
 );
-
 router.post('/upload-license', upload.single('license'), controller.uploadLicense);
 
 export default router;
-
-
-
-
-
-

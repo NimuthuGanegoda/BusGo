@@ -4,6 +4,7 @@ import { sendSuccess, sendError } from '../../utils/response.utils.js';
 
 export async function register(req, res, next) {
   try {
+    console.log('[Register] body:', JSON.stringify(req.body));
     const result = await authService.registerUser(req.body, req);
     return sendSuccess(res, result, 'Registration successful. Please check your email for a verification PIN.', 201);
   } catch (err) {
@@ -136,6 +137,54 @@ export async function uploadLicense(req, res, next) {
     if (uploadError) throw uploadError;
     await supabase.from('users').update({ license_url: filePath }).eq('id', user.id);
     return sendSuccess(res, { license_url: filePath }, 'License uploaded successfully');
+  } catch (err) {
+    next(err);
+  }
+}
+
+// ADD THIS FUNCTION to the bottom of auth.controller.js
+// (before the closing of the file, after the uploadLicense function)
+
+export async function changePassword(req, res, next) {
+  try {
+    const { current_password, new_password, confirm_password } = req.body;
+    const userId = req.user.id;
+
+    if (new_password !== confirm_password) {
+      return sendError(res, 'Passwords do not match', 400, 'PASSWORDS_MISMATCH');
+    }
+
+    // Get current password hash
+    const { data: user, error } = await supabase
+      .from('users')
+      .select('id, password_hash')
+      .eq('id', userId)
+      .single();
+
+    if (error || !user) {
+      return sendError(res, 'User not found', 404, 'USER_NOT_FOUND');
+    }
+
+    // Verify current password
+    const bcrypt = await import('bcrypt');
+    const isMatch = await bcrypt.compare(current_password, user.password_hash);
+    if (!isMatch) {
+      return sendError(res, 'Current password is incorrect', 401, 'INVALID_CURRENT_PASSWORD');
+    }
+
+    // Hash new password
+    const rounds = parseInt(process.env.BCRYPT_ROUNDS || '12');
+    const newHash = await bcrypt.hash(new_password, rounds);
+
+    // Update
+    const { error: updateError } = await supabase
+      .from('users')
+      .update({ password_hash: newHash })
+      .eq('id', userId);
+
+    if (updateError) throw updateError;
+
+    return sendSuccess(res, {}, 'Password changed successfully');
   } catch (err) {
     next(err);
   }

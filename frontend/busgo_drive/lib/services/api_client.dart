@@ -5,7 +5,7 @@ import 'package:pretty_dio_logger/pretty_dio_logger.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
-String get _kBaseUrlDev => dotenv.env['API_URL'] ?? 'https://busgo-production.up.railway.app/api';
+String get _kBaseUrlDev => dotenv.env['API_URL'] ?? 'http://192.168.1.2:5000/api';
 const String _kBaseUrlProd = 'https://your-api-domain.com/api';
 String get _kBaseUrl => kDebugMode ? _kBaseUrlDev : _kBaseUrlProd;
 
@@ -161,6 +161,7 @@ class DriveApiClient {
     return _unwrap(r);
   }
 }
+
 
 
 

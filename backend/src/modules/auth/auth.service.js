@@ -68,7 +68,7 @@ export async function registerUser(dto, req = null) {
       username:        dto.username      || null,
       phone:           dto.phone         || null,
       date_of_birth:   dto.date_of_birth || null,
-      membership_type: dto.membership_type || 'standard',
+      experience_areas: dto.experience_areas || [],
       role,
       is_active,
       // Store verification PIN in the same columns used for password reset

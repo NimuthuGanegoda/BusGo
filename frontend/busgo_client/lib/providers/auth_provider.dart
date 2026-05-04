@@ -299,7 +299,33 @@ class AuthProvider extends ChangeNotifier {
   }
 
   Future<String?> getAccessToken() => _tokenService.getAccessToken();
+  
+  Future<bool> changePassword({
+  required String currentPassword,
+  required String newPassword,
+}) async {
+  _isLoading = true;
+  _errorMessage = null;
+  notifyListeners();
+  try {
+    final ok = await _authService.changePassword(
+      currentPassword: currentPassword,
+      newPassword:     newPassword,
+    );
+    _isLoading = false;
+    notifyListeners();
+    return ok;
+  } catch (e) {
+    _isLoading    = false;
+    _errorMessage = 'Failed to change password';
+    notifyListeners();
+    return false;
+  }
 }
+
+  
+}
+
 
 
 

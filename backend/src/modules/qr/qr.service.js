@@ -3,8 +3,6 @@ import { supabase } from '../../config/supabase.js';
 import { CONSTANTS } from '../../config/constants.js';
 import { logSecurityEvent, SECURITY_EVENTS } from '../../services/security-audit.service.js';
 
-// ── force=false → only regenerate if token is expired (normal screen load)
-// ── force=true  → always regenerate (refresh button pressed)
 export async function getMyQrCard(userId, force = false) {
   const { data: user, error } = await supabase
     .from('users')
@@ -33,9 +31,13 @@ export async function getMyQrCard(userId, force = false) {
   };
 }
 
-// ── FR-34: Scan-In with alighting stop + express mode auto-toggle ─────────────
-// Now also handles payment QR codes (trip_tickets.qr_data)
-export async function scanIn(scannedToken, driverUserId, context = {}) {
+// ── req is passed in so IP address and email appear in audit logs (UFR_51) ──
+export async function scanIn(scannedToken, driverUserId, context = {}, req = null) {
+
+  // Fetch driver email for audit log
+  const { data: driverUser } = await supabase
+    .from('users').select('email').eq('id', driverUserId).maybeSingle();
+  const driverEmail = driverUser?.email ?? null;
 
   // ── STEP 1: Check if this is a PAYMENT QR (trip_tickets.qr_data) ─────────
   const { data: ticket } = await supabase
@@ -45,7 +47,6 @@ export async function scanIn(scannedToken, driverUserId, context = {}) {
     .maybeSingle();
 
   if (ticket) {
-    // Payment QR found — validate it
     if (ticket.payment_status !== 'paid') {
       const e = new Error('Ticket not paid yet'); e.statusCode = 402; e.code = 'TICKET_NOT_PAID'; throw e;
     }
@@ -53,10 +54,25 @@ export async function scanIn(scannedToken, driverUserId, context = {}) {
       const e = new Error('Ticket expired'); e.statusCode = 410; e.code = 'TICKET_EXPIRED'; throw e;
     }
     if (ticket.verified_at) {
+      // UFR_51: Log repeated scan of already-used payment ticket
+      await logSecurityEvent({
+        eventType: SECURITY_EVENTS.REPEATED_QR_SCAN,
+        userId:    driverUserId,
+        email:     driverEmail,
+        req,
+        details: {
+          qr_type:      'payment',
+          ticket_id:    ticket.id,
+          passenger_id: ticket.user_id,
+          verified_at:  ticket.verified_at,
+          scan_count:   'repeated',
+          timestamp:    new Date().toISOString(),
+        },
+        severity: 'warning',
+      });
       const e = new Error('Ticket already used'); e.statusCode = 409; e.code = 'TICKET_ALREADY_USED'; throw e;
     }
 
-    // Get passenger info
     const { data: passenger } = await supabase
       .from('users')
       .select('id, full_name, username, membership_type, is_active')
@@ -66,15 +82,30 @@ export async function scanIn(scannedToken, driverUserId, context = {}) {
       const e = new Error('Passenger account inactive'); e.statusCode = 403; e.code = 'ACCOUNT_INACTIVE'; throw e;
     }
 
-    // Check no ongoing trip already
     const { data: ongoing } = await supabase
       .from('trips').select('id').eq('user_id', passenger.id).eq('status', 'ongoing').maybeSingle();
     if (ongoing) {
+      // UFR_51: Log repeated scan — passenger already on bus (payment QR)
+      await logSecurityEvent({
+        eventType: SECURITY_EVENTS.REPEATED_QR_SCAN,
+        userId:    driverUserId,
+        email:     driverEmail,
+        req,
+        details: {
+          qr_type:      'payment',
+          ticket_id:    ticket.id,
+          passenger_id: passenger.id,
+          passenger:    passenger.full_name,
+          ongoing_trip: ongoing.id,
+          scan_count:   'repeated',
+          timestamp:    new Date().toISOString(),
+        },
+        severity: 'warning',
+      });
       const e = new Error('Passenger already has an ongoing trip');
       e.statusCode = 409; e.code = 'TRIP_ALREADY_ONGOING'; throw e;
     }
 
-    // Resolve bus_id — same logic as normal scan
     let busId = context.bus_id, routeId = context.route_id || ticket.route_id;
     if (!busId) {
       const { data: bus } = await supabase
@@ -85,13 +116,11 @@ export async function scanIn(scannedToken, driverUserId, context = {}) {
       const e = new Error('Cannot determine bus'); e.statusCode = 422; e.code = 'BUS_NOT_RESOLVED'; throw e;
     }
 
-    // Mark ticket as verified
     await supabase
       .from('trip_tickets')
       .update({ verified_at: new Date().toISOString() })
       .eq('id', ticket.id);
 
-    // Create trip record — bus_id is correctly set here
     const { data: busData } = await supabase
       .from('buses')
       .select('id, bus_number, capacity, express_mode, crowd_level')
@@ -111,12 +140,12 @@ export async function scanIn(scannedToken, driverUserId, context = {}) {
       .from('trips')
       .insert({
         user_id:           passenger.id,
-        bus_id:            busId,                             // ← bus_id correctly set
+        bus_id:            busId,
         route_id:          routeId,
         boarding_stop_id:  ticket.boarding_stop_id || null,
         alighting_stop_id: ticket.alighting_stop_id || context.alighting_stop_id || null,
         status:            'ongoing',
-        fare_lkr:          ticket.amount,                    // ← fare from ticket
+        fare_lkr:          ticket.amount,
       })
       .select('id, boarded_at').single();
     if (tErr) throw tErr;
@@ -174,6 +203,22 @@ export async function scanIn(scannedToken, driverUserId, context = {}) {
   const { data: ongoing } = await supabase
     .from('trips').select('id').eq('user_id', passenger.id).eq('status', 'ongoing').maybeSingle();
   if (ongoing) {
+    // UFR_51: Log repeated scan — passenger already on bus (normal QR)
+    await logSecurityEvent({
+      eventType: SECURITY_EVENTS.REPEATED_QR_SCAN,
+      userId:    driverUserId,
+      email:     driverEmail,
+      req,
+      details: {
+        qr_type:      'normal',
+        passenger_id: passenger.id,
+        passenger:    passenger.full_name,
+        ongoing_trip: ongoing.id,
+        scan_count:   'repeated',
+        timestamp:    new Date().toISOString(),
+      },
+      severity: 'warning',
+    });
     const e = new Error('Passenger already has an ongoing trip');
     e.statusCode = 409; e.code = 'TRIP_ALREADY_ONGOING'; throw e;
   }
@@ -236,6 +281,8 @@ export async function scanIn(scannedToken, driverUserId, context = {}) {
     await logSecurityEvent({
       eventType: SECURITY_EVENTS.CAPACITY_VIOLATION,
       userId:    driverUserId,
+      email:     driverEmail,
+      req,
       details: {
         bus_id:       busId,
         bus_number:   busData?.bus_number,
@@ -274,7 +321,6 @@ export async function scanIn(scannedToken, driverUserId, context = {}) {
   };
 }
 
-// ── FR-34: Scan-Exit – auto-disable express mode when capacity drops ──────────
 export async function scanExit(driverUserId, dto = {}) {
   const { scanned_token, alighting_stop_id, fare_lkr } = dto;
 
@@ -325,9 +371,9 @@ export async function scanExit(driverUserId, dto = {}) {
     .eq('bus_id', trip.bus_id)
     .eq('status', 'ongoing');
 
-  const remaining = remainingCount || 0;
+  const remaining  = remainingCount || 0;
   const fillRatio  = remaining / capacity;
-  const newCrowd   = fillRatio >= 1.0 ? 'full'
+  const newCrowd   = fillRatio >= 1.0  ? 'full'
                    : fillRatio >= 0.75 ? 'high'
                    : fillRatio >= 0.5  ? 'medium'
                    : 'low';

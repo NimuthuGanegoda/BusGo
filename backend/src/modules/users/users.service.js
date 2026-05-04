@@ -11,7 +11,7 @@ import { CONSTANTS } from '../../config/constants.js';
 export async function getMyProfile(userId) {
   const { data, error } = await supabase
     .from('users')
-    .select('id, email, full_name, username, phone, date_of_birth, avatar_url, membership_type, qr_token, qr_expires_at, is_active, created_at, updated_at')
+    .select('id, email, full_name, username, phone, date_of_birth, avatar_url, membership_type, qr_token, qr_expires_at, is_active, is_first_login, role, created_at, updated_at')
     .eq('id', userId)
     .single();
 

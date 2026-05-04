@@ -378,3 +378,4 @@ class _QrCardScreenState extends State<QrCardScreen> {
 
 
 
+

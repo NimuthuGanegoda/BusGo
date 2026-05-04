@@ -1,31 +1,25 @@
 import { supabase } from '../config/supabase.js';
 import { logger } from '../utils/logger.js';
 
-/**
- * Security event types for audit logging
- */
 export const SECURITY_EVENTS = {
-  LOGIN_SUCCESS:          'LOGIN_SUCCESS',
-  LOGIN_FAILED:           'LOGIN_FAILED',
-  ACCOUNT_LOCKED:         'ACCOUNT_LOCKED',
-  ACCOUNT_UNLOCKED:       'ACCOUNT_UNLOCKED',
-  LOGOUT:                 'LOGOUT',
-  TOKEN_REFRESH:          'TOKEN_REFRESH',
-  PASSWORD_RESET:         'PASSWORD_RESET',
-  PASSWORD_CHANGE:        'PASSWORD_CHANGE',
-  REGISTRATION:           'REGISTRATION',
-  ADMIN_ACTION:           'ADMIN_ACTION',
-  ROLE_VIOLATION:         'ROLE_VIOLATION',
-  RATE_LIMITED:           'RATE_LIMITED',
-  // ── FR-34: Driver capacity events ─────────────────────────────────────────
-  CAPACITY_VIOLATION:     'CAPACITY_VIOLATION',     // Driver accepted passenger beyond bus limit
-  DRIVER_CAPACITY_OVERRIDE: 'DRIVER_CAPACITY_OVERRIDE', // Driver manually boarded over limit
+  LOGIN_SUCCESS:              'LOGIN_SUCCESS',
+  LOGIN_FAILED:               'LOGIN_FAILED',
+  ACCOUNT_LOCKED:             'ACCOUNT_LOCKED',
+  ACCOUNT_UNLOCKED:           'ACCOUNT_UNLOCKED',
+  LOGOUT:                     'LOGOUT',
+  TOKEN_REFRESH:              'TOKEN_REFRESH',
+  PASSWORD_RESET:             'PASSWORD_RESET',
+  PASSWORD_CHANGE:            'PASSWORD_CHANGE',
+  REGISTRATION:               'REGISTRATION',
+  ADMIN_ACTION:               'ADMIN_ACTION',
+  ROLE_VIOLATION:             'ROLE_VIOLATION',
+  RATE_LIMITED:               'RATE_LIMITED',
+  CAPACITY_VIOLATION:         'CAPACITY_VIOLATION',
+  DRIVER_CAPACITY_OVERRIDE:   'DRIVER_CAPACITY_OVERRIDE',
+  // ── UFR_51: Repeated QR scan flagging ─────────────────────────────────────
+  REPEATED_QR_SCAN:           'REPEATED_QR_SCAN',
 };
 
-/**
- * Log a security event to the audit table.
- * Non-blocking — failures are logged but don't break the request.
- */
 export async function logSecurityEvent({
   eventType,
   userId = null,
@@ -51,21 +45,14 @@ export async function logSecurityEvent({
     });
 
     const logMsg = `[SECURITY] ${eventType} | ${email || 'unknown'} | ${ipAddress || 'unknown'} | ${JSON.stringify(details)}`;
-    if (severity === 'critical') {
-      logger.error(logMsg);
-    } else if (severity === 'warning') {
-      logger.warn(logMsg);
-    } else {
-      logger.info(logMsg);
-    }
+    if (severity === 'critical')     logger.error(logMsg);
+    else if (severity === 'warning') logger.warn(logMsg);
+    else                             logger.info(logMsg);
   } catch (err) {
     logger.error(`[AUDIT] Failed to log security event: ${err.message}`);
   }
 }
 
-/**
- * Get recent security events (for admin dashboard)
- */
 export async function getRecentEvents({ limit = 50, eventType = null, severity = null } = {}) {
   let query = supabase
     .from('security_audit_log')
@@ -79,9 +66,6 @@ export async function getRecentEvents({ limit = 50, eventType = null, severity =
   return data;
 }
 
-/**
- * Get capacity violation events for admin driver section
- */
 export async function getCapacityViolations({ limit = 100 } = {}) {
   const { data, error } = await supabase
     .from('security_audit_log')
@@ -93,9 +77,6 @@ export async function getCapacityViolations({ limit = 100 } = {}) {
   return data;
 }
 
-/**
- * Get failed login attempts for an IP in the last N minutes
- */
 export async function getFailedAttemptsFromIP(ipAddress, windowMinutes = 15) {
   const since = new Date(Date.now() - windowMinutes * 60 * 1000).toISOString();
   const { count } = await supabase
@@ -106,7 +87,3 @@ export async function getFailedAttemptsFromIP(ipAddress, windowMinutes = 15) {
     .gte('created_at', since);
   return count || 0;
 }
-
-
-
-

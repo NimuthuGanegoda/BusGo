@@ -13,7 +13,7 @@ export function requireAdmin(req, res, next) {
     return sendError(res, 'Authentication required', 401, 'UNAUTHORIZED');
   }
 
-  if (req.user.role !== 'admin') {
+  if (!['admin', 'developer'].includes(req.user.role)) {
     // Log the unauthorized access attempt
     logSecurityEvent({
       eventType: SECURITY_EVENTS.ROLE_VIOLATION,

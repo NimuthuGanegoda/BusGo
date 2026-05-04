@@ -663,3 +663,4 @@ class _PaymentScreenState extends State<PaymentScreen> {
     catch (_) { return AppColors.secondary; }
   }
 }
+

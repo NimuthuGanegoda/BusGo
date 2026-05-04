@@ -479,3 +479,4 @@ class _RadarPainter extends CustomPainter {
       old.sweepAngle != sweepAngle || old.pulseProgress != pulseProgress;
 }
 
+
