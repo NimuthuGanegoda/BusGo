@@ -250,3 +250,4 @@ async function updateRatingAggregate(busId) {
       .eq('id', bus.driver_user_id);
   }
 }
+

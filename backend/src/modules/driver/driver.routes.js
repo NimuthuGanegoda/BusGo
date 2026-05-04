@@ -36,3 +36,4 @@ router.patch('/status',
 router.post('/upload-license', upload.single('license'), controller.uploadLicense);
 
 export default router;
+

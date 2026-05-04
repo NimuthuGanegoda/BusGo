@@ -3,7 +3,7 @@
  * All requests go through here so token management is in one place.
  */
 
-const BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+const BASE_URL = import.meta.env.VITE_API_URL || 'https://busgo-production.up.railway.app/api';
 
 // ── Token Storage ──────────────────────────────────────────────────────────────
 export const TokenStore = {
@@ -236,6 +236,8 @@ export interface PaginatedResponse<T> {
     totalPages: number; hasNext: boolean; hasPrev: boolean;
   };
 }
+
+
 
 
 

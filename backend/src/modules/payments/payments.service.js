@@ -172,7 +172,7 @@ export async function initiatePayment(userId, body) {
       customer_email: user?.email || '',
       customer_phone: user?.phone || '',
       return_url: `${env.WEBXPAY_RETURN_URL || 'busgo://payment-complete'}`,
-      notify_url: `${env.WEBXPAY_NOTIFY_URL || 'http://localhost:5000/api/payments/notify'}`,
+      notify_url: `${env.WEBXPAY_NOTIFY_URL || 'https://busgo-production.up.railway.app/api/payments/notify'}`,
     },
   };
 }
@@ -290,6 +290,7 @@ export async function verifyScanPayment(qrToken, routeId) {
 
   return { payment_status: 'CASH', message: 'No prepaid ticket found' };
 }
+
 
 
 

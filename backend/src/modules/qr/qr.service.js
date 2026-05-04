@@ -404,3 +404,4 @@ export async function scanExit(driverUserId, dto = {}) {
     message: `${passenger.full_name} alighted. Rating prompt sent.`,
   };
 }
+

@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { Plus, Bus, Pencil, MapPin, RotateCcw, X, CheckCircle, RefreshCw } from 'lucide-react';
 import './FleetMgmt.css';
 
-const API   = 'http://localhost:5000/api/admin';
+const API   = 'https://busgo-production.up.railway.app/api/admin';
 const token = () => localStorage.getItem('busgo_access_token') ?? '';
 
 type BusRecord = {
@@ -51,7 +51,7 @@ export default function FleetMgmt() {
       const [busRes, standbyRes, routeRes] = await Promise.all([
         fetch(`${API}/buses?page_size=100`,          { headers: { Authorization: `Bearer ${token()}` } }),
         fetch(`${API}/fleet/standby`,                { headers: { Authorization: `Bearer ${token()}` } }),
-        fetch(`http://localhost:5000/api/routes`,    { headers: { Authorization: `Bearer ${token()}` } }),
+        fetch(`https://busgo-production.up.railway.app/api/routes`,    { headers: { Authorization: `Bearer ${token()}` } }),
       ]);
       const [bj, sj, rj] = await Promise.all([busRes.json(), standbyRes.json(), routeRes.json()]);
       setBuses(Array.isArray(bj.data) ? bj.data : []);
@@ -372,6 +372,8 @@ export default function FleetMgmt() {
     </div>
   );
 }
+
+
 
 
 

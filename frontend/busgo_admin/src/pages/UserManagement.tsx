@@ -6,7 +6,7 @@ import {
 } from 'lucide-react';
 import './UserManagement.css';
 
-const API   = 'http://localhost:5000/api/admin';
+const API   = 'https://busgo-production.up.railway.app/api/admin';
 const token = () => localStorage.getItem('busgo_access_token') ?? '';
 
 type User = {
@@ -155,7 +155,7 @@ export default function UserManagement() {
     }
     setAddLoading(true); setAddError('');
     try {
-      const res  = await fetch(`http://localhost:5000/api/auth/register`, {
+      const res  = await fetch(`https://busgo-production.up.railway.app/api/auth/register`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token()}` },
         body: JSON.stringify({
@@ -552,3 +552,5 @@ export default function UserManagement() {
     </div>
   );
 }
+
+

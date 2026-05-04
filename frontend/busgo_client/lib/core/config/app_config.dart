@@ -24,7 +24,7 @@ class AppConfig {
       dotenv.env['SUPABASE_URL'] ?? '';
   static String get supabaseAnonKey => 
       dotenv.env['SUPABASE_ANON_KEY'] ?? '';
-  static String get apiBaseUrl => dotenv.env['API_URL'] ?? 'http://192.168.1.2:5000/api';
+  static String get apiBaseUrl => dotenv.env['API_URL'] ?? 'https://busgo-production.up.railway.app/api';
 
   // ── Realtime channel for live bus tracking ────────────────────────────────
   static const String busLocationChannel = 'bus-locations';
@@ -37,6 +37,7 @@ class AppConfig {
   // ── Debug logging ─────────────────────────────────────────────────────────
   static bool get enableApiLogs => kDebugMode;
 }
+
 
 
 

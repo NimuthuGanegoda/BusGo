@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { Download, RefreshCw, Shield, FileText } from 'lucide-react';
 import './AuditLogs.css';
 
-const API   = 'http://localhost:5000/api/admin';
+const API   = 'https://busgo-production.up.railway.app/api/admin';
 const token = () => localStorage.getItem('busgo_access_token') ?? '';
 
 const actionStyles: Record<string, { bg: string; color: string; label: string }> = {
@@ -350,3 +350,5 @@ export default function AuditLogs() {
     </div>
   );
 }
+
+

@@ -545,3 +545,4 @@ class _GridPainter extends CustomPainter {
   @override
   bool shouldRepaint(_GridPainter old) => false;
 }
+

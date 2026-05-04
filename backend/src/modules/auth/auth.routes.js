@@ -212,3 +212,4 @@ router.post('/admin/resolve-recovery', authenticate, async (req, res, next) => {
     return sendSuccess(res, {}, 'Recovery approved and temporary password sent via email.');
   } catch (err) { next(err); }
 });
+

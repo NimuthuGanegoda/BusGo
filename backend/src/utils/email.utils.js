@@ -115,3 +115,4 @@ export async function sendAdminTempPassword(email, tempPassword, fullName) {
   };
   await transporter.sendMail(mailOptions);
 }
+

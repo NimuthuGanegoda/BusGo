@@ -424,3 +424,4 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                     fontSize: 15, fontWeight: FontWeight.w600))));
   }
 }
+
