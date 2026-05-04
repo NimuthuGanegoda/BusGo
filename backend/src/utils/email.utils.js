@@ -1,12 +1,19 @@
-import { Resend } from 'resend';
+import nodemailer from 'nodemailer';
 
-const resend = new Resend(process.env.RESEND_API_KEY);
-const FROM = 'BusGo <onboarding@resend.dev>';
+const transporter = nodemailer.createTransport({
+  host: 'smtp.gmail.com',
+  port: 587,
+  secure: false,
+  auth: {
+    user: process.env.EMAIL_USER,
+    pass: process.env.EMAIL_PASS,
+  },
+});
 
 // ── Password reset PIN ────────────────────────────────────────────────────────
 export async function sendPasswordResetPin(email, pin, fullName) {
-  await resend.emails.send({
-    from: FROM,
+  const mailOptions = {
+    from: `"BusGo" <${process.env.EMAIL_USER}>`,
     to: email,
     subject: 'BusGo – Your Password Reset PIN',
     html: `
@@ -28,13 +35,14 @@ export async function sendPasswordResetPin(email, pin, fullName) {
         </div>
       </div>
     `,
-  });
+  };
+  await transporter.sendMail(mailOptions);
 }
 
 // ── Email verification PIN (sent after registration) ─────────────────────────
 export async function sendEmailVerificationPin(email, pin, fullName) {
-  await resend.emails.send({
-    from: FROM,
+  const mailOptions = {
+    from: `"BusGo" <${process.env.EMAIL_USER}>`,
     to: email,
     subject: 'BusGo – Verify Your Email Address',
     html: `
@@ -56,13 +64,14 @@ export async function sendEmailVerificationPin(email, pin, fullName) {
         </div>
       </div>
     `,
-  });
+  };
+  await transporter.sendMail(mailOptions);
 }
 
 // ── Admin temp password (sent by developer after approving recovery request) ──
 export async function sendAdminTempPassword(email, tempPassword, fullName) {
-  await resend.emails.send({
-    from: FROM,
+  const mailOptions = {
+    from: `"BusGo Axis" <${process.env.EMAIL_USER}>`,
     to: email,
     subject: 'BusGo Axis – Temporary Admin Password',
     html: `
@@ -86,7 +95,7 @@ export async function sendAdminTempPassword(email, tempPassword, fullName) {
           </div>
           <div style="background: #fef2f2; border: 1px solid #fca5a5; border-radius: 8px; padding: 12px 16px; margin-top: 16px;">
             <p style="color: #dc2626; font-size: 13px; margin: 0; font-weight: 600;">
-              ⚠ Important Security Instructions:
+              Important Security Instructions:
             </p>
             <ul style="color: #6b7280; font-size: 13px; margin: 8px 0 0; padding-left: 16px;">
               <li>This is a one-time temporary password</li>
@@ -105,5 +114,6 @@ export async function sendAdminTempPassword(email, tempPassword, fullName) {
         </p>
       </div>
     `,
-  });
+  };
+  await transporter.sendMail(mailOptions);
 }
