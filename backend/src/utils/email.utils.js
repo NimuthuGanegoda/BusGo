@@ -1,19 +1,14 @@
-import nodemailer from 'nodemailer';
+import { Resend } from 'resend';
 
-const transporter = nodemailer.createTransport({
-  service: 'gmail',
-  auth: {
-    user: process.env.EMAIL_USER,
-    pass: process.env.EMAIL_PASS,
-  },
-});
+const resend = new Resend(process.env.RESEND_API_KEY);
+const FROM = 'BusGo <onboarding@resend.dev>';
 
-// ── Password reset PIN ─────────────────────────────────────────────────────────
+// ── Password reset PIN ────────────────────────────────────────────────────────
 export async function sendPasswordResetPin(email, pin, fullName) {
-  const mailOptions = {
-    from:    `"BusGo" <${process.env.EMAIL_USER}>`,
-    to:      email,
-    subject: 'BusGo — Your Password Reset PIN',
+  await resend.emails.send({
+    from: FROM,
+    to: email,
+    subject: 'BusGo – Your Password Reset PIN',
     html: `
       <div style="font-family: Arial, sans-serif; max-width: 480px; margin: 0 auto; padding: 32px; background: #f8fafc; border-radius: 12px;">
         <div style="text-align: center; margin-bottom: 24px;">
@@ -33,16 +28,15 @@ export async function sendPasswordResetPin(email, pin, fullName) {
         </div>
       </div>
     `,
-  };
-  await transporter.sendMail(mailOptions);
+  });
 }
 
-// ── Email verification PIN (sent after registration) ──────────────────────────
+// ── Email verification PIN (sent after registration) ─────────────────────────
 export async function sendEmailVerificationPin(email, pin, fullName) {
-  const mailOptions = {
-    from:    `"BusGo" <${process.env.EMAIL_USER}>`,
-    to:      email,
-    subject: 'BusGo — Verify Your Email Address',
+  await resend.emails.send({
+    from: FROM,
+    to: email,
+    subject: 'BusGo – Verify Your Email Address',
     html: `
       <div style="font-family: Arial, sans-serif; max-width: 480px; margin: 0 auto; padding: 32px; background: #f8fafc; border-radius: 12px;">
         <div style="text-align: center; margin-bottom: 24px;">
@@ -62,21 +56,20 @@ export async function sendEmailVerificationPin(email, pin, fullName) {
         </div>
       </div>
     `,
-  };
-  await transporter.sendMail(mailOptions);
+  });
 }
 
 // ── Admin temp password (sent by developer after approving recovery request) ──
 export async function sendAdminTempPassword(email, tempPassword, fullName) {
-  const mailOptions = {
-    from:    `"BusGo Axis" <${process.env.EMAIL_USER}>`,
-    to:      email,
-    subject: 'BusGo Axis — Temporary Admin Password',
+  await resend.emails.send({
+    from: FROM,
+    to: email,
+    subject: 'BusGo Axis – Temporary Admin Password',
     html: `
       <div style="font-family: Arial, sans-serif; max-width: 480px; margin: 0 auto; padding: 32px; background: #f8fafc; border-radius: 12px;">
         <div style="text-align: center; margin-bottom: 24px;">
           <h1 style="color: #0a2342; font-size: 28px; letter-spacing: 4px; margin: 0;">BUSGO AXIS</h1>
-          <p style="color: #6b7280; font-size: 13px; margin-top: 4px;">Admin Panel — Account Recovery</p>
+          <p style="color: #6b7280; font-size: 13px; margin-top: 4px;">Admin Panel – Account Recovery</p>
         </div>
         <div style="background: white; border-radius: 10px; padding: 24px; border-top: 3px solid #d97706;">
           <p style="color: #1f2937; font-size: 15px;">Hi ${fullName},</p>
@@ -112,7 +105,5 @@ export async function sendAdminTempPassword(email, tempPassword, fullName) {
         </p>
       </div>
     `,
-  };
-  await transporter.sendMail(mailOptions);
+  });
 }
-
