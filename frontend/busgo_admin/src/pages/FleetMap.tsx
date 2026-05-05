@@ -243,7 +243,7 @@ export default function FleetMap() {
                     <Popup>
                       <strong>Route {route.route_number}</strong><br />
                       {route.route_name}<br />
-                      {route.origin} -> {route.destination}
+                      {route.origin} to {route.destination}
                     </Popup>
                   </Polyline>
                 );
