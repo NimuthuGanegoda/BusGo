@@ -231,32 +231,25 @@ class _ActiveScannerScreenState extends State<ActiveScannerScreen>
         return;
       }
 
-      // 410 = QR expired (UFR_48: show remaining attempts or lockout)
+      // 410 = QR expired (UFR_48: clear history so next scan goes to scan-IN)
       final is410 = msg.contains('410') || msg.contains('QR_EXPIRED');
       if (is410) {
-        if (mounted) {
-          // Check if backend sent a specific UFR_48 message with attempts info
-          final isAttemptMsg = msg.contains('attempt') || msg.contains('remaining');
-          final displayMsg   = isAttemptMsg
-              ? msg.replaceFirst('Exception: ', '')
-                   .replaceFirst('DioException: ', '')
-              : 'QR expired.\nAsk passenger to refresh their QR card.';
+        // CRITICAL: clear token history so next scan attempts scan-IN (not scan-EXIT)
+        // This ensures UFR_48 attempt counter is hit on repeated scans
+        _tokenScanHistory.remove(scannedToken);
 
+        if (mounted) {
+          final isAttemptMsg = msg.contains('attempt') || msg.contains('remaining');
+          final displayMsg   = isAttemptMsg ? msg : 'QR expired. Ask passenger to refresh their QR card.';
           ScaffoldMessenger.of(context).showSnackBar(SnackBar(
             content: Row(children: [
-              Icon(
-                isAttemptMsg
-                    ? Icons.warning_amber_rounded
-                    : Icons.refresh_rounded,
-                color: Colors.white, size: 18),
+              Icon(isAttemptMsg ? Icons.warning_amber_rounded : Icons.refresh_rounded,
+                  color: Colors.white, size: 18),
               const SizedBox(width: 10),
               Expanded(child: Text(displayMsg,
-                  style: const TextStyle(
-                      color: Colors.white, fontSize: 13, height: 1.4))),
+                  style: const TextStyle(color: Colors.white, fontSize: 13, height: 1.4))),
             ]),
-            backgroundColor: isAttemptMsg
-                ? const Color(0xFFD97706)   // orange for attempt warning
-                : const Color(0xFF1A6FA8),  // blue for generic expired
+            backgroundColor: isAttemptMsg ? const Color(0xFFD97706) : const Color(0xFF1A6FA8),
             behavior: SnackBarBehavior.floating,
             margin:   const EdgeInsets.fromLTRB(16, 0, 16, 24),
             duration: const Duration(seconds: 5),
@@ -567,4 +560,3 @@ class _GridPainter extends CustomPainter {
   @override
   bool shouldRepaint(_GridPainter old) => false;
 }
-
