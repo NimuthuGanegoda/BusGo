@@ -18,6 +18,61 @@ const List<String> kSriLankaAreas = [
   'Monaragala', 'Vavuniya', 'Mannar', 'Mullaitivu', 'Kilinochchi',
 ];
 
+// UFR_36: Common weak passwords list
+const List<String> _kCommonPasswords = [
+  'password', 'password1', 'password123', '123456', '1234567', '12345678',
+  '123456789', '1234567890', 'qwerty', 'qwerty123', 'abc123', 'letmein',
+  'welcome', 'admin', 'admin123', 'monkey', 'dragon', 'master', 'hello',
+  'sunshine', 'princess', 'football', 'iloveyou', 'shadow', 'superman',
+  'michael', 'jessica', 'baseball', 'batman', 'trustno1', 'passw0rd',
+  'busgo', 'driver', 'driver123', '000000', '111111', '666666', '888888',
+];
+
+// UFR_36: Password strength calculator (0=empty,1=weak,2=medium,3=strong)
+int _passwordStrength(String pw) {
+  if (pw.isEmpty) return 0;
+  if (_kCommonPasswords.contains(pw.toLowerCase())) return 1;
+  int score = 0;
+  if (pw.length >= 8)  score++;
+  if (pw.length >= 12) score++;
+  if (RegExp(r'[A-Z]').hasMatch(pw)) score++;
+  if (RegExp(r'[0-9]').hasMatch(pw)) score++;
+  if (RegExp(r'[!@#\$%^&*(),.?":{}|<>_\-]').hasMatch(pw)) score++;
+  if (score <= 2) return 1;
+  if (score <= 3) return 2;
+  return 3;
+}
+
+// UFR_32: Sri Lanka NIC validator — returns null if valid, error string if not
+String? _validateSLNic(String? value) {
+  if (value == null || value.trim().isEmpty) return 'NIC number is required';
+  final nic = value.trim().toUpperCase();
+  final oldFmt = RegExp(r'^\d{9}[VX]$');
+  final newFmt = RegExp(r'^\d{12}$');
+  if (!oldFmt.hasMatch(nic) && !newFmt.hasMatch(nic)) {
+    return 'Invalid NIC (e.g. 123456789V or 200012345678)';
+  }
+  int year;
+  int dayOfYear;
+  if (oldFmt.hasMatch(nic)) {
+    year      = 1900 + int.parse(nic.substring(0, 2));
+    dayOfYear = int.parse(nic.substring(2, 5));
+  } else {
+    year      = int.parse(nic.substring(0, 4));
+    dayOfYear = int.parse(nic.substring(4, 7));
+  }
+  if (dayOfYear > 500) dayOfYear -= 500;
+  final birthDate = DateTime(year, 1, 1).add(Duration(days: dayOfYear - 1));
+  final now = DateTime.now();
+  int age = now.year - birthDate.year;
+  if (now.month < birthDate.month ||
+      (now.month == birthDate.month && now.day < birthDate.day)) {
+    age--;
+  }
+  if (age < 18) return 'Driver must be at least 18 years old (your age: $age)';
+  return null;
+}
+
 class RegisterScreen extends StatefulWidget {
   const RegisterScreen({super.key});
   @override State<RegisterScreen> createState() => _RegisterScreenState();
@@ -28,6 +83,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
   final _fullNameController = TextEditingController();
   final _emailController    = TextEditingController();
   final _phoneController    = TextEditingController();
+  final _nicController      = TextEditingController(); // UFR_32
   final _passwordController = TextEditingController();
   final _confirmController  = TextEditingController();
 
@@ -36,6 +92,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
   bool    _isLoading       = false;
   String? _error;
   bool    _submitted       = false;
+  int     _passwordStrengthLevel = 0; // UFR_36
 
   final Set<String> _selectedAreas = {};
   String? _areasError;
@@ -48,10 +105,21 @@ class _RegisterScreenState extends State<RegisterScreen> {
   final _picker = ImagePicker();
 
   @override
+  void initState() {
+    super.initState();
+    _passwordController.addListener(() {
+      setState(() {
+        _passwordStrengthLevel = _passwordStrength(_passwordController.text);
+      });
+    });
+  }
+
+  @override
   void dispose() {
     _fullNameController.dispose();
     _emailController.dispose();
     _phoneController.dispose();
+    _nicController.dispose();
     _passwordController.dispose();
     _confirmController.dispose();
     super.dispose();
@@ -187,7 +255,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
         icon: Icons.email_outlined, keyboardType: TextInputType.emailAddress,
         validator: (v) {
           if (v == null || v.trim().isEmpty) return 'Email is required';
-          if (!v.contains('@')) return 'Enter a valid email';
+          if (!v.contains('@') || !v.contains('.')) return 'Enter a valid email';
           return null;
         }),
       const SizedBox(height: 14),
@@ -201,6 +269,21 @@ class _RegisterScreenState extends State<RegisterScreen> {
           if (v.trim().length < 7) return 'Enter a valid phone number';
           return null;
         }),
+      const SizedBox(height: 14),
+
+      // ── UFR_32: NIC field ──────────────────────────────────────────────
+      _buildLabel('NIC NUMBER'),
+      const SizedBox(height: 4),
+      Text('Old format: 123456789V  |  New format: 200012345678',
+          style: GoogleFonts.inter(fontSize: 10, color: const Color(0xFF9E9E9E))),
+      const SizedBox(height: 6),
+      _buildField(
+        controller: _nicController,
+        hint: 'e.g. 123456789V or 200012345678',
+        icon: Icons.badge_outlined,
+        keyboardType: TextInputType.text,
+        validator: _validateSLNic,
+      ),
       const SizedBox(height: 20),
 
       _buildLabel('AREAS OF ROUTE EXPERIENCE'),
@@ -219,6 +302,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
       ],
       const SizedBox(height: 20),
 
+      // ── UFR_36: Password with strength indicator ───────────────────────
       _buildLabel('PASSWORD'),
       const SizedBox(height: 6),
       _buildField(controller: _passwordController, hint: 'Min. 8 characters',
@@ -227,8 +311,16 @@ class _RegisterScreenState extends State<RegisterScreen> {
         validator: (v) {
           if (v == null || v.isEmpty) return 'Password is required';
           if (v.length < 8) return 'Minimum 8 characters';
+          if (_kCommonPasswords.contains(v.toLowerCase())) {
+            return 'This password is too common. Choose a stronger one.';
+          }
+          if (_passwordStrength(v) == 1) return 'Password is too weak. Add uppercase, numbers or symbols.';
           return null;
         }),
+      if (_passwordController.text.isNotEmpty) ...[
+        const SizedBox(height: 8),
+        _buildPasswordStrengthIndicator(_passwordStrengthLevel),
+      ],
       const SizedBox(height: 14),
 
       _buildLabel('CONFIRM PASSWORD'),
@@ -263,6 +355,44 @@ class _RegisterScreenState extends State<RegisterScreen> {
         )),
     ])),
   );
+
+  // ── UFR_36: Password strength bar ────────────────────────────────────────
+  Widget _buildPasswordStrengthIndicator(int level) {
+    final labels = ['', 'Weak', 'Medium', 'Strong'];
+    final colors = [Colors.transparent, Colors.red, Colors.orange, Colors.green];
+    final label  = labels[level];
+    final color  = colors[level];
+
+    String message = '';
+    if (level == 1) {
+      if (_kCommonPasswords.contains(_passwordController.text.toLowerCase())) {
+        message = '⚠️ This is a commonly used password';
+      } else {
+        message = 'Add uppercase letters, numbers, or symbols';
+      }
+    }
+
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Row(children: [
+        Expanded(child: Row(children: List.generate(3, (i) => Expanded(
+          child: Container(
+            height: 4,
+            margin: EdgeInsets.only(right: i < 2 ? 4 : 0),
+            decoration: BoxDecoration(
+              color: i < level ? color : const Color(0xFFE0E0E0),
+              borderRadius: BorderRadius.circular(2)),
+          ),
+        )))),
+        const SizedBox(width: 8),
+        Text(label, style: GoogleFonts.inter(
+            fontSize: 11, fontWeight: FontWeight.w700, color: color)),
+      ]),
+      if (message.isNotEmpty) ...[
+        const SizedBox(height: 4),
+        Text(message, style: GoogleFonts.inter(fontSize: 11, color: Colors.red.shade700)),
+      ],
+    ]);
+  }
 
   Widget _buildAreaChips() => Container(
     width: double.infinity,
@@ -385,7 +515,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                           style: GoogleFonts.inter(fontSize: 13,
                               fontWeight: FontWeight.w600, color: const Color(0xFF6B7A8D))),
                       const SizedBox(height: 4),
-                      Text('JPG, PNG up to 5MB — Required',
+                      Text('JPG, PNG up to 5MB – Required',
                           style: GoogleFonts.inter(fontSize: 11, color: const Color(0xFFBDBDBD))),
                     ]),
         ),
@@ -464,11 +594,15 @@ class _RegisterScreenState extends State<RegisterScreen> {
       setState(() => _licenseError = 'License photo is required');
       return;
     }
+    // UFR_36: block weak passwords
+    if (_passwordStrengthLevel == 1) {
+      setState(() => _error = 'Please choose a stronger password before submitting.');
+      return;
+    }
     setState(() { _isLoading = true; _error = null; _licenseError = null; _areasError = null; });
     HapticFeedback.lightImpact();
 
     try {
-      // Step 1 — Register user
       final regResponse = await http.post(
         Uri.parse('${ApiConfig.baseUrl}/auth/register'),
         headers: {'Content-Type': 'application/json'},
@@ -490,7 +624,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
         return;
       }
 
-      // Step 2 — Upload license (best effort — don't fail registration if this times out)
+      // Step 2 – Upload license
       try {
         final bytes = await _licenseFile!.readAsBytes();
         final isPng = _licenseFile!.path.toLowerCase().endsWith('.png');
@@ -506,11 +640,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
         ));
         await uploadRequest.send().timeout(const Duration(seconds: 60));
       } catch (uploadErr) {
-        // License upload failed — registration still succeeded
         debugPrint('[License Upload] Failed: $uploadErr');
       }
 
-      // ── Always show success if registration succeeded ──────────────────
       setState(() { _submitted = true; _isLoading = false; });
 
     } catch (e) {
@@ -557,4 +689,3 @@ class _RegisterScreenState extends State<RegisterScreen> {
     ),
   );
 }
-
