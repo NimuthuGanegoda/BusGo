@@ -42,7 +42,7 @@ class _DashboardScreenState extends State<DashboardScreen>
       final auth = context.read<AuthProvider>();
 
       if (rp.routes.isEmpty) {
-        await rp.loadRoutes();  // ← wait for routes to load first
+        await rp.loadRoutes();  // â† wait for routes to load first
       }
 
       if (auth.driver?.id != null) {
@@ -97,9 +97,12 @@ class _DashboardScreenState extends State<DashboardScreen>
       await _setBusStatus('active',
           lat: tp.currentLocation.latitude,
           lng: tp.currentLocation.longitude);
+      tp.startOnlineSession(); // start duration + distance tracking
       setState(() => _isOnline = true);
     } else {
-      context.read<TripProvider>().stopGpsStream();
+      final tpOff = context.read<TripProvider>();
+      tpOff.stopGpsStream();
+      tpOff.stopOnlineSession(); // stop duration + distance tracking
       await _setBusStatus('inactive');
       setState(() => _isOnline = false);
     }
@@ -130,7 +133,7 @@ class _DashboardScreenState extends State<DashboardScreen>
           body: Column(children: [
             _buildTopBar(trip),
 
-            // ── FR-34: Express Mode persistent banner ───────────────────────
+            // â”€â”€ FR-34: Express Mode persistent banner â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
             if (trip.isExpressMode) _buildExpressBanner(trip),
 
             Expanded(
@@ -167,7 +170,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                                   color: AppColors.textPrimary)),
                             Text(
                               _isOnline
-                                  ? 'GPS active — passengers can see your bus'
+                                  ? 'GPS active â€” passengers can see your bus'
                                   : 'Toggle ON to share your location',
                               style: GoogleFonts.inter(fontSize: 11,
                                   color: AppColors.textSecondary)),
@@ -213,10 +216,10 @@ class _DashboardScreenState extends State<DashboardScreen>
                         const Icon(Icons.gps_fixed, color: AppColors.success, size: 16),
                         const SizedBox(width: 8),
                         Expanded(child: Text(
-                          'GPS Active — '
+                          'GPS Active â€” '
                           '${trip.currentLocation.latitude.toStringAsFixed(5)}, '
                           '${trip.currentLocation.longitude.toStringAsFixed(5)}'
-                          '  •  ${trip.currentSpeed.toStringAsFixed(0)} km/h',
+                          '  â€¢  ${trip.currentSpeed.toStringAsFixed(0)} km/h',
                           style: GoogleFonts.inter(fontSize: 11,
                               color: AppColors.success, fontWeight: FontWeight.w600))),
                       ])),
@@ -251,7 +254,7 @@ class _DashboardScreenState extends State<DashboardScreen>
         );
       });
 
-  // ── FR-34: Express Mode Banner ─────────────────────────────────────────────
+  // â”€â”€ FR-34: Express Mode Banner â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   Widget _buildExpressBanner(TripProvider trip) {
     return AnimatedBuilder(
       animation: _expressPulse,
@@ -379,7 +382,7 @@ class _DashboardScreenState extends State<DashboardScreen>
 
   Widget _buildTopBar(TripProvider trip) {
     final routeNumber = trip.currentRoute?.routeNumber ?? '138';
-    final routeName   = trip.currentRoute?.routeDirection ?? 'Kaduwela → Colombo Fort';
+    final routeName   = trip.currentRoute?.routeDirection ?? 'Kaduwela â†’ Colombo Fort';
     final now     = TimeOfDay.now();
     final timeStr = '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}';
 
@@ -392,7 +395,7 @@ class _DashboardScreenState extends State<DashboardScreen>
           left: 20, right: 20, bottom: 14),
       child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
         Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text('On Duty — Route $routeNumber',
+          Text('On Duty â€” Route $routeNumber',
               style: GoogleFonts.inter(fontSize: 15, fontWeight: FontWeight.w700,
                   color: Colors.white)),
           const SizedBox(height: 3),
@@ -578,11 +581,9 @@ class _DashboardScreenState extends State<DashboardScreen>
 
   Widget _buildTripStats(TripProvider trip) {
     final speed       = trip.currentSpeed;
-    final distance    = trip.currentTrip?.distanceCovered ?? 0.0;
-    final startTime   = trip.currentTrip?.startTime;
-    final durationMin = startTime != null
-        ? DateTime.now().difference(startTime).inMinutes : 0;
-    final boarded = trip.currentTrip?.passengersBoarded ?? 0;
+    final distance    = trip.onlineDistance;        // live from toggle ON
+    final durationMin = trip.onlineDurationMinutes; // live from toggle ON
+    final boarded     = trip.totalBoarded;          // increments from QR scans
 
     return Row(children: [
       Expanded(child: _statTile(icon: Icons.speed_rounded,
@@ -653,6 +654,7 @@ class _GaugeRingPainter extends CustomPainter {
   bool shouldRepaint(covariant _GaugeRingPainter old) =>
       old.fillPercent != fillPercent || old.fillColor != fillColor;
 }
+
 
 
 
