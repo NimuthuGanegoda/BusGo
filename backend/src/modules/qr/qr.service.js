@@ -3,98 +3,75 @@ import { supabase } from '../../config/supabase.js';
 import { CONSTANTS } from '../../config/constants.js';
 import { logSecurityEvent, SECURITY_EVENTS } from '../../services/security-audit.service.js';
 
-// ── UFR_48: Check and enforce scan attempt limits ────────────────────────────
-const MAX_ATTEMPTS_PER_ROUND = 5;
-const LOCKOUT_MINUTES        = 30;
+// ── UFR_48: QR expired attempt limiting ──────────────────────────────────────
+const MAX_SCAN_ATTEMPTS = 5;
+const LOCKOUT_MINUTES   = 30;
 
-async function checkScanAttemptLimit(passengerId, passengerName, req) {
+async function checkQrScanLock(passengerId) {
   const { data: user } = await supabase
     .from('users')
-    .select('id, failed_scan_attempts, scan_locked_until')
+    .select('failed_scan_attempts, scan_locked_until')
     .eq('id', passengerId).single();
-
-  if (!user) return; // can't check, allow through
+  if (!user) return;
 
   const now = new Date();
 
-  // Check if currently locked
   if (user.scan_locked_until && new Date(user.scan_locked_until) > now) {
-    const lockedUntil = new Date(user.scan_locked_until);
-    const isEndOfDay  = lockedUntil.getHours() === 23 && lockedUntil.getMinutes() === 59;
-
-    if (isEndOfDay) {
-      const e = new Error('Scanning restricted for today due to repeated attempts. Try again tomorrow.');
-      e.statusCode = 429; e.code = 'SCAN_RESTRICTED_TODAY'; throw e;
-    }
-
-    const minutesLeft = Math.ceil((lockedUntil - now) / 60000);
-    const e = new Error(`Too many scan attempts. Please wait ${minutesLeft} minute(s) before trying again.`);
+    const minutesLeft = Math.ceil((new Date(user.scan_locked_until) - now) / 60000);
+    const e = new Error(`QR scanning locked. Please wait ${minutesLeft} minute(s) before trying again.`);
     e.statusCode = 429; e.code = 'SCAN_ATTEMPT_LOCKED'; throw e;
   }
 
-  // If lock has expired, reset attempts for new round (but keep count for day limit)
+  // Lock expired — reset counter
   if (user.scan_locked_until && new Date(user.scan_locked_until) <= now) {
     await supabase.from('users')
-      .update({ scan_locked_until: null })
+      .update({ failed_scan_attempts: 0, scan_locked_until: null })
       .eq('id', passengerId);
   }
 }
 
-async function recordFailedScanAttempt(passengerId, passengerName, driverUserId, driverEmail, req) {
+async function recordQrExpiredAttempt(passengerId, passengerEmail, driverUserId, req) {
   const { data: user } = await supabase
     .from('users')
-    .select('id, failed_scan_attempts, scan_locked_until')
+    .select('failed_scan_attempts, scan_locked_until')
     .eq('id', passengerId).single();
-
   if (!user) return;
 
-  const now      = new Date();
   const attempts = (user.failed_scan_attempts || 0) + 1;
+  let   lockUntil = null;
 
-  let scanLockedUntil = null;
-  let lockMessage     = '';
-
-  if (attempts >= MAX_ATTEMPTS_PER_ROUND * 2) {
-    // 10+ attempts: restrict for rest of day
-    const endOfDay = new Date(now);
-    endOfDay.setHours(23, 59, 59, 999);
-    scanLockedUntil = endOfDay.toISOString();
-    lockMessage     = 'DAY_RESTRICTED';
-  } else if (attempts % MAX_ATTEMPTS_PER_ROUND === 0) {
-    // Every 5 attempts: 30-minute lockout
-    scanLockedUntil = new Date(now.getTime() + LOCKOUT_MINUTES * 60 * 1000).toISOString();
-    lockMessage     = '30MIN_LOCKED';
+  if (attempts >= MAX_SCAN_ATTEMPTS) {
+    lockUntil = new Date(Date.now() + LOCKOUT_MINUTES * 60 * 1000).toISOString();
   }
 
   await supabase.from('users')
-    .update({
-      failed_scan_attempts: attempts,
-      scan_locked_until:    scanLockedUntil,
-    })
+    .update({ failed_scan_attempts: attempts, scan_locked_until: lockUntil })
     .eq('id', passengerId);
 
-  // Log to audit (UFR_51)
+  // UFR_51: Log every attempt to audit
   await logSecurityEvent({
     eventType: SECURITY_EVENTS.REPEATED_QR_SCAN,
     userId:    driverUserId,
-    email:     driverEmail,
+    email:     passengerEmail,
     req,
     details: {
-      qr_type:      'normal',
-      passenger_id: passengerId,
-      passenger:    passengerName,
-      scan_count:   attempts,
-      lock_applied: lockMessage || 'none',
-      timestamp:    new Date().toISOString(),
+      passenger_id:  passengerId,
+      attempt:       attempts,
+      lock_applied:  lockUntil ? `locked_until_${lockUntil}` : 'none',
+      reason:        'QR_EXPIRED_REPEATED_SCAN',
+      timestamp:     new Date().toISOString(),
     },
-    severity: attempts >= MAX_ATTEMPTS_PER_ROUND * 2 ? 'critical' : 'warning',
+    severity: lockUntil ? 'critical' : 'warning',
   });
-}
 
-async function resetScanAttempts(passengerId) {
-  await supabase.from('users')
-    .update({ failed_scan_attempts: 0, scan_locked_until: null })
-    .eq('id', passengerId);
+  if (lockUntil) {
+    const e = new Error(`Too many invalid scan attempts. QR scanning locked for ${LOCKOUT_MINUTES} minutes.`);
+    e.statusCode = 429; e.code = 'SCAN_ATTEMPT_LOCKED'; throw e;
+  }
+
+  const remaining = MAX_SCAN_ATTEMPTS - attempts;
+  const e = new Error(`QR code has already been used. ${remaining} attempt(s) remaining before lockout.`);
+  e.statusCode = 410; e.code = 'QR_EXPIRED'; throw e;
 }
 
 export async function getMyQrCard(userId, force = false) {
@@ -291,40 +268,31 @@ export async function scanIn(scannedToken, driverUserId, context = {}, req = nul
     const e = new Error('Account deactivated'); e.statusCode = 403; e.code = 'ACCOUNT_INACTIVE'; throw e;
   }
   if (new Date(passenger.qr_expires_at) <= new Date()) {
-    const e = new Error('QR expired â€“ ask passenger to refresh'); e.statusCode = 410; e.code = 'QR_EXPIRED'; throw e;
+    // UFR_48: Check lock, record attempt, throw with remaining count
+    await checkQrScanLock(passenger.id);
+    await recordQrExpiredAttempt(passenger.id, passenger.full_name, driverUserId, req);
   }
 
   const { data: ongoing } = await supabase
     .from('trips').select('id').eq('user_id', passenger.id).eq('status', 'ongoing').maybeSingle();
   if (ongoing) {
-    // UFR_48 + UFR_51: Check lockout, record attempt, log to audit
-    await checkScanAttemptLimit(passenger.id, passenger.full_name, req);
-    await recordFailedScanAttempt(
-      passenger.id, passenger.full_name, driverUserId, driverEmail, req);
-
-    // Re-read to get updated lock state
-    const { data: updatedUser } = await supabase
-      .from('users')
-      .select('failed_scan_attempts, scan_locked_until')
-      .eq('id', passenger.id).single();
-
-    const attempts = updatedUser?.failed_scan_attempts || 0;
-    const locked   = updatedUser?.scan_locked_until;
-
-    if (locked && new Date(locked) > new Date()) {
-      const lockedUntil = new Date(locked);
-      const isEndOfDay  = lockedUntil.getHours() === 23 && lockedUntil.getMinutes() === 59;
-      if (isEndOfDay) {
-        const e = new Error('Scanning restricted for today due to repeated attempts.');
-        e.statusCode = 429; e.code = 'SCAN_RESTRICTED_TODAY'; throw e;
-      }
-      const minutesLeft = Math.ceil((lockedUntil - new Date()) / 60000);
-      const e = new Error(`Too many attempts. Please wait ${minutesLeft} minute(s).`);
-      e.statusCode = 429; e.code = 'SCAN_ATTEMPT_LOCKED'; throw e;
-    }
-
-    const remaining = MAX_ATTEMPTS_PER_ROUND - (attempts % MAX_ATTEMPTS_PER_ROUND);
-    const e = new Error(`Passenger already on a trip. ${remaining} attempt(s) remaining before lockout.`);
+    // UFR_51: Log repeated scan â€” passenger already on bus (normal QR)
+    await logSecurityEvent({
+      eventType: SECURITY_EVENTS.REPEATED_QR_SCAN,
+      userId:    driverUserId,
+      email:     driverEmail,
+      req,
+      details: {
+        qr_type:      'normal',
+        passenger_id: passenger.id,
+        passenger:    passenger.full_name,
+        ongoing_trip: ongoing.id,
+        scan_count:   'repeated',
+        timestamp:    new Date().toISOString(),
+      },
+      severity: 'warning',
+    });
+    const e = new Error('Passenger already has an ongoing trip');
     e.statusCode = 409; e.code = 'TRIP_ALREADY_ONGOING'; throw e;
   }
 
@@ -401,9 +369,6 @@ export async function scanIn(scannedToken, driverUserId, context = {}, req = nul
       severity: 'warning',
     });
   }
-
-  // UFR_48: Reset scan attempts on successful boarding
-  await resetScanAttempts(passenger.id);
 
   await supabase.from('notifications').insert({
     user_id:  passenger.id,
