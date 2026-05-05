@@ -1,7 +1,101 @@
-import { v4 as uuidv4 } from 'uuid';
+﻿import { v4 as uuidv4 } from 'uuid';
 import { supabase } from '../../config/supabase.js';
 import { CONSTANTS } from '../../config/constants.js';
 import { logSecurityEvent, SECURITY_EVENTS } from '../../services/security-audit.service.js';
+
+// ── UFR_48: Check and enforce scan attempt limits ────────────────────────────
+const MAX_ATTEMPTS_PER_ROUND = 5;
+const LOCKOUT_MINUTES        = 30;
+
+async function checkScanAttemptLimit(passengerId, passengerName, req) {
+  const { data: user } = await supabase
+    .from('users')
+    .select('id, failed_scan_attempts, scan_locked_until')
+    .eq('id', passengerId).single();
+
+  if (!user) return; // can't check, allow through
+
+  const now = new Date();
+
+  // Check if currently locked
+  if (user.scan_locked_until && new Date(user.scan_locked_until) > now) {
+    const lockedUntil = new Date(user.scan_locked_until);
+    const isEndOfDay  = lockedUntil.getHours() === 23 && lockedUntil.getMinutes() === 59;
+
+    if (isEndOfDay) {
+      const e = new Error('Scanning restricted for today due to repeated attempts. Try again tomorrow.');
+      e.statusCode = 429; e.code = 'SCAN_RESTRICTED_TODAY'; throw e;
+    }
+
+    const minutesLeft = Math.ceil((lockedUntil - now) / 60000);
+    const e = new Error(`Too many scan attempts. Please wait ${minutesLeft} minute(s) before trying again.`);
+    e.statusCode = 429; e.code = 'SCAN_ATTEMPT_LOCKED'; throw e;
+  }
+
+  // If lock has expired, reset attempts for new round (but keep count for day limit)
+  if (user.scan_locked_until && new Date(user.scan_locked_until) <= now) {
+    await supabase.from('users')
+      .update({ scan_locked_until: null })
+      .eq('id', passengerId);
+  }
+}
+
+async function recordFailedScanAttempt(passengerId, passengerName, driverUserId, driverEmail, req) {
+  const { data: user } = await supabase
+    .from('users')
+    .select('id, failed_scan_attempts, scan_locked_until')
+    .eq('id', passengerId).single();
+
+  if (!user) return;
+
+  const now      = new Date();
+  const attempts = (user.failed_scan_attempts || 0) + 1;
+
+  let scanLockedUntil = null;
+  let lockMessage     = '';
+
+  if (attempts >= MAX_ATTEMPTS_PER_ROUND * 2) {
+    // 10+ attempts: restrict for rest of day
+    const endOfDay = new Date(now);
+    endOfDay.setHours(23, 59, 59, 999);
+    scanLockedUntil = endOfDay.toISOString();
+    lockMessage     = 'DAY_RESTRICTED';
+  } else if (attempts % MAX_ATTEMPTS_PER_ROUND === 0) {
+    // Every 5 attempts: 30-minute lockout
+    scanLockedUntil = new Date(now.getTime() + LOCKOUT_MINUTES * 60 * 1000).toISOString();
+    lockMessage     = '30MIN_LOCKED';
+  }
+
+  await supabase.from('users')
+    .update({
+      failed_scan_attempts: attempts,
+      scan_locked_until:    scanLockedUntil,
+    })
+    .eq('id', passengerId);
+
+  // Log to audit (UFR_51)
+  await logSecurityEvent({
+    eventType: SECURITY_EVENTS.REPEATED_QR_SCAN,
+    userId:    driverUserId,
+    email:     driverEmail,
+    req,
+    details: {
+      qr_type:      'normal',
+      passenger_id: passengerId,
+      passenger:    passengerName,
+      scan_count:   attempts,
+      lock_applied: lockMessage || 'none',
+      timestamp:    new Date().toISOString(),
+    },
+    severity: attempts >= MAX_ATTEMPTS_PER_ROUND * 2 ? 'critical' : 'warning',
+  });
+}
+
+async function resetScanAttempts(passengerId) {
+  await supabase.from('users')
+    .update({ failed_scan_attempts: 0, scan_locked_until: null })
+    .eq('id', passengerId);
+}
 
 export async function getMyQrCard(userId, force = false) {
   const { data: user, error } = await supabase
@@ -31,7 +125,7 @@ export async function getMyQrCard(userId, force = false) {
   };
 }
 
-// ── req is passed in so IP address and email appear in audit logs (UFR_51) ──
+// â”€â”€ req is passed in so IP address and email appear in audit logs (UFR_51) â”€â”€
 export async function scanIn(scannedToken, driverUserId, context = {}, req = null) {
 
   // Fetch driver email for audit log
@@ -39,7 +133,7 @@ export async function scanIn(scannedToken, driverUserId, context = {}, req = nul
     .from('users').select('email').eq('id', driverUserId).maybeSingle();
   const driverEmail = driverUser?.email ?? null;
 
-  // ── STEP 1: Check if this is a PAYMENT QR (trip_tickets.qr_data) ─────────
+  // â”€â”€ STEP 1: Check if this is a PAYMENT QR (trip_tickets.qr_data) â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const { data: ticket } = await supabase
     .from('trip_tickets')
     .select('id, user_id, route_id, boarding_stop_id, alighting_stop_id, payment_status, valid_until, verified_at, amount')
@@ -85,7 +179,7 @@ export async function scanIn(scannedToken, driverUserId, context = {}, req = nul
     const { data: ongoing } = await supabase
       .from('trips').select('id').eq('user_id', passenger.id).eq('status', 'ongoing').maybeSingle();
     if (ongoing) {
-      // UFR_51: Log repeated scan — passenger already on bus (payment QR)
+      // UFR_51: Log repeated scan â€” passenger already on bus (payment QR)
       await logSecurityEvent({
         eventType: SECURITY_EVENTS.REPEATED_QR_SCAN,
         userId:    driverUserId,
@@ -163,7 +257,7 @@ export async function scanIn(scannedToken, driverUserId, context = {}, req = nul
     await supabase.from('notifications').insert({
       user_id:  passenger.id,
       category: 'trip',
-      title:    '🚌 Boarded Successfully',
+      title:    'ðŸšŒ Boarded Successfully',
       body:     'Your prepaid journey has started. Have a safe trip!',
       meta:     { trip_id: trip.id, bus_id: busId, ticket_id: ticket.id },
     });
@@ -184,7 +278,7 @@ export async function scanIn(scannedToken, driverUserId, context = {}, req = nul
     };
   }
 
-  // ── STEP 2: Normal QR scan (users.qr_token) ───────────────────────────────
+  // â”€â”€ STEP 2: Normal QR scan (users.qr_token) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const { data: passenger, error: pErr } = await supabase
     .from('users')
     .select('id, full_name, username, membership_type, qr_token, qr_expires_at, is_active')
@@ -197,29 +291,40 @@ export async function scanIn(scannedToken, driverUserId, context = {}, req = nul
     const e = new Error('Account deactivated'); e.statusCode = 403; e.code = 'ACCOUNT_INACTIVE'; throw e;
   }
   if (new Date(passenger.qr_expires_at) <= new Date()) {
-    const e = new Error('QR expired – ask passenger to refresh'); e.statusCode = 410; e.code = 'QR_EXPIRED'; throw e;
+    const e = new Error('QR expired â€“ ask passenger to refresh'); e.statusCode = 410; e.code = 'QR_EXPIRED'; throw e;
   }
 
   const { data: ongoing } = await supabase
     .from('trips').select('id').eq('user_id', passenger.id).eq('status', 'ongoing').maybeSingle();
   if (ongoing) {
-    // UFR_51: Log repeated scan — passenger already on bus (normal QR)
-    await logSecurityEvent({
-      eventType: SECURITY_EVENTS.REPEATED_QR_SCAN,
-      userId:    driverUserId,
-      email:     driverEmail,
-      req,
-      details: {
-        qr_type:      'normal',
-        passenger_id: passenger.id,
-        passenger:    passenger.full_name,
-        ongoing_trip: ongoing.id,
-        scan_count:   'repeated',
-        timestamp:    new Date().toISOString(),
-      },
-      severity: 'warning',
-    });
-    const e = new Error('Passenger already has an ongoing trip');
+    // UFR_48 + UFR_51: Check lockout, record attempt, log to audit
+    await checkScanAttemptLimit(passenger.id, passenger.full_name, req);
+    await recordFailedScanAttempt(
+      passenger.id, passenger.full_name, driverUserId, driverEmail, req);
+
+    // Re-read to get updated lock state
+    const { data: updatedUser } = await supabase
+      .from('users')
+      .select('failed_scan_attempts, scan_locked_until')
+      .eq('id', passenger.id).single();
+
+    const attempts = updatedUser?.failed_scan_attempts || 0;
+    const locked   = updatedUser?.scan_locked_until;
+
+    if (locked && new Date(locked) > new Date()) {
+      const lockedUntil = new Date(locked);
+      const isEndOfDay  = lockedUntil.getHours() === 23 && lockedUntil.getMinutes() === 59;
+      if (isEndOfDay) {
+        const e = new Error('Scanning restricted for today due to repeated attempts.');
+        e.statusCode = 429; e.code = 'SCAN_RESTRICTED_TODAY'; throw e;
+      }
+      const minutesLeft = Math.ceil((lockedUntil - new Date()) / 60000);
+      const e = new Error(`Too many attempts. Please wait ${minutesLeft} minute(s).`);
+      e.statusCode = 429; e.code = 'SCAN_ATTEMPT_LOCKED'; throw e;
+    }
+
+    const remaining = MAX_ATTEMPTS_PER_ROUND - (attempts % MAX_ATTEMPTS_PER_ROUND);
+    const e = new Error(`Passenger already on a trip. ${remaining} attempt(s) remaining before lockout.`);
     e.statusCode = 409; e.code = 'TRIP_ALREADY_ONGOING'; throw e;
   }
 
@@ -297,10 +402,13 @@ export async function scanIn(scannedToken, driverUserId, context = {}, req = nul
     });
   }
 
+  // UFR_48: Reset scan attempts on successful boarding
+  await resetScanAttempts(passenger.id);
+
   await supabase.from('notifications').insert({
     user_id:  passenger.id,
     category: 'trip',
-    title:    '🚌 Boarded Successfully',
+    title:    'ðŸšŒ Boarded Successfully',
     body:     'Your journey has started. Have a safe trip!',
     meta:     { trip_id: trip.id, bus_id: busId },
   });
@@ -389,7 +497,7 @@ export async function scanExit(driverUserId, dto = {}) {
   await supabase.from('notifications').insert({
     user_id:  passenger.id,
     category: 'trip',
-    title:    '⭐ How was your ride?',
+    title:    'â­ How was your ride?',
     body:     'Please rate your recent bus journey.',
     meta:     { trip_id: trip.id, bus_id: trip.bus_id },
   });
@@ -404,4 +512,3 @@ export async function scanExit(driverUserId, dto = {}) {
     message: `${passenger.full_name} alighted. Rating prompt sent.`,
   };
 }
-
