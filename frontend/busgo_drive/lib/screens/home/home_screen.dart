@@ -19,7 +19,8 @@ class _HomeScreenState extends State<HomeScreen> {
   Map<String, dynamic>? _driver;
   Map<String, dynamic>? _bus;
 
-  Timer?    _locationTimer;
+  // FIX: replaced Timer + getCurrentPosition with a continuous stream
+  StreamSubscription<Position>? _positionStream;
   Position? _lastPosition;
 
   final LocationService _locationService = LocationService();
@@ -32,7 +33,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   void dispose() {
-    _locationTimer?.cancel();
+    _positionStream?.cancel(); // FIX: cancel stream on dispose
     super.dispose();
   }
 
@@ -81,53 +82,49 @@ class _HomeScreenState extends State<HomeScreen> {
       return;
     }
 
-    // Send immediately
-    await _sendCurrentLocation();
+    // FIX: use a continuous stream — fires on every 10m of movement,
+    // no more polling gap or missed updates from slow getCurrentPosition calls.
+    _positionStream?.cancel();
+    const locationSettings = LocationSettings(
+      accuracy:       LocationAccuracy.high,
+      distanceFilter: 10, // fire every 10 metres
+    );
 
-    // Then every 10 seconds
-    _locationTimer = Timer.periodic(const Duration(seconds: 10), (_) {
-      _sendCurrentLocation();
-    });
+    _positionStream = Geolocator.getPositionStream(
+            locationSettings: locationSettings)
+        .listen((Position pos) async {
+      final busId = _bus?['id'] as String?;
+      if (busId == null) {
+        debugPrint('[HomeScreen] No busId — skipping location update');
+        return;
+      }
 
-    debugPrint('[HomeScreen] GPS started');
-  }
-
-  void _stopSendingLocation() {
-    _locationTimer?.cancel();
-    _locationTimer = null;
-    debugPrint('[HomeScreen] GPS stopped');
-  }
-
-  Future<void> _sendCurrentLocation() async {
-    // FIX: get busId from loaded bus data
-    final busId = _bus?['id'] as String?;
-    if (busId == null) {
-      debugPrint('[HomeScreen] No busId — cannot send location');
-      return;
-    }
-
-    try {
-      final position = await Geolocator.getCurrentPosition(
-        desiredAccuracy: LocationAccuracy.high,
-      ).timeout(const Duration(seconds: 8));
-
-      final speed = position.speed >= 0
-          ? position.speed * 3.6  // m/s to km/h
+      final speed = pos.speed >= 0
+          ? pos.speed * 3.6  // m/s → km/h
           : 0.0;
 
       await _locationService.updateLocation(
         busId:    busId,
-        lat:      position.latitude,
-        lng:      position.longitude,
+        lat:      pos.latitude,
+        lng:      pos.longitude,
         speedKmh: speed,
-        heading:  position.heading >= 0 ? position.heading : null,
+        heading:  pos.heading >= 0 ? pos.heading : null,
       );
 
-      setState(() => _lastPosition = position);
-      debugPrint('[HomeScreen] ✅ GPS sent: ${position.latitude}, ${position.longitude} @ ${speed.toStringAsFixed(1)} km/h');
-    } catch (e) {
-      debugPrint('[HomeScreen] GPS error: $e');
-    }
+      if (mounted) setState(() => _lastPosition = pos);
+      debugPrint(
+          '[HomeScreen] ✅ GPS: ${pos.latitude}, ${pos.longitude} @ ${speed.toStringAsFixed(1)} km/h');
+    }, onError: (e) {
+      debugPrint('[HomeScreen] GPS stream error: $e');
+    });
+
+    debugPrint('[HomeScreen] GPS stream started');
+  }
+
+  void _stopSendingLocation() {
+    _positionStream?.cancel();
+    _positionStream = null;
+    debugPrint('[HomeScreen] GPS stream stopped');
   }
 
   Future<void> _toggleOnline(bool value) async {
@@ -436,4 +433,3 @@ class _ActionCard extends StatelessWidget {
         ),
       );
 }
-

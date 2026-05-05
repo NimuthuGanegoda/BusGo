@@ -30,6 +30,9 @@ class _LiveMapScreenState extends State<LiveMapScreen>
   bool _mapReady = false;
   bool _gotGps   = false;
 
+  // ── FIX: continuous position stream so the dot follows the user ────────────
+  StreamSubscription<Position>? _positionStream;
+
   // Bus stops loaded from Supabase
   List<Map<String, dynamic>> _busStops = [];
   bool _stopsLoaded = false;
@@ -48,7 +51,7 @@ class _LiveMapScreenState extends State<LiveMapScreen>
       _initLocation();
       _loadBuses();
       _loadBusStops();
-      // ── FIX: subscribe to real-time bus location broadcasts ──────────────
+      // Subscribe to real-time bus location broadcasts
       context.read<BusProvider>().subscribeToLiveLocations();
       _pollTimer = Timer.periodic(
           const Duration(seconds: 15), (_) => _loadBuses(silent: true));
@@ -64,6 +67,7 @@ class _LiveMapScreenState extends State<LiveMapScreen>
       if (permission == LocationPermission.denied ||
           permission == LocationPermission.deniedForever) return;
 
+      // 1. Snap to last known instantly
       final lastKnown = await Geolocator.getLastKnownPosition();
       if (lastKnown != null && mounted) {
         setState(() {
@@ -74,6 +78,7 @@ class _LiveMapScreenState extends State<LiveMapScreen>
         _loadBusStops();
       }
 
+      // 2. Get accurate initial fix
       try {
         final position = await Geolocator.getCurrentPosition(
           desiredAccuracy: LocationAccuracy.high,
@@ -101,6 +106,25 @@ class _LiveMapScreenState extends State<LiveMapScreen>
           } catch (_) {}
         }
       }
+
+      // 3. FIX: Start continuous stream — fires every time user moves 5+ metres
+      _positionStream?.cancel();
+      const locationSettings = LocationSettings(
+        accuracy: LocationAccuracy.high,
+        distanceFilter: 5, // update every 5 metres of movement
+      );
+      _positionStream = Geolocator.getPositionStream(
+              locationSettings: locationSettings)
+          .listen((Position pos) {
+        if (!mounted) return;
+        setState(() {
+          _userLocation = LatLng(pos.latitude, pos.longitude);
+        });
+        debugPrint('[LiveMap] User moved: ${pos.latitude}, ${pos.longitude}');
+      }, onError: (e) {
+        debugPrint('[LiveMap] Position stream error: $e');
+      });
+
     } catch (e) {
       debugPrint('[GPS] Location error: $e');
     }
@@ -182,6 +206,7 @@ class _LiveMapScreenState extends State<LiveMapScreen>
   @override
   void dispose() {
     _pollTimer?.cancel();
+    _positionStream?.cancel(); // FIX: cancel the continuous stream
     _pulseController.dispose();
     context.read<BusProvider>().unsubscribeFromLiveLocations();
     super.dispose();
@@ -402,4 +427,3 @@ class _LiveMapScreenState extends State<LiveMapScreen>
     );
   }
 }
-
