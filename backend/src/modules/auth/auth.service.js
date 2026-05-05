@@ -1,3 +1,5 @@
+========== backend\src\modules\auth\auth.service.js ==========
+
 import crypto from 'crypto';
 import { supabase } from '../../config/supabase.js';
 import { CONSTANTS } from '../../config/constants.js';
@@ -92,19 +94,17 @@ export async function registerUser(dto, req = null) {
     severity:  'info',
   });
 
-  // ── Send verification PIN email ───────────────────────────────────────────
-  try {
-    await sendEmailVerificationPin(email, pin, user.full_name);
-    logger.info(`Email verification PIN sent to ${email}`);
-  } catch (emailErr) {
-    // Log to console as fallback so you can still test locally
-    logger.error(`Failed to send verification email to ${email}: ${emailErr.message}`);
-    console.log(`\n==============================`);
-    console.log(`  BusGo Email Verification PIN`);
-    console.log(`  Email : ${email}`);
-    console.log(`  PIN   : ${pin}`);
-    console.log(`==============================\n`);
-  }
+  // ── Send verification PIN email (fire-and-forget — never blocks registration)
+  sendEmailVerificationPin(email, pin, user.full_name)
+    .then(() => logger.info(`Email verification PIN sent to ${email}`))
+    .catch(emailErr => {
+      logger.error(`Failed to send verification email to ${email}: ${emailErr.message}`);
+      console.log(`\n==============================`);
+      console.log(`  BusGo Email Verification PIN`);
+      console.log(`  Email : ${email}`);
+      console.log(`  PIN   : ${pin}`);
+      console.log(`==============================\n`);
+    });
 
   if (role === 'driver') {
     return {
@@ -139,6 +139,7 @@ export async function verifyEmailPin(email, pin) {
     err.statusCode = 400; err.code = 'INVALID_PIN'; throw err;
   }
 
+  if (!user.reset_pin) {
   if (!user.reset_pin) {
     const err = new Error('No verification PIN found. Please register again or request a new PIN.');
     err.statusCode = 400; err.code = 'INVALID_PIN'; throw err;
@@ -380,6 +381,7 @@ export async function verifyResetPin(email, pin) {
     const err = new Error('PIN has expired. Please request a new one.');
     err.statusCode = 400; err.code = 'PIN_EXPIRED'; throw err;
   }
+  }
   const valid = await verifyPin(pin, user.reset_pin);
   if (!valid) {
     const err = new Error('Invalid or expired PIN');
@@ -454,5 +456,290 @@ async function issueTokenPair(userId, email) {
 
 
 
+
+
+
+
+
+========== backend\src\modules\buses\buses.controller.js ==========
+
+import * as busesService from './buses.service.js';
+import { sendSuccess, sendError } from '../../utils/response.utils.js';
+
+export async function getNearby(req, res, next) {
+  try {
+    const { lat, lng, radius } = req.query;
+    const buses = await busesService.getNearbyBuses(Number(lat), Number(lng), Number(radius));
+    return sendSuccess(res, buses, `${buses.length} nearby buses found`);
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function getById(req, res, next) {
+  try {
+    const bus = await busesService.getBusById(req.params.id);
+    return sendSuccess(res, bus, 'Bus fetched');
+  } catch (err) {
+    if (err.statusCode) return sendError(res, err.message, err.statusCode, err.code);
+    next(err);
+  }
+}
+
+export async function updateLocation(req, res, next) {
+  try {
+    const bus = await busesService.updateBusLocation(req.params.id, req.body);
+    return sendSuccess(res, bus, 'Location updated');
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function updateCrowd(req, res, next) {
+  try {
+    const bus = await busesService.updateBusCrowd(req.params.id, req.body.crowd_level);
+    return sendSuccess(res, bus, 'Crowd level updated');
+  } catch (err) {
+    next(err);
+  }
+}
+
+
+
+
+
+
+
+
+
+
+
+========== backend\src\modules\buses\buses.routes.js ==========
+
+import { Router } from 'express';
+import { authenticate } from '../../middleware/auth.middleware.js';
+import { validate } from '../../middleware/validate.middleware.js';
+import { nearbyBusesSchema, updateLocationSchema, updateCrowdSchema } from './buses.schema.js';
+import * as controller from './buses.controller.js';
+import * as busesService from './buses.service.js';
+import { sendSuccess, sendError } from '../../utils/response.utils.js';
+
+const router = Router();
+
+// GET nearby — public (no auth required so passengers without accounts can also query)
+router.get('/nearby', validate(nearbyBusesSchema, 'query'), controller.getNearby);
+router.get('/:id',    controller.getById);
+
+// Write operations require authentication
+router.patch('/:id/location', authenticate, validate(updateLocationSchema), controller.updateLocation);
+router.patch('/:id/crowd',    authenticate, validate(updateCrowdSchema),    controller.updateCrowd);
+
+// Recall a bus (sets status to recalled)
+router.patch('/:id/recall', authenticate, async (req, res, next) => {
+  try {
+    const data = await busesService.recallBus(req.params.id, req.user.id);
+    return sendSuccess(res, data, `Bus ${data.bus_number} recalled`);
+  } catch (err) {
+    if (err.statusCode) return sendError(res, err.message, err.statusCode, err.code);
+    next(err);
+  }
+});
+
+// Re-deploy a recalled bus
+router.patch('/:id/deploy', authenticate, async (req, res, next) => {
+  try {
+    const data = await busesService.deployBus(req.params.id, req.user.id);
+    return sendSuccess(res, data, `Bus ${data.bus_number} deployed`);
+  } catch (err) {
+    if (err.statusCode) return sendError(res, err.message, err.statusCode, err.code);
+    next(err);
+  }
+});
+
+export default router;
+
+
+
+
+
+
+
+
+
+
+
+========== backend\src\modules\buses\buses.schema.js ==========
+
+import { z } from 'zod';
+import { CONSTANTS } from '../../config/constants.js';
+
+export const nearbyBusesSchema = z.object({
+  lat: z.coerce.number().min(-90).max(90),
+  lng: z.coerce.number().min(-180).max(180),
+  radius: z.coerce.number().positive().max(CONSTANTS.MAX_NEARBY_RADIUS_KM).default(CONSTANTS.DEFAULT_NEARBY_RADIUS_KM),
+});
+
+export const updateLocationSchema = z.object({
+  lat: z.number().min(-90).max(90),
+  lng: z.number().min(-180).max(180),
+  heading: z.number().min(0).max(360).optional(),
+  speed_kmh: z.number().min(0).optional(),
+});
+
+export const updateCrowdSchema = z.object({
+  crowd_level: z.enum(['low', 'medium', 'high', 'full']),
+});
+
+
+
+
+
+
+
+
+
+
+
+========== backend\src\modules\buses\buses.service.js ==========
+
+import { supabase, broadcastToChannel } from '../../config/supabase.js';
+import { filterByRadius } from '../../utils/haversine.utils.js';
+import { CONSTANTS } from '../../config/constants.js';
+
+export async function getNearbyBuses(lat, lng, radius) {
+  const { data, error } = await supabase
+    .from('buses')
+    .select(`
+      id, bus_number, driver_name, driver_phone,
+      current_lat, current_lng, heading, speed_kmh,
+      crowd_level, status, last_location_update,
+      driver_user_id,
+      bus_routes ( id, route_number, route_name, origin, destination, color ),
+      users!buses_driver_user_id_fkey ( avg_rating )
+    `)
+    .eq('status', 'active')
+    .not('current_lat', 'is', null)
+    .not('current_lng', 'is', null)
+    .gte('last_location_update', new Date(Date.now() - 5 * 60 * 1000).toISOString());
+  if (error) throw error;
+  return filterByRadius(data, lat, lng, radius, 'current_lat', 'current_lng');
+}
+
+export async function getBusById(busId) {
+  const { data, error } = await supabase
+    .from('buses')
+    .select(`
+      id, bus_number, driver_name, driver_phone,
+      current_lat, current_lng, heading, speed_kmh,
+      crowd_level, status, last_location_update, created_at,
+      crowd_level, status, last_location_update, created_at,
+      driver_user_id,
+      bus_routes ( id, route_number, route_name, origin, destination, color, waypoints ),
+      users!buses_driver_user_id_fkey ( avg_rating )
+    `)
+    .eq('id', busId)
+    .single();
+  if (error || !data) {
+    const err = new Error('Bus not found');
+    err.statusCode = 404;
+    err.code = 'BUS_NOT_FOUND';
+    throw err;
+  }
+  return data;
+}
+
+export async function updateBusLocation(busId, dto) {
+  const now = new Date().toISOString();
+  const { data, error } = await supabase
+    .from('buses')
+    .update({
+      current_lat: dto.lat,
+      current_lng: dto.lng,
+      heading: dto.heading ?? null,
+      speed_kmh: dto.speed_kmh ?? null,
+      last_location_update: now,
+    })
+    .eq('id', busId)
+    .select('id, bus_number, current_lat, current_lng, heading, speed_kmh, crowd_level, status')
+    .single();
+  if (error) throw error;
+  await broadcastToChannel(CONSTANTS.REALTIME_CHANNEL_BUS_LOCATIONS, 'location-update', {
+    bus_id: busId,
+    lat: dto.lat,
+    lng: dto.lng,
+    heading: dto.heading,
+    speed_kmh: dto.speed_kmh,
+    timestamp: now,
+  });
+  return data;
+}
+
+export async function updateBusCrowd(busId, crowd_level) {
+  const { data, error } = await supabase
+    .from('buses')
+    .update({ crowd_level })
+    .eq('id', busId)
+    .select('id, bus_number, crowd_level')
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+
+export async function recallBus(busId, adminUserId) {
+  const { data: bus } = await supabase
+    .from('buses').select('id, bus_number, status').eq('id', busId).maybeSingle();
+  if (!bus) {
+    const e = new Error('Bus not found'); e.statusCode = 404; e.code = 'BUS_NOT_FOUND'; throw e;
+  }
+  if (bus.status === 'recalled') {
+    const e = new Error('Bus is already recalled'); e.statusCode = 409; e.code = 'ALREADY_RECALLED'; throw e;
+  }
+
+  const { data, error } = await supabase
+    .from('buses')
+    .update({ status: 'recalled' })
+    .eq('id', busId)
+    .select('id, bus_number, status')
+    .single();
+  if (error) throw error;
+
+  // Audit log
+  await supabase.from('admin_audit_log').insert({
+    admin_user_id: adminUserId,
+    action:        'RECALL_BUS',
+    table_name:    'buses',
+    record_id:     busId,
+    metadata:      { bus_number: bus.bus_number, previous_status: bus.status },
+  });
+
+  return data;
+}
+
+export async function deployBus(busId, adminUserId) {
+  const { data: bus } = await supabase
+    .from('buses').select('id, bus_number, status').eq('id', busId).maybeSingle();
+  if (!bus) {
+    const e = new Error('Bus not found'); e.statusCode = 404; e.code = 'BUS_NOT_FOUND'; throw e;
+  }
+
+  const { data, error } = await supabase
+    .from('buses')
+    .update({ status: 'active', last_location_update: new Date().toISOString() })
+    .eq('id', busId)
+    .select('id, bus_number, status')
+    .single();
+  if (error) throw error;
+
+  await supabase.from('admin_audit_log').insert({
+    admin_user_id: adminUserId,
+    action:        'DEPLOY_STANDBY_BUS',
+    table_name:    'buses',
+    record_id:     busId,
+    metadata:      { bus_number: bus.bus_number, previous_status: bus.status },
+  });
+
+  return data;
+}
 
 
