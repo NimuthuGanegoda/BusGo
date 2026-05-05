@@ -888,12 +888,11 @@ def predict_alert_priority():
         log.exception("Alert priority error")
         return jsonify({"error": str(e)}), 500
 
-
+load_all_models()
 # ══════════════════════════════════════════════════════════════════════════════
 #  ENTRY POINT
 # ══════════════════════════════════════════════════════════════════════════════
 if __name__ == "__main__":
-    load_all_models()
     port = int(os.environ.get("ML_PORT", 8000))
     log.info(f"Starting BUSGO ML Service on port {port}")
     app.run(host="0.0.0.0", port=port, debug=False)
