@@ -20,8 +20,8 @@ RUN python -c "import nltk; nltk.download('stopwords'); nltk.download('wordnet')
 # Copy app code
 COPY app.py .
 
-# Models mounted at runtime via docker-compose volume
-RUN mkdir -p /app/models
+# Copy models from repo into the image
+COPY models/ /app/models/
 
 EXPOSE 8000
 
