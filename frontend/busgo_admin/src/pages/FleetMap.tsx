@@ -354,8 +354,8 @@ export default function FleetMap() {
                     ? new Date(selected.last_location_update).toLocaleTimeString()
                     : 'Never'],
                   ['RATING',     selected.avg_rating != null
-                    ? `${'★'.repeat(Math.round(selected.avg_rating))}${'☆'.repeat(5 - Math.round(selected.avg_rating))} ${selected.avg_rating.toFixed(1)} (${selected.total_reviews} reviews)`
-                    : 'No ratings yet'],
+                    ? `${selected.avg_rating.toFixed(1)} / 10 (${selected.total_reviews} ML reviews)`
+                    : 'No ML ratings yet'],
                 ] as [string, string][]).map(([label, value]) => (
                   <div key={label} className="detail-row">
                     <span className="detail-label">{label}</span>

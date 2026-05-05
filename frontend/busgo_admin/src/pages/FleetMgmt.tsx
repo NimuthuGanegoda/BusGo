@@ -329,9 +329,9 @@ export default function FleetMgmt() {
                     <td>
                       {bus.avg_rating != null ? (
                         <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                          <span style={{ color: '#f59e0b', fontSize: '14px' }}>{'★'.repeat(Math.round(bus.avg_rating))}{'☆'.repeat(5 - Math.round(bus.avg_rating))}</span>
-                          <span style={{ fontSize: '12px', fontWeight: 600, color: '#374151' }}>{bus.avg_rating.toFixed(1)}</span>
-                          <span style={{ fontSize: '11px', color: '#9ca3af' }}>({bus.total_reviews})</span>
+                          <span style={{ fontSize: '13px', fontWeight: 700, color: '#1d4ed8' }}>{bus.avg_rating.toFixed(1)}</span>
+                          <span style={{ fontSize: '11px', color: '#6b7280' }}>/ 10</span>
+                          <span style={{ fontSize: '11px', color: '#9ca3af' }}>({bus.total_reviews} reviews)</span>
                         </div>
                       ) : (
                         <span style={{ fontSize: '12px', color: '#9ca3af' }}>No ratings</span>

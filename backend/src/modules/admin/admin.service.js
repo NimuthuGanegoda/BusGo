@@ -102,18 +102,19 @@ export async function listAllBuses(filters) {
   const { data, error, count } = await query;
   if (error) throw error;
 
-  // FR-54: Fetch average ratings per bus from ratings table
+  // FR-54: Fetch ML ratings per bus from ratings table (ml_rating column)
   const { data: ratings } = await supabase
     .from('ratings')
-    .select('bus_id, stars');
+    .select('bus_id, ml_rating')
+    .not('ml_rating', 'is', null);
 
-  // Calculate average rating and total reviews per bus
+  // Calculate average ML rating and total reviews per bus
   const ratingMap = {};
   if (ratings) {
     for (const r of ratings) {
-      if (!r.bus_id) continue;
+      if (!r.bus_id || r.ml_rating == null) continue;
       if (!ratingMap[r.bus_id]) ratingMap[r.bus_id] = { sum: 0, count: 0 };
-      ratingMap[r.bus_id].sum   += r.stars;
+      ratingMap[r.bus_id].sum   += r.ml_rating;
       ratingMap[r.bus_id].count += 1;
     }
   }
