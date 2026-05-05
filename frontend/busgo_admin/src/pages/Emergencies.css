@@ -38,7 +38,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 9998;
+  z-index: 99999;
   animation: fadeIn 0.2s ease-out;
 }
 
