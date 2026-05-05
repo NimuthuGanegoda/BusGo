@@ -3,11 +3,11 @@ import { CheckCircle, Eye, RefreshCw, X } from 'lucide-react';
 import './Emergencies.css';
 
 const PRIORITY_COLORS: Record<number, string> = {
-  5: '#ef4444', // CRITICAL — red
-  4: '#f59e0b', // HIGH     — amber
-  3: '#3b82f6', // MEDIUM   — blue
-  2: '#22c55e', // LOW      — green
-  1: '#6b7280', // FALSE    — grey
+  5: '#ef4444',
+  4: '#f59e0b',
+  3: '#3b82f6',
+  2: '#22c55e',
+  1: '#6b7280',
 };
 
 const PRIORITY_LABELS: Record<number, string> = {
@@ -32,8 +32,6 @@ const TYPE_ICONS: Record<string, string> = {
   other:      '📋',
 };
 
-// ── CORRECT endpoint: /api/admin/emergency returns ALL alerts with user joins
-//    /api/emergency only returns alerts for the logged-in user (wrong for admin)
 const ADMIN_API = 'https://busgo-production.up.railway.app/api/admin';
 
 export default function Emergencies() {
@@ -60,7 +58,7 @@ export default function Emergencies() {
       if (statusFilter !== 'all') params.set('status', statusFilter);
       if (typeFilter   !== 'all') params.set('alert_type', typeFilter);
 
-      const res  = await fetch(`${ADMIN_API}/emergency?${params}`, {
+      const res = await fetch(`${ADMIN_API}/emergency?${params}`, {
         headers: { Authorization: `Bearer ${localStorage.getItem('busgo_access_token')}` },
       });
 
@@ -72,10 +70,8 @@ export default function Emergencies() {
       const json = await res.json();
       console.log('[Emergencies] Response:', json);
 
-      // Backend returns: { success: true, data: [...alerts], message: '...' }
       const found: any[] = Array.isArray(json.data) ? json.data : [];
 
-      // Notify if new alerts arrived during silent poll
       if (silent && found.length > prevCountRef.current) {
         const newCount = found.length - prevCountRef.current;
         showToast(`🚨 ${newCount} new emergency alert${newCount > 1 ? 's' : ''} received`);
@@ -91,10 +87,8 @@ export default function Emergencies() {
     }
   }, [statusFilter, typeFilter]);
 
-  // Initial load + re-fetch when filters change
   useEffect(() => { fetchAlerts(); }, [fetchAlerts]);
 
-  // Auto-poll every 20 seconds (silent — no spinner)
   useEffect(() => {
     pollRef.current = setInterval(() => fetchAlerts(true), 20_000);
     return () => { if (pollRef.current) clearInterval(pollRef.current); };
@@ -119,6 +113,13 @@ export default function Emergencies() {
     }
   };
 
+  const openDetail = (e: React.MouseEvent, alert: any) => {
+    e.stopPropagation();
+    e.preventDefault();
+    console.log('[Emergencies] Opening detail for:', alert.id);
+    setDetail(alert);
+  };
+
   const totals = {
     all:          alerts.length,
     pending:      alerts.filter(a => a.status === 'pending').length,
@@ -140,7 +141,11 @@ export default function Emergencies() {
 
       {/* Detail Modal */}
       {detail && (
-        <div className="em-modal-overlay" onClick={() => setDetail(null)}>
+        <div
+          className="em-modal-overlay"
+          style={{ zIndex: 99999 }}
+          onClick={() => setDetail(null)}
+        >
           <div className="em-modal" onClick={e => e.stopPropagation()}>
             <div className="em-modal-header">
               <h3>Alert Details</h3>
@@ -253,13 +258,10 @@ export default function Emergencies() {
       ) : (
         <div className="em-alerts-list">
           {alerts.map(alert => {
-            // ── Priority: use ml_priority number; fall back to 2 (LOW) if null
             const pri      = alert.ml_priority ?? null;
             const priColor = pri ? PRIORITY_COLORS[pri] : '#9ca3af';
-            // ── Label: prefer backend label, fall back to our map, then blank
             const priLabel = alert.ml_priority_label || (pri ? PRIORITY_LABELS[pri] : null);
             const status   = STATUS_CONFIG[alert.status] || STATUS_CONFIG.pending;
-            // ── Reporter: show driver/passenger name + role in brackets
             const reporter = alert.users?.full_name
               ? `${alert.users.full_name}${alert.users.role ? ` (${alert.users.role})` : ''}`
               : '—';
@@ -274,7 +276,6 @@ export default function Emergencies() {
 
                   <div className="em-alert-content">
                     <div className="em-alert-row-top">
-                      {/* Priority badge */}
                       {priLabel && (
                         <span style={{
                           color: priColor, background: `${priColor}18`,
@@ -284,7 +285,6 @@ export default function Emergencies() {
                           {priLabel}
                         </span>
                       )}
-                      {/* No ML result yet */}
                       {!priLabel && (
                         <span style={{
                           color: '#9ca3af', background: '#f3f4f6',
@@ -326,7 +326,6 @@ export default function Emergencies() {
                     )}
 
                     <div className="em-alert-meta">
-                      {/* Reporter name + role */}
                       <span>👤 {reporter}</span>
                       {alert.buses?.bus_number && (
                         <><span className="em-alert-meta-divider">|</span>
@@ -339,17 +338,20 @@ export default function Emergencies() {
                     <div className="em-alert-actions">
                       {alert.status === 'pending' && (
                         <button className="em-action-btn warning"
-                          onClick={() => updateStatus(alert.id, 'acknowledged')}>
+                          onClick={(e) => { e.stopPropagation(); updateStatus(alert.id, 'acknowledged'); }}>
                           <Eye size={14} /> Acknowledge
                         </button>
                       )}
                       {alert.status !== 'resolved' && (
                         <button className="em-action-btn success"
-                          onClick={() => updateStatus(alert.id, 'resolved')}>
+                          onClick={(e) => { e.stopPropagation(); updateStatus(alert.id, 'resolved'); }}>
                           <CheckCircle size={14} /> Resolve
                         </button>
                       )}
-                      <button className="em-action-btn secondary" onClick={() => setDetail(alert)}>
+                      <button
+                        className="em-action-btn secondary"
+                        onClick={(e) => openDetail(e, alert)}
+                      >
                         <Eye size={14} /> Details
                       </button>
                     </div>
@@ -375,9 +377,3 @@ export default function Emergencies() {
     </div>
   );
 }
-
-
-
-
-
-
