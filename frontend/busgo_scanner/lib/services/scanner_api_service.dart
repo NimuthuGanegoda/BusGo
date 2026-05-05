@@ -1,3 +1,7 @@
+import 'dart:convert';
+import 'package:flutter/material.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:http/http.dart' as http;
 import '../constants/scanner_api_constants.dart';
 
 // â”€â”€ Base URL is now read from constants/scanner_api_constants.dart â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
