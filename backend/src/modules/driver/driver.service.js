@@ -160,7 +160,6 @@ export async function getDriverRating(driverUserId) {
   };
 }
 
-// ── NEW: Get trip history for driver (trips driven, not passenger trips) ────
 export async function getDriverTripHistory(userId, page = 1, pageSize = 50) {
   const { data: bus } = await supabase
     .from('buses').select('id').eq('driver_user_id', userId).maybeSingle();
@@ -198,3 +197,45 @@ export async function uploadDriverLicense(userId, fileBuffer, mimeType) {
   return { license_url: filePath, signed_url: signedData.signedUrl };
 }
 
+// ── FR-21: Notify passengers when bus arrives at their alighting stop ─────────
+export async function notifyPassengersAtStop(driverUserId, stopId) {
+  // Get bus for this driver
+  const { data: bus } = await supabase
+    .from('buses').select('id, bus_number').eq('driver_user_id', driverUserId).maybeSingle();
+  if (!bus) {
+    const err = new Error('No bus assigned to this driver');
+    err.statusCode = 404; err.code = 'NO_BUS_ASSIGNED'; throw err;
+  }
+
+  // Get stop name
+  const { data: stop } = await supabase
+    .from('bus_stops').select('stop_name').eq('id', stopId).maybeSingle();
+  const stopName = stop?.stop_name || 'your stop';
+
+  // Find all ongoing trips on this bus where alighting_stop_id matches
+  const { data: trips } = await supabase
+    .from('trips')
+    .select('id, user_id')
+    .eq('bus_id', bus.id)
+    .eq('status', 'ongoing')
+    .eq('alighting_stop_id', stopId);
+
+  if (!trips || trips.length === 0) {
+    console.log(`[FR-21] No passengers for stop ${stopName} on bus ${bus.bus_number}`);
+    return { notified: 0, stop_name: stopName };
+  }
+
+  // Send notification to each passenger whose stop this is
+  const notifications = trips.map(trip => ({
+    user_id:  trip.user_id,
+    category: 'bus_alert',
+    title:    '🚏 Your stop is approaching!',
+    body:     `Bus ${bus.bus_number} is arriving at ${stopName}. Please prepare to alight.`,
+    meta:     { trip_id: trip.id, bus_id: bus.id, stop_id: stopId, stop_name: stopName },
+  }));
+
+  await supabase.from('notifications').insert(notifications);
+
+  console.log(`[FR-21] Notified ${trips.length} passenger(s) arriving at ${stopName}`);
+  return { notified: trips.length, stop_name: stopName };
+}
