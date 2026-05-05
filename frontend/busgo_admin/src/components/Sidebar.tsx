@@ -1,9 +1,10 @@
-import { NavLink, useNavigate } from 'react-router-dom';
+﻿import { NavLink, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard, Map, Bus, AlertTriangle,
   Users, Shield, LogOut, X, KeyRound,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import busgoLogo from '../assets/busgo-logo-new.jpeg';
 
 const NAV = [
   { to: '/admin/dashboard',   icon: LayoutDashboard, label: 'Dashboard'        },
@@ -54,7 +55,7 @@ export default function Sidebar({ open, onClose }: Props) {
         marginBottom: '2rem', padding: '0 0.5rem',
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.85rem' }}>
-          <img src="/src/assets/busgo-axis-logo.jpeg" alt="BUSGO" style={{
+          <img src={busgoLogo} alt="BUSGO" style={{
             width: 40, height: 40, borderRadius: '10px', objectFit: 'cover',
             boxShadow: '0 4px 12px var(--primary-glow)',
           }} />
@@ -140,7 +141,7 @@ export default function Sidebar({ open, onClose }: Props) {
               {user?.full_name ?? 'Admin'}
             </div>
             <div style={{ fontSize: '0.72rem', color: isDeveloper ? '#f59e0b' : 'var(--text-muted)' }}>
-              {isDeveloper ? '⚙ Developer' : 'Administrator'}
+              {isDeveloper ? 'âš™ Developer' : 'Administrator'}
             </div>
           </div>
         </div>
@@ -168,5 +169,6 @@ export default function Sidebar({ open, onClose }: Props) {
     </aside>
   );
 }
+
 
 
