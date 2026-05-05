@@ -1,8 +1,8 @@
-import { supabase } from '../../config/supabase.js';
+﻿import { supabase } from '../../config/supabase.js';
 import { buildPagination } from '../../utils/response.utils.js';
 import { hashPassword } from '../../utils/password.utils.js';
 
-// ── User Management ────────────────────────────────────────────────────────────
+// â”€â”€ User Management â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export async function listUsers(filters) {
   const { role, search, page, page_size, is_active } = filters;
@@ -79,7 +79,7 @@ export async function reactivateUser(userId) {
   return data;
 }
 
-// ── Bus Management (Admin CRUD) ────────────────────────────────────────────────
+// â”€â”€ Bus Management (Admin CRUD) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export async function listAllBuses(filters) {
   const { status, route_id, page, page_size } = filters;
@@ -102,7 +102,31 @@ export async function listAllBuses(filters) {
   const { data, error, count } = await query;
   if (error) throw error;
 
-  return { buses: data, pagination: buildPagination(count, page, page_size) };
+  // FR-54: Fetch average ratings per bus from driver_ratings table
+  const { data: ratings } = await supabase
+    .from('driver_ratings')
+    .select('bus_id, rating');
+
+  // Calculate average rating and total reviews per bus
+  const ratingMap = {};
+  if (ratings) {
+    for (const r of ratings) {
+      if (!r.bus_id) continue;
+      if (!ratingMap[r.bus_id]) ratingMap[r.bus_id] = { sum: 0, count: 0 };
+      ratingMap[r.bus_id].sum   += r.rating;
+      ratingMap[r.bus_id].count += 1;
+    }
+  }
+
+  const busesWithRatings = (data || []).map(bus => ({
+    ...bus,
+    avg_rating:    ratingMap[bus.id]
+      ? Math.round((ratingMap[bus.id].sum / ratingMap[bus.id].count) * 10) / 10
+      : null,
+    total_reviews: ratingMap[bus.id]?.count ?? 0,
+  }));
+
+  return { buses: busesWithRatings, pagination: buildPagination(count, page, page_size) };
 }
 
 export async function createBus(dto) {
@@ -133,7 +157,7 @@ export async function deleteBus(busId) {
   if (error) throw error;
 }
 
-// ── Emergency Management ───────────────────────────────────────────────────────
+// â”€â”€ Emergency Management â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export async function listAllAlerts(filters) {
   const { status, alert_type, page = 1, page_size = 50 } = filters;
@@ -142,7 +166,7 @@ export async function listAllAlerts(filters) {
   let query = supabase
     .from('emergency_alerts')
     .select(
-      // ← ml_priority_label was missing — added here
+      // â† ml_priority_label was missing â€” added here
       `id, alert_type, description, latitude, longitude, status,
        ml_priority, ml_priority_label, ml_is_false, ml_confidence, ml_action,
        created_at, updated_at,
@@ -150,7 +174,7 @@ export async function listAllAlerts(filters) {
        buses ( id, bus_number, driver_name )`,
       { count: 'exact' }
     )
-    // ← Sort: highest ML priority first (P5 CRITICAL → P1 FALSE),
+    // â† Sort: highest ML priority first (P5 CRITICAL â†’ P1 FALSE),
     //   then newest within same priority
     .order('ml_priority', { ascending: false, nullsFirst: false })
     .order('created_at', { ascending: false })
@@ -180,7 +204,7 @@ export async function adminUpdateAlertStatus(alertId, status, adminId) {
   return data;
 }
 
-// ── Fleet / Standby Bus Management ────────────────────────────────────────────
+// â”€â”€ Fleet / Standby Bus Management â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export async function getStandbyBuses() {
   const { data, error } = await supabase
@@ -221,7 +245,7 @@ export async function recallBus(busId, adminId) {
   return data;
 }
 
-// ── Dashboard Stats ────────────────────────────────────────────────────────────
+// â”€â”€ Dashboard Stats â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export async function getDashboardStats() {
   const [
@@ -252,9 +276,9 @@ export async function getDashboardStats() {
   };
 }
 
-// ── Audit Log ─────────────────────────────────────────────────────────────────
+// â”€â”€ Audit Log â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-// AFTER — proper try/catch works correctly
+// AFTER â€” proper try/catch works correctly
 export async function logAdminAction(adminId, action, table, recordId, metadata = {}) {
   try {
     await supabase.from('admin_audit_logs').insert({
@@ -292,7 +316,7 @@ export async function getAuditLogs(filters) {
   return { logs: data, pagination: buildPagination(count, page, page_size) };
 }
 
-// ── Route Management ──────────────────────────────────────────────────────────
+// â”€â”€ Route Management â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export async function createRoute(dto) {
   const { data, error } = await supabase
@@ -350,6 +374,7 @@ export async function deleteUser(userId) {
   const { error } = await supabase.from('users').delete().eq('id', userId);
   if (error) throw error;
 }
+
 
 
 
