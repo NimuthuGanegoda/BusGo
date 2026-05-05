@@ -1,4 +1,4 @@
-import 'dart:async';
+﻿import 'dart:async';
 import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -24,12 +24,12 @@ class _ActiveScannerScreenState extends State<ActiveScannerScreen>
   int       _scanCount  = 0;
 
   // UFR_48: retry tracking per token
-  // token → retry count for system errors only
+  // token â†’ retry count for system errors only
   static const int _maxRetries = 5;
   final Map<String, int> _retryCount = {};
 
   // Tracks last scan per token for auto boarding/alighting:
-  // token → 'boarding' or 'alighting'
+  // token â†’ 'boarding' or 'alighting'
   final Map<String, String> _tokenScanHistory = {};
 
   Timer?    _debounceTimer;
@@ -96,7 +96,7 @@ class _ActiveScannerScreenState extends State<ActiveScannerScreen>
     });
   }
 
-  // ── UFR_48: Check if error is a system error (5xx / network) ─────────────
+  // â”€â”€ UFR_48: Check if error is a system error (5xx / network) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   bool _isSystemError(String msg) {
     final lower = msg.toLowerCase();
     return lower.contains('500') ||
@@ -110,14 +110,14 @@ class _ActiveScannerScreenState extends State<ActiveScannerScreen>
           lower.contains('future not completed');
   }
 
-  // ══════════════════════════════════════════════════════════════════════════
+  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
   // AUTO BOARDING / ALIGHTING DETECTION
   //
   // UFR_48: On system error (5xx/network), allow up to 5 retries.
-  //         On business logic error (4xx), reject immediately — no retry.
+  //         On business logic error (4xx), reject immediately â€” no retry.
   //         Same logic applies for both Normal QR and Payment QR.
   // UFR_51: Repeated scan logging is handled server-side in qr.service.js
-  // ══════════════════════════════════════════════════════════════════════════
+  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
   Future<void> _processScan(String scannedToken) async {
     if (_isScanning) return;
 
@@ -147,7 +147,7 @@ class _ActiveScannerScreenState extends State<ActiveScannerScreen>
         _tokenScanHistory[scannedToken] = 'boarding';
       }
 
-      // Success — reset retry counter for this token
+      // Success â€” reset retry counter for this token
       _retryCount.remove(scannedToken);
 
       setState(() { _scanCount++; });
@@ -165,7 +165,7 @@ class _ActiveScannerScreenState extends State<ActiveScannerScreen>
           .replaceFirst('Exception: ', '')
           .replaceFirst('DioException: ', '');
 
-      // ── UFR_48: System error → retry up to 5 times ──────────────────────
+      // â”€â”€ UFR_48: System error â†’ retry up to 5 times â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
       if (_isSystemError(msg)) {
         final currentRetries = _retryCount[scannedToken] ?? 0;
         if (currentRetries < _maxRetries) {
@@ -179,7 +179,7 @@ class _ActiveScannerScreenState extends State<ActiveScannerScreen>
                     color: Colors.white, size: 18),
                 const SizedBox(width: 10),
                 Expanded(child: Text(
-                  'System error — retrying... '
+                  'System error â€” retrying... '
                   '(attempt ${currentRetries + 1}/$_maxRetries, '
                   '$remaining retries left)',
                   style: const TextStyle(
@@ -201,14 +201,14 @@ class _ActiveScannerScreenState extends State<ActiveScannerScreen>
           _retryCount.remove(scannedToken);
           await _navigateError(
               'System error after $_maxRetries attempts.\n'
-              'Please contact support — this is not a passenger issue.');
+              'Please contact support â€” this is not a passenger issue.');
           return;
         }
       }
 
-      // ── Business logic errors — no retry ──────────────────────────────────
+      // â”€â”€ Business logic errors â€” no retry â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-      // 409 = passenger already on board → auto-switch to alighting
+      // 409 = passenger already on board â†’ auto-switch to alighting
       final is409 = msg.contains('409') || msg.contains('TRIP_ALREADY_ONGOING');
       if (is409) {
         try {
@@ -231,29 +231,51 @@ class _ActiveScannerScreenState extends State<ActiveScannerScreen>
         return;
       }
 
-      // 410 = QR expired
+      // 410 = QR expired (UFR_48: show remaining attempts or lockout)
       final is410 = msg.contains('410') || msg.contains('QR_EXPIRED');
       if (is410) {
         if (mounted) {
+          // Check if backend sent a specific UFR_48 message with attempts info
+          final isAttemptMsg = msg.contains('attempt') || msg.contains('remaining');
+          final displayMsg   = isAttemptMsg
+              ? msg.replaceFirst('Exception: ', '')
+                   .replaceFirst('DioException: ', '')
+              : 'QR expired.\nAsk passenger to refresh their QR card.';
+
           ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-            content: const Row(children: [
-              Icon(Icons.refresh_rounded, color: Colors.white, size: 18),
-              SizedBox(width: 10),
-              Expanded(child: Text(
-                  'QR expired.\nAsk passenger to refresh their QR card.',
-                  style: TextStyle(
+            content: Row(children: [
+              Icon(
+                isAttemptMsg
+                    ? Icons.warning_amber_rounded
+                    : Icons.refresh_rounded,
+                color: Colors.white, size: 18),
+              const SizedBox(width: 10),
+              Expanded(child: Text(displayMsg,
+                  style: const TextStyle(
                       color: Colors.white, fontSize: 13, height: 1.4))),
             ]),
-            backgroundColor: const Color(0xFF1A6FA8),
-            behavior:        SnackBarBehavior.floating,
-            margin:          const EdgeInsets.fromLTRB(16, 0, 16, 24),
-            duration:        const Duration(seconds: 4),
+            backgroundColor: isAttemptMsg
+                ? const Color(0xFFD97706)   // orange for attempt warning
+                : const Color(0xFF1A6FA8),  // blue for generic expired
+            behavior: SnackBarBehavior.floating,
+            margin:   const EdgeInsets.fromLTRB(16, 0, 16, 24),
+            duration: const Duration(seconds: 5),
             shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(10)),
           ));
           setState(() { _isScanning = false; _lastScannedValue = null; });
           await _restartCamera();
         }
+        return;
+      }
+
+      // 429 = UFR_48 lockout — show prominent error
+      final is429 = msg.contains('429') || msg.contains('SCAN_ATTEMPT_LOCKED');
+      if (is429) {
+        final lockMsg = msg
+            .replaceFirst('Exception: ', '')
+            .replaceFirst('DioException: ', '');
+        await _navigateError('🔒 Scanning Locked\n\n$lockMsg');
         return;
       }
 
@@ -429,7 +451,7 @@ class _ActiveScannerScreenState extends State<ActiveScannerScreen>
               child: Row(mainAxisSize: MainAxisSize.min, children: [
                 Icon(Icons.auto_awesome, size: 14, color: _cyan),
                 const SizedBox(width: 8),
-                Text('Auto: 1st scan boards · 2nd scan alights',
+                Text('Auto: 1st scan boards Â· 2nd scan alights',
                     style: GoogleFonts.inter(
                         fontSize: 12,
                         fontWeight: FontWeight.w600,
