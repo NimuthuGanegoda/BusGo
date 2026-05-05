@@ -161,9 +161,14 @@ class _ActiveScannerScreenState extends State<ActiveScannerScreen>
         await _restartCamera();
       }
     } catch (e) {
-      final msg = e.toString()
+      // Parse structured exception: "statusCode::message"
+      final raw = e.toString()
           .replaceFirst('Exception: ', '')
           .replaceFirst('DioException: ', '');
+      final sepIdx   = raw.indexOf('::');
+      final httpCode = sepIdx > 0 ? int.tryParse(raw.substring(0, sepIdx)) ?? 0 : 0;
+      final msg      = sepIdx > 0 ? raw.substring(sepIdx + 2) : raw;
+
 
       // â”€â”€ UFR_48: System error â†’ retry up to 5 times â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
       if (_isSystemError(msg)) {
@@ -209,7 +214,7 @@ class _ActiveScannerScreenState extends State<ActiveScannerScreen>
       // â”€â”€ Business logic errors â€” no retry â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
       // 409 = passenger already on board â†’ auto-switch to alighting
-      final is409 = msg.contains('409') || msg.contains('TRIP_ALREADY_ONGOING');
+      final is409 = httpCode == 409;
       if (is409) {
         try {
           final result = await widget.api.scanExit(scannedToken);
@@ -232,7 +237,7 @@ class _ActiveScannerScreenState extends State<ActiveScannerScreen>
       }
 
       // 410 = QR expired (UFR_48: clear history so next scan goes to scan-IN)
-      final is410 = msg.contains('410') || msg.contains('QR_EXPIRED');
+      final is410 = httpCode == 410;
       if (is410) {
         // CRITICAL: clear token history so next scan attempts scan-IN (not scan-EXIT)
         // This ensures UFR_48 attempt counter is hit on repeated scans
@@ -263,7 +268,7 @@ class _ActiveScannerScreenState extends State<ActiveScannerScreen>
       }
 
       // 429 = UFR_48 lockout — show prominent error
-      final is429 = msg.contains('429') || msg.contains('SCAN_ATTEMPT_LOCKED');
+      final is429 = httpCode == 429;
       if (is429) {
         final lockMsg = msg
             .replaceFirst('Exception: ', '')
