@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
@@ -54,7 +54,7 @@ class _LoginScreenState extends State<LoginScreen> {
       backgroundColor: const Color(0xFF111B29),
       body: Stack(children: [
 
-        // ── 1. FIXED PARALLAX BACKGROUND ────────────────────────────────
+        // â”€â”€ 1. FIXED PARALLAX BACKGROUND â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         Positioned.fill(
           child: FittedBox(
             fit: BoxFit.cover,
@@ -117,7 +117,7 @@ class _LoginScreenState extends State<LoginScreen> {
           ),
         ),
 
-        // ── 2. SCROLLABLE LOGIN CONTENT ──────────────────────────────────
+        // â”€â”€ 2. SCROLLABLE LOGIN CONTENT â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         SingleChildScrollView(
           controller: _scrollController,
           child: Column(children: [
@@ -246,16 +246,20 @@ class _LoginScreenState extends State<LoginScreen> {
                     child: RichText(text: TextSpan(children: [
                       TextSpan(text: 'New driver? ', style: GoogleFonts.inter(
                           fontSize: 12, color: const Color(0xFF90CAF9))),
-                      TextSpan(text: 'Register here →', style: GoogleFonts.inter(
+                      TextSpan(text: 'Register here â†’', style: GoogleFonts.inter(
                           fontSize: 12, fontWeight: FontWeight.w700,
                           color: const Color(0xFFFFD54F))),
                     ])))),
 
                   const SizedBox(height: 10),
 
-                  Center(child: Text('Forgot password? Contact admin',
-                    style: GoogleFonts.inter(fontSize: 12,
-                        color: const Color(0xFF64B5F6)))),
+                  Center(child: GestureDetector(
+                    onTap: () => context.push('/forgot-password'),
+                    child: Text('Forgot password?',
+                      style: GoogleFonts.inter(fontSize: 12,
+                          color: const Color(0xFF64B5F6),
+                          decoration: TextDecoration.underline,
+                          decorationColor: const Color(0xFF64B5F6))))),
                 ])),
               ),
             ),
@@ -353,6 +357,7 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 }
+
 
 
 
