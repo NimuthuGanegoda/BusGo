@@ -1,4 +1,4 @@
-﻿import 'dart:convert';
+import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -109,7 +109,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
         child: RichText(text: TextSpan(children: [
           TextSpan(text: 'Already registered? ',
               style: GoogleFonts.inter(fontSize: 12, color: const Color(0xFF90CAF9))),
-          TextSpan(text: 'Sign in â†’',
+          TextSpan(text: 'Sign in →',
               style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w700,
                   color: const Color(0xFFFFD54F))),
         ])),
@@ -360,7 +360,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                             Icon(isUploaded ? Icons.check_circle_rounded : Icons.upload_rounded,
                                 size: 14, color: Colors.white),
                             const SizedBox(width: 6),
-                            Text(isUploaded ? 'License uploaded âœ“' : 'Tap to upload',
+                            Text(isUploaded ? 'License uploaded ✓' : 'Tap to upload',
                                 style: GoogleFonts.inter(fontSize: 12,
                                     fontWeight: FontWeight.w600, color: Colors.white)),
                           ]),
@@ -385,7 +385,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                           style: GoogleFonts.inter(fontSize: 13,
                               fontWeight: FontWeight.w600, color: const Color(0xFF6B7A8D))),
                       const SizedBox(height: 4),
-                      Text('JPG, PNG up to 5MB â€” Required',
+                      Text('JPG, PNG up to 5MB — Required',
                           style: GoogleFonts.inter(fontSize: 11, color: const Color(0xFFBDBDBD))),
                     ]),
         ),
@@ -451,8 +451,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
   }
 
   Future<void> _uploadLicense(File file) async {
-    // License is uploaded in _handleRegister step 2 after registration succeeds.
-    // Just mark as ready here so the UI shows the preview correctly.
     setState(() { _licenseUrl = 'pending_upload'; _licenseUploading = false; });
   }
 
@@ -470,7 +468,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
     HapticFeedback.lightImpact();
 
     try {
-      // Step 1 â€” Register user
+      // Step 1 — Register user
       final regResponse = await http.post(
         Uri.parse('${ApiConfig.baseUrl}/auth/register'),
         headers: {'Content-Type': 'application/json'},
@@ -492,7 +490,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
         return;
       }
 
-      // Step 2 â€” Upload license (best effort â€” don't fail registration if this times out)
+      // Step 2 — Upload license (best effort — don't fail registration if this times out)
       try {
         final bytes = await _licenseFile!.readAsBytes();
         final isPng = _licenseFile!.path.toLowerCase().endsWith('.png');
@@ -508,15 +506,55 @@ class _RegisterScreenState extends State<RegisterScreen> {
         ));
         await uploadRequest.send().timeout(const Duration(seconds: 60));
       } catch (uploadErr) {
-        // License upload failed â€” registration still succeeded
+        // License upload failed — registration still succeeded
         debugPrint('[License Upload] Failed: $uploadErr');
       }
 
-      // â”€â”€ Always show success if registration succeeded â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+      // ── Always show success if registration succeeded ──────────────────
       setState(() { _submitted = true; _isLoading = false; });
 
     } catch (e) {
       setState(() { _error = 'Connection failed. Is the backend running?'; _isLoading = false; });
     }
   }
+
+  Widget _buildLabel(String text) => Text(text, style: GoogleFonts.inter(
+      fontSize: 11, fontWeight: FontWeight.w600,
+      color: const Color(0xFF757575), letterSpacing: 0.8));
+
+  Widget _buildField({
+    required TextEditingController controller,
+    required String hint,
+    required IconData icon,
+    bool isPassword = false,
+    bool obscure = false,
+    VoidCallback? onToggleObscure,
+    TextInputType? keyboardType,
+    String? Function(String?)? validator,
+  }) => TextFormField(
+    controller: controller, obscureText: isPassword && obscure,
+    keyboardType: keyboardType, validator: validator,
+    style: GoogleFonts.inter(fontSize: 14, color: const Color(0xFF424242)),
+    decoration: InputDecoration(
+      hintText: hint,
+      hintStyle: GoogleFonts.inter(fontSize: 13, color: const Color(0xFFBDBDBD)),
+      prefixIcon: Icon(icon, size: 18, color: const Color(0xFFBDBDBD)),
+      suffixIcon: isPassword ? IconButton(
+        icon: Icon(obscure ? Icons.visibility_off_outlined : Icons.visibility_outlined,
+            size: 18, color: const Color(0xFFBDBDBD)),
+        onPressed: onToggleObscure,
+      ) : null,
+      filled: true, fillColor: const Color(0xFFF5F7FA),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+      border:        OutlineInputBorder(borderRadius: BorderRadius.circular(10),
+          borderSide: const BorderSide(color: Color(0xFFE0E0E0), width: 1.5)),
+      enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10),
+          borderSide: const BorderSide(color: Color(0xFFE0E0E0), width: 1.5)),
+      focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10),
+          borderSide: const BorderSide(color: AppColors.primaryLight, width: 1.5)),
+      errorBorder:   OutlineInputBorder(borderRadius: BorderRadius.circular(10),
+          borderSide: const BorderSide(color: AppColors.danger)),
+    ),
+  );
+}
 
