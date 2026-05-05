@@ -8,10 +8,10 @@ import '../screens/profile/profile_screen.dart';
 final GoRouter appRouter = GoRouter(
   initialLocation: '/login',
   routes: [
-    GoRoute(path: '/login',            builder: (c, s) => const LoginScreen()),
-    GoRoute(path: '/register',         builder: (c, s) => const RegisterScreen()),
-    GoRoute(path: '/forgot-password',  builder: (c, s) => const ForgotPasswordScreen()),
-    GoRoute(path: '/dashboard',        builder: (c, s) => const MainShell()),
-    GoRoute(path: '/profile',          builder: (c, s) => const ProfileScreen()),
+    GoRoute(path: '/login',           builder: (c, s) => const LoginScreen()),
+    GoRoute(path: '/register',        builder: (c, s) => const RegisterScreen()),
+    GoRoute(path: '/forgot-password', builder: (c, s) => const ForgotPasswordScreen()),
+    GoRoute(path: '/dashboard',       builder: (c, s) => const MainShell()),
+    GoRoute(path: '/profile',         builder: (c, s) => const ProfileScreen()),
   ],
 );
