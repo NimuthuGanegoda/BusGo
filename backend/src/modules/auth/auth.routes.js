@@ -1,3 +1,5 @@
+import dns from 'dns';
+dns.setDefaultResultOrder('ipv4first');
 import { Router } from 'express';
 import { validate } from '../../middleware/validate.middleware.js';
 import { authLimiter } from '../../middleware/rateLimiter.middleware.js';
