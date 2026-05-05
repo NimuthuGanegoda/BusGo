@@ -94,16 +94,17 @@ export async function registerUser(dto, req = null) {
 
   // ── Send verification PIN email ───────────────────────────────────────────
   try {
-    sendEmailVerificationPin(email, pin, user.full_name)
-    .then(() => logger.info(`Email verification PIN sent to ${email}`))
-    .catch(emailErr => {
-      logger.error(`Failed to send verification email to ${email}: ${emailErr.message}`);
-      console.log(`\n==============================`);
-      console.log(`  BusGo Email Verification PIN`);
-      console.log(`  Email : ${email}`);
-      console.log(`  PIN   : ${pin}`);
-      console.log(`==============================\n`);
-    });
+    await sendEmailVerificationPin(email, pin, user.full_name);
+    logger.info(`Email verification PIN sent to ${email}`);
+  } catch (emailErr) {
+    // Log to console as fallback so you can still test locally
+    logger.error(`Failed to send verification email to ${email}: ${emailErr.message}`);
+    console.log(`\n==============================`);
+    console.log(`  BusGo Email Verification PIN`);
+    console.log(`  Email : ${email}`);
+    console.log(`  PIN   : ${pin}`);
+    console.log(`==============================\n`);
+  }
 
   if (role === 'driver') {
     return {
