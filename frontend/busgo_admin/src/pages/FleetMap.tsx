@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+﻿import { useState, useEffect, useCallback, useRef } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, Polyline, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import { RefreshCw, Bus, User, Map as MapIcon } from 'lucide-react';
@@ -11,7 +11,7 @@ const MAPTILER_KEY = import.meta.env.VITE_MAPTILER_KEY ?? '';
 const TILE_URL     = `https://api.maptiler.com/maps/streets-v2-dark/{z}/{x}/{y}.png?key=${MAPTILER_KEY}`;
 const token        = () => localStorage.getItem('busgo_access_token') ?? '';
 
-// ── Types ────────────────────────────────────────────────────────────────────
+// â”€â”€ Types â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 type BusRecord = {
   id: string;
   bus_number: string;
@@ -28,9 +28,11 @@ type BusRecord = {
     origin: string;
     destination: string;
   } | null;
+  avg_rating:    number | null;
+  total_reviews: number;
 };
 
-// ── Fit map to all content — re-fires when trigger value changes ─────────────
+// â”€â”€ Fit map to all content â€” re-fires when trigger value changes â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function FitBoundsOnce({ positions, trigger }: { positions: [number, number][]; trigger: number }) {
   const map    = useMap();
   const fitted = useRef(-1);
@@ -43,7 +45,7 @@ function FitBoundsOnce({ positions, trigger }: { positions: [number, number][]; 
   return null;
 }
 
-// ── Bus icon ─────────────────────────────────────────────────────────────────
+// â”€â”€ Bus icon â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function createBusIcon(status: string, crowd: string) {
   const color =
     status === 'breakdown' ? '#e74c3c'
@@ -67,7 +69,7 @@ function createBusIcon(status: string, crowd: string) {
   });
 }
 
-// ── Stop dot ─────────────────────────────────────────────────────────────────
+// â”€â”€ Stop dot â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function createStopDot() {
   return L.divIcon({
     className:   'fleet-stop-marker',
@@ -85,7 +87,7 @@ function isRecentlyUpdated(lastUpdate: string | null): boolean {
   return new Date(lastUpdate) > new Date(Date.now() - 2 * 60 * 1000);
 }
 
-// ── Component ─────────────────────────────────────────────────────────────────
+// â”€â”€ Component â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 export default function FleetMap() {
   const [buses,        setBuses]        = useState<BusRecord[]>([]);
   const [selected,     setSelected]     = useState<BusRecord | null>(null);
@@ -98,7 +100,7 @@ export default function FleetMap() {
   const [showRoutes,   setShowRoutes]   = useState(true);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // ── Buses (poll every 10s) ───────────────────────────────────────────────
+  // â”€â”€ Buses (poll every 10s) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const fetchBuses = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
     try {
@@ -121,14 +123,14 @@ export default function FleetMap() {
     return () => { if (pollRef.current) clearInterval(pollRef.current); };
   }, [fetchBuses]);
 
-  // ── Stops ────────────────────────────────────────────────────────────────
+  // â”€â”€ Stops â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   useEffect(() => {
     stopsApi.getAll()
       .then(data => setBusStops(Array.isArray(data) ? data : []))
       .catch(e => console.error('[FleetMap] stops:', e));
   }, []);
 
-  // ── Routes ───────────────────────────────────────────────────────────────
+  // â”€â”€ Routes â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   useEffect(() => {
     adminApi.listRoutes()
       .then(data => {
@@ -141,7 +143,7 @@ export default function FleetMap() {
       .catch(e => console.error('[FleetMap] routes:', e));
   }, []);
 
-  // ── Derived ──────────────────────────────────────────────────────────────
+  // â”€â”€ Derived â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const filtered    = buses.filter(b => statusFilter === 'all' || b.status === statusFilter);
   const withGps     = filtered.filter(b =>
     b.current_lat && b.current_lng && b.status === 'active' &&
@@ -151,7 +153,7 @@ export default function FleetMap() {
     !b.current_lat || !b.current_lng || !isRecentlyUpdated(b.last_location_update)
   );
 
-  // Positions for fitBounds — route waypoints only (they span the whole island)
+  // Positions for fitBounds â€” route waypoints only (they span the whole island)
   const allPositions: [number, number][] = routes.flatMap(r =>
     (r.waypoints ?? []).map(wp => [wp.lat, wp.lng] as [number, number])
   );
@@ -168,7 +170,7 @@ export default function FleetMap() {
     return { label: 'Low', color: '#16a34a', bg: '#f0fdf4' };
   };
 
-  // ── Render ───────────────────────────────────────────────────────────────
+  // â”€â”€ Render â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   return (
     <div className="fleet-map-page">
 
@@ -223,7 +225,7 @@ export default function FleetMap() {
                 <FitBoundsOnce positions={allPositions} trigger={routes.length} />
               )}
 
-              {/* ── Route lines ── */}
+              {/* â”€â”€ Route lines â”€â”€ */}
               {showRoutes && drawableRoutes.map(route => {
                 const positions = (route.waypoints ?? []).map(
                   wp => [wp.lat, wp.lng] as [number, number]
@@ -241,13 +243,13 @@ export default function FleetMap() {
                     <Popup>
                       <strong>Route {route.route_number}</strong><br />
                       {route.route_name}<br />
-                      {route.origin} → {route.destination}
+                      {route.origin} â†’ {route.destination}
                     </Popup>
                   </Polyline>
                 );
               })}
 
-              {/* ── Bus markers ── */}
+              {/* â”€â”€ Bus markers â”€â”€ */}
               {withGps.map(bus => (
                 <Marker
                   key={bus.id}
@@ -257,14 +259,14 @@ export default function FleetMap() {
                 >
                   <Popup>
                     <strong>{bus.bus_number}</strong><br />
-                    {bus.driver_name || '–'}<br />
+                    {bus.driver_name || 'â€“'}<br />
                     Route {bus.bus_routes?.route_number || 'N/A'}<br />
                     Speed: {bus.speed_kmh?.toFixed(0) || '0'} km/h
                   </Popup>
                 </Marker>
               ))}
 
-              {/* ── Stop dots ── */}
+              {/* â”€â”€ Stop dots â”€â”€ */}
               {busStops.map(stop => (
                 <Marker
                   key={`stop-${stop.id}`}
@@ -292,7 +294,7 @@ export default function FleetMap() {
             color:'#9ca3af', zIndex:1000, background:'rgba(255,255,255,0.7)',
             padding:'2px 6px', borderRadius:'4px', pointerEvents:'none',
           }}>
-            © <a href="https://www.maptiler.com/" style={{ color:'#6b7280' }}>MapTiler</a>
+            Â© <a href="https://www.maptiler.com/" style={{ color:'#6b7280' }}>MapTiler</a>
           </div>
 
           {/* Live badge */}
@@ -323,7 +325,7 @@ export default function FleetMap() {
               background:'white', padding:'8px 12px', borderRadius:'8px',
               fontSize:'12px', color:'#6b7280', boxShadow:'0 2px 8px rgba(0,0,0,0.15)',
             }}>
-              ⚠ {withoutGps.length} bus{withoutGps.length > 1 ? 'es' : ''} offline
+              âš  {withoutGps.length} bus{withoutGps.length > 1 ? 'es' : ''} offline
             </div>
           )}
         </div>
@@ -333,24 +335,27 @@ export default function FleetMap() {
           {selected ? (
             <>
               <div className="bus-detail-header">
-                <h2>{selected.bus_number} – Selected</h2>
-                <p>Route {selected.bus_routes?.route_number || 'N/A'} · {selected.bus_routes?.route_name || '–'}</p>
+                <h2>{selected.bus_number} â€“ Selected</h2>
+                <p>Route {selected.bus_routes?.route_number || 'N/A'} Â· {selected.bus_routes?.route_name || 'â€“'}</p>
               </div>
               <div className="bus-detail-rows">
                 {([
                   ['BUS NUMBER', selected.bus_number],
-                  ['DRIVER',     selected.driver_name || '–'],
+                  ['DRIVER',     selected.driver_name || 'â€“'],
                   ['ROUTE',      selected.bus_routes
-                    ? `${selected.bus_routes.route_number} – ${selected.bus_routes.origin} → ${selected.bus_routes.destination}`
+                    ? `${selected.bus_routes.route_number} â€“ ${selected.bus_routes.origin} â†’ ${selected.bus_routes.destination}`
                     : 'Unassigned'],
                   ['SPEED',      selected.speed_kmh ? `${selected.speed_kmh.toFixed(0)} km/h` : 'No GPS'],
                   ['STATUS',     selected.status],
                   ['GPS AGE',    selected.last_location_update
-                    ? isRecentlyUpdated(selected.last_location_update) ? '✅ Live' : '⚠️ Stale'
+                    ? isRecentlyUpdated(selected.last_location_update) ? 'âœ… Live' : 'âš ï¸ Stale'
                     : 'Never'],
                   ['LAST GPS',   selected.last_location_update
                     ? new Date(selected.last_location_update).toLocaleTimeString()
                     : 'Never'],
+                  ['RATING',     selected.avg_rating != null
+                    ? `${'★'.repeat(Math.round(selected.avg_rating))}${'☆'.repeat(5 - Math.round(selected.avg_rating))} ${selected.avg_rating.toFixed(1)} (${selected.total_reviews} reviews)`
+                    : 'No ratings yet'],
                 ] as [string, string][]).map(([label, value]) => (
                   <div key={label} className="detail-row">
                     <span className="detail-label">{label}</span>
@@ -380,7 +385,7 @@ export default function FleetMap() {
               <Bus size={32} style={{ margin:'0 auto 12px', display:'block', opacity:0.3 }} />
               <p style={{ fontSize:'14px' }}>Click a bus on the map to see its details</p>
               <p style={{ fontSize:'12px', marginTop:'8px' }}>
-                {withGps.length} buses live · {withoutGps.length} offline
+                {withGps.length} buses live Â· {withoutGps.length} offline
               </p>
               {showRoutes && (
                 <p style={{ fontSize:'12px', marginTop:'4px', color:'#6b7280' }}>
@@ -394,9 +399,3 @@ export default function FleetMap() {
     </div>
   );
 }
-
-
-
-
-
-
