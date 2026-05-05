@@ -5,6 +5,30 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:http/http.dart' as http;
 import '../../core/config/api_config.dart';
 
+// UFR_36: Common weak passwords
+const List<String> _kCommonPasswords = [
+  'password', 'password1', 'password123', '123456', '1234567', '12345678',
+  '123456789', '1234567890', 'qwerty', 'qwerty123', 'abc123', 'letmein',
+  'welcome', 'admin', 'admin123', 'monkey', 'dragon', 'master', 'hello',
+  'sunshine', 'princess', 'football', 'iloveyou', 'shadow', 'superman',
+  'michael', 'jessica', 'baseball', 'batman', 'trustno1', 'passw0rd',
+  'busgo', 'driver', 'driver123', '000000', '111111', '666666', '888888',
+];
+
+int _passwordStrength(String pw) {
+  if (pw.isEmpty) return 0;
+  if (_kCommonPasswords.contains(pw.toLowerCase())) return 1;
+  int score = 0;
+  if (pw.length >= 8)  score++;
+  if (pw.length >= 12) score++;
+  if (RegExp(r'[A-Z]').hasMatch(pw)) score++;
+  if (RegExp(r'[0-9]').hasMatch(pw)) score++;
+  if (RegExp(r'[!@#\$%^&*(),.?":{}|<>_\-]').hasMatch(pw)) score++;
+  if (score <= 2) return 1;
+  if (score <= 3) return 2;
+  return 3;
+}
+
 class ForgotPasswordScreen extends StatefulWidget {
   const ForgotPasswordScreen({super.key});
   @override State<ForgotPasswordScreen> createState() => _ForgotPasswordScreenState();
@@ -23,6 +47,15 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
   String  _token   = '';
   bool _obscurePass    = true;
   bool _obscureConfirm = true;
+  int  _passStrength   = 0; // UFR_36
+
+  @override
+  void initState() {
+    super.initState();
+    _passCtrl.addListener(() {
+      setState(() => _passStrength = _passwordStrength(_passCtrl.text));
+    });
+  }
 
   @override
   void dispose() {
@@ -77,6 +110,12 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
     final pass = _passCtrl.text;
     final confirm = _confirmCtrl.text;
     if (pass.length < 8) { setState(() => _error = 'Minimum 8 characters'); return; }
+    if (_kCommonPasswords.contains(pass.toLowerCase())) {
+      setState(() => _error = 'This password is too common. Choose a stronger one.'); return;
+    }
+    if (_passStrength == 1) {
+      setState(() => _error = 'Password is too weak. Add uppercase, numbers or symbols.'); return;
+    }
     if (pass != confirm) { setState(() => _error = 'Passwords do not match'); return; }
     setState(() { _loading = true; _error = null; });
     try {
@@ -98,6 +137,40 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
     } catch (e) {
       setState(() { _error = 'Connection failed. Try again.'; _loading = false; });
     }
+  }
+
+  // UFR_36: strength bar widget
+  Widget _buildStrengthBar() {
+    final labels = ['', 'Weak', 'Medium', 'Strong'];
+    final colors = [Colors.transparent, Colors.red, Colors.orange, Colors.green];
+    final label  = labels[_passStrength];
+    final color  = colors[_passStrength];
+    String msg = '';
+    if (_passStrength == 1) {
+      if (_kCommonPasswords.contains(_passCtrl.text.toLowerCase())) {
+        msg = '⚠️ This is a commonly used password';
+      } else {
+        msg = 'Add uppercase letters, numbers, or symbols';
+      }
+    }
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Row(children: [
+        Expanded(child: Row(children: List.generate(3, (i) => Expanded(
+          child: Container(
+            height: 4, margin: EdgeInsets.only(right: i < 2 ? 4 : 0),
+            decoration: BoxDecoration(
+              color: i < _passStrength ? color : Colors.white.withOpacity(0.15),
+              borderRadius: BorderRadius.circular(2)),
+          ),
+        )))),
+        const SizedBox(width: 8),
+        Text(label, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: color)),
+      ]),
+      if (msg.isNotEmpty) ...[
+        const SizedBox(height: 4),
+        Text(msg, style: TextStyle(fontSize: 11, color: Colors.red.shade300)),
+      ],
+    ]);
   }
 
   @override
@@ -127,7 +200,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
           const SizedBox(height: 8),
           Text(_step == 0 ? 'We\'ll send a reset PIN to your email'
             : _step == 1 ? 'Check your email for the 6-digit PIN'
-            : 'Choose a new password for your account',
+            : 'Choose a strong new password for your account',
             style: GoogleFonts.inter(fontSize: 13, color: Colors.white.withOpacity(0.5))),
           const SizedBox(height: 32),
           if (_error != null) Container(
@@ -158,6 +231,10 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
                 obscure: _obscurePass,
                 suffixIcon: _obscurePass ? Icons.visibility_off_outlined : Icons.visibility_outlined,
                 onSuffix: () => setState(() => _obscurePass = !_obscurePass)),
+            if (_passCtrl.text.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              _buildStrengthBar(),
+            ],
             const SizedBox(height: 14),
             _field(ctrl: _confirmCtrl, hint: 'Confirm password', icon: Icons.lock_outline,
                 obscure: _obscureConfirm,
