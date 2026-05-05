@@ -1,4 +1,4 @@
-import crypto from 'crypto';
+﻿import crypto from 'crypto';
 import { supabase } from '../../config/supabase.js';
 import { CONSTANTS } from '../../config/constants.js';
 import { env } from '../../config/env.js';
@@ -54,7 +54,7 @@ export async function registerUser(dto, req = null) {
   const role          = dto.role === 'driver' ? 'driver' : 'passenger';
   const is_active     = role === 'driver' ? false : true;
 
-  // ── Generate verification PIN ─────────────────────────────────────────────
+  // â”€â”€ Generate verification PIN â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const pin       = generatePin();
   const pinHash   = await hashPin(pin);
   const expiresAt = new Date(Date.now() + CONSTANTS.RESET_PIN_EXPIRES_MS).toISOString();
@@ -92,19 +92,18 @@ export async function registerUser(dto, req = null) {
     severity:  'info',
   });
 
-  // ── Send verification PIN email ───────────────────────────────────────────
-  try {
-    await sendEmailVerificationPin(email, pin, user.full_name);
-    logger.info(`Email verification PIN sent to ${email}`);
-  } catch (emailErr) {
-    // Log to console as fallback so you can still test locally
-    logger.error(`Failed to send verification email to ${email}: ${emailErr.message}`);
-    console.log(`\n==============================`);
-    console.log(`  BusGo Email Verification PIN`);
-    console.log(`  Email : ${email}`);
-    console.log(`  PIN   : ${pin}`);
-    console.log(`==============================\n`);
-  }
+  // â”€â”€ Send verification PIN email â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // Fire-and-forget — never blocks registration response
+  sendEmailVerificationPin(email, pin, user.full_name)
+    .then(() => logger.info(`Email verification PIN sent to ${email}`))
+    .catch(emailErr => {
+      logger.error(`Failed to send verification email to ${email}: ${emailErr.message}`);
+      console.log(`\n==============================`);
+      console.log(`  BusGo Email Verification PIN`);
+      console.log(`  Email : ${email}`);
+      console.log(`  PIN   : ${pin}`);
+      console.log(`==============================\n`);
+    });
 
   if (role === 'driver') {
     return {
@@ -115,7 +114,7 @@ export async function registerUser(dto, req = null) {
     };
   }
 
-  // ── Return pending state — tokens issued only after PIN verified ──────────
+  // â”€â”€ Return pending state â€” tokens issued only after PIN verified â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   return {
     pending_verification: true,
     email,
@@ -155,7 +154,7 @@ export async function verifyEmailPin(email, pin) {
     err.statusCode = 400; err.code = 'INVALID_PIN'; throw err;
   }
 
-  // ── Clear the PIN and issue tokens ────────────────────────────────────────
+  // â”€â”€ Clear the PIN and issue tokens â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   await supabase
     .from('users')
     .update({ reset_pin: null, reset_pin_expires_at: null })
@@ -177,7 +176,7 @@ export async function resendVerificationPin(email) {
     .eq('email', email.toLowerCase().trim())
     .maybeSingle();
 
-  // Silent if not found — don't reveal if email exists
+  // Silent if not found â€” don't reveal if email exists
   if (!user) return;
 
   const pin       = generatePin();
@@ -224,7 +223,7 @@ export async function loginUser(dto, req = null) {
     err.statusCode = 401; err.code = 'INVALID_CREDENTIALS'; throw err;
   }
 
-  // ── Check if email is still unverified ────────────────────────────────────
+  // â”€â”€ Check if email is still unverified â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   if (user.reset_pin) {
     const err = new Error('Please verify your email first. Check your inbox for the PIN.');
     err.statusCode = 403; err.code = 'EMAIL_NOT_VERIFIED'; throw err;
@@ -448,6 +447,7 @@ async function issueTokenPair(userId, email) {
   });
   return { access_token, refresh_token };
 }
+
 
 
 
