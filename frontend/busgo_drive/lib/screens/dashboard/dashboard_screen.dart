@@ -23,6 +23,9 @@ class _DashboardScreenState extends State<DashboardScreen>
     with SingleTickerProviderStateMixin {
   bool _isOnline = false;
 
+  // FR-21: track notification loading state
+  bool _notifyingStop = false;
+
   // Express mode banner animation
   late AnimationController _expressAnimCtrl;
   late Animation<double>   _expressPulse;
@@ -42,7 +45,7 @@ class _DashboardScreenState extends State<DashboardScreen>
       final auth = context.read<AuthProvider>();
 
       if (rp.routes.isEmpty) {
-        await rp.loadRoutes();  // ← wait for routes to load first
+        await rp.loadRoutes();
       }
 
       if (auth.driver?.id != null) {
@@ -102,6 +105,49 @@ class _DashboardScreenState extends State<DashboardScreen>
       context.read<TripProvider>().stopGpsStream();
       await _setBusStatus('inactive');
       setState(() => _isOnline = false);
+    }
+  }
+
+  // ── FR-21: Notify passengers when bus arrives at their alighting stop ────────
+  Future<void> _arrivedAtStop(TripProvider trip) async {
+    final nextStop = trip.nextStop;
+    if (nextStop == null) return;
+
+    setState(() => _notifyingStop = true);
+    try {
+      final token = await context.read<AuthProvider>().getToken();
+      if (token == null) return;
+
+      final response = await http.post(
+        Uri.parse('${ApiConfig.baseUrl}/driver/arrive-at-stop'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+        body: jsonEncode({'stop_id': nextStop.id}),
+      ).timeout(const Duration(seconds: 10));
+
+      final body = jsonDecode(response.body) as Map<String, dynamic>;
+      final notified = body['data']?['notified'] ?? 0;
+      final stopName = body['data']?['stop_name'] ?? nextStop.name;
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(notified > 0
+              ? '🚏 $notified passenger(s) notified for $stopName'
+              : '🚏 Arrived at $stopName — no passengers alighting here'),
+          backgroundColor: AppColors.success,
+          duration: const Duration(seconds: 3),
+        ));
+      }
+    } catch (e) {
+      debugPrint('[FR-21] Arrive at stop error: $e');
+    } finally {
+      // Advance to next stop regardless of notification result
+      trip.arriveAtStop();
+      await Future.delayed(const Duration(milliseconds: 500));
+      trip.departFromStop();
+      if (mounted) setState(() => _notifyingStop = false);
     }
   }
 
@@ -528,6 +574,7 @@ class _DashboardScreenState extends State<DashboardScreen>
     );
   }
 
+  // ── FR-21: Next Stop card with "Arrived at Stop" button ────────────────────
   Widget _buildNextStopCard(TripProvider trip) {
     final nextStop       = trip.nextStop;
     final etaMin         = trip.etaMinutes;
@@ -572,6 +619,36 @@ class _DashboardScreenState extends State<DashboardScreen>
             minHeight: 5,
             backgroundColor: Colors.white.withOpacity(0.1),
             valueColor: const AlwaysStoppedAnimation<Color>(AppColors.accent))),
+
+        // ── FR-21: Arrived at Stop button ─────────────────────────────────
+        if (nextStop != null) ...[
+          const SizedBox(height: 12),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton.icon(
+              onPressed: _notifyingStop ? null : () => _arrivedAtStop(trip),
+              icon: _notifyingStop
+                  ? const SizedBox(
+                      width: 14, height: 14,
+                      child: CircularProgressIndicator(
+                          strokeWidth: 2, color: Colors.white))
+                  : const Icon(Icons.location_on_rounded, size: 16),
+              label: Text(
+                _notifyingStop
+                    ? 'Notifying passengers...'
+                    : 'Arrived at ${nextStop.name}',
+                style: GoogleFonts.inter(
+                    fontSize: 12, fontWeight: FontWeight.w700)),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.warning,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(vertical: 10),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10)),
+              ),
+            ),
+          ),
+        ],
       ]),
     );
   }
@@ -653,12 +730,3 @@ class _GaugeRingPainter extends CustomPainter {
   bool shouldRepaint(covariant _GaugeRingPainter old) =>
       old.fillPercent != fillPercent || old.fillColor != fillColor;
 }
-
-
-
-
-
-
-
-
-
