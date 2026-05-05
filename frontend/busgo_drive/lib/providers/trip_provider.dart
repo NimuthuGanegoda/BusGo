@@ -1,4 +1,4 @@
-import 'dart:async';
+﻿import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
@@ -25,19 +25,25 @@ class TripProvider extends ChangeNotifier {
   bool         _gpsReady        = false;
   String?      _gpsError;
 
-  // ── Passenger count + FR-34 express mode ──────────────────────────────────
+  // â”€â”€ Passenger count + FR-34 express mode â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   int          _currentPassengers = 0;
   int          _busCapacity       = 50;
   bool         _isExpressMode     = false;
   List<Map<String, dynamic>> _mustStopAt = [];
   String?      _busId;
 
+  // ── Online session tracking (toggle ON → OFF) ────────────────────────────
+  DateTime? _onlineStartTime;
+  double    _onlineDistance   = 0.0;
+  int       _totalBoarded     = 0;
+  int       _lastPassengers   = 0;
+
   Timer? _passengerPollTimer;
   StreamSubscription<Position>? _positionStream;
   final LocationService _locationService = LocationService();
   final TokenService    _tokenService    = TokenService();
 
-  // ── Getters ───────────────────────────────────────────────────────────────
+  // â”€â”€ Getters â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   Trip?        get currentTrip       => _currentTrip;
   BusRoute?    get currentRoute      => _currentRoute;
   int          get currentStopIndex  => _currentStopIndex;
@@ -57,6 +63,12 @@ class TripProvider extends ChangeNotifier {
   List<Map<String, dynamic>> get mustStopAt => _mustStopAt;
   int          get mustStopCount    => _mustStopAt.length;
 
+  // Online session getters
+  int    get onlineDurationMinutes => _onlineStartTime != null
+      ? DateTime.now().difference(_onlineStartTime!).inMinutes : 0;
+  double get onlineDistance        => _onlineDistance;
+  int    get totalBoarded          => _totalBoarded;
+
   RouteStop? get nextStop {
     if (_currentRoute == null) return null;
     if (_currentStopIndex >= _currentRoute!.stops.length) return null;
@@ -68,7 +80,7 @@ class TripProvider extends ChangeNotifier {
     return (remaining * 8).clamp(0, 999);
   }
 
-  // ── Passenger count + express mode polling ─────────────────────────────────
+  // â”€â”€ Passenger count + express mode polling â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   Future<void> initPassengerTracking(String driverUserId) async {
     await _refreshPassengerCount();
     _passengerPollTimer?.cancel();
@@ -104,6 +116,12 @@ class TripProvider extends ChangeNotifier {
               .whereType<Map<String, dynamic>>()
               .toList();
 
+          // Track total boarded (increases in passenger count)
+          if (_onlineStartTime != null && count > _lastPassengers) {
+            _totalBoarded += count - _lastPassengers;
+          }
+          _lastPassengers = count;
+
           bool changed = false;
           if (_currentPassengers != count)       { _currentPassengers = count;       changed = true; }
           if (_busCapacity       != capacity)    { _busCapacity       = capacity;    changed = true; }
@@ -116,8 +134,8 @@ class TripProvider extends ChangeNotifier {
           if (changed) {
             notifyListeners();
             if (expressMode) {
-              debugPrint('[TripProvider] 🚌 EXPRESS MODE ON — '
-                  '$count/$capacity passengers — '
+              debugPrint('[TripProvider] ðŸšŒ EXPRESS MODE ON â€” '
+                  '$count/$capacity passengers â€” '
                   '${mustStopList.length} must-stop points');
             } else {
               debugPrint('[TripProvider] Passengers: $count/$capacity');
@@ -135,7 +153,7 @@ class TripProvider extends ChangeNotifier {
     _passengerPollTimer = null;
   }
 
-  // ── GPS ────────────────────────────────────────────────────────────────────
+  // â”€â”€ GPS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   Future<bool> initGps() async {
     _gpsError = null;
 
@@ -177,7 +195,7 @@ class TripProvider extends ChangeNotifier {
     _positionStream = Geolocator.getPositionStream(locationSettings: settings)
         .listen((Position pos) {
       _applyPosition(pos);
-      // FIX: pass _busId — skip if not yet loaded
+      // FIX: pass _busId â€” skip if not yet loaded
       if (_gpsReady && _busId != null) {
         _locationService.updateLocation(
           busId:    _busId!,
@@ -208,11 +226,10 @@ class TripProvider extends ChangeNotifier {
       }
     }
 
-    if (_currentTrip != null && _traveledPath.length >= 2) {
+    if (_traveledPath.length >= 2 && _onlineStartTime != null) {
       final prev = _traveledPath[_traveledPath.length - 2];
       final dist = const Distance().as(LengthUnit.Kilometer, prev, newLocation);
-      _currentTrip = _currentTrip!.copyWith(
-          distanceCovered: _currentTrip!.distanceCovered + dist);
+      _onlineDistance += dist;
     }
 
     notifyListeners();
@@ -225,7 +242,7 @@ class TripProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  // ── Trip lifecycle ─────────────────────────────────────────────────────────
+  // â”€â”€ Trip lifecycle â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   Future<void> startTrip(BusRoute route) async {
     _currentRoute     = route;
     _currentStopIndex = 0;
@@ -299,6 +316,20 @@ class TripProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  // ── Online session lifecycle ──────────────────────────────────────────────
+  void startOnlineSession() {
+    _onlineStartTime = DateTime.now();
+    _onlineDistance  = 0.0;
+    _totalBoarded    = 0;
+    _lastPassengers  = _currentPassengers;
+    notifyListeners();
+  }
+
+  void stopOnlineSession() {
+    _onlineStartTime = null;
+    notifyListeners();
+  }
+
   @override
   void dispose() {
     _positionStream?.cancel();
@@ -306,4 +337,3 @@ class TripProvider extends ChangeNotifier {
     super.dispose();
   }
 }
-
