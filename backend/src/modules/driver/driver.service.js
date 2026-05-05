@@ -1,13 +1,78 @@
 import { supabase, broadcastToChannel } from '../../config/supabase.js';
 import { CONSTANTS } from '../../config/constants.js';
 
+// ── FR-21: Haversine distance in km ──────────────────────────────────────────
+function haversineKm(lat1, lng1, lat2, lng2) {
+  const R = 6371;
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLng = (lng2 - lng1) * Math.PI / 180;
+  const a = Math.sin(dLat / 2) ** 2
+    + Math.cos(lat1 * Math.PI / 180)
+    * Math.cos(lat2 * Math.PI / 180)
+    * Math.sin(dLng / 2) ** 2;
+  return R * 2 * Math.asin(Math.sqrt(a));
+}
+
+// ── FR-21: Auto-notify passengers when bus is within 150m of their destination
+async function checkAndNotifyNearbyStops(busId, lat, lng) {
+  // Get all ongoing trips that have a destination stop set
+  const { data: trips } = await supabase
+    .from('trips')
+    .select(`
+      id, user_id, alighting_stop_id,
+      alighting_stop:alighting_stop_id ( id, stop_name, latitude, longitude )
+    `)
+    .eq('bus_id', busId)
+    .eq('status', 'ongoing')
+    .not('alighting_stop_id', 'is', null);
+
+  if (!trips || trips.length === 0) return;
+
+  const { data: busData } = await supabase
+    .from('buses').select('bus_number').eq('id', busId).single();
+  const busNumber = busData?.bus_number || 'Bus';
+
+  const notificationsToSend = [];
+
+  for (const trip of trips) {
+    const stop = trip.alighting_stop;
+    if (!stop?.latitude || !stop?.longitude) continue;
+
+    // Check if bus is within 150m of this passenger's destination
+    const dist = haversineKm(lat, lng, stop.latitude, stop.longitude);
+    if (dist > 0.15) continue;
+
+    // Prevent duplicate notifications for the same trip + stop
+    const { data: existing } = await supabase
+      .from('notifications')
+      .select('id')
+      .eq('user_id', trip.user_id)
+      .eq('category', 'bus_alert')
+      .contains('meta', { trip_id: trip.id, stop_id: stop.id })
+      .maybeSingle();
+
+    if (existing) continue;
+
+    notificationsToSend.push({
+      user_id:  trip.user_id,
+      category: 'bus_alert',
+      title:    '🚏 Your stop is approaching!',
+      body:     `${busNumber} is arriving at ${stop.stop_name}. Please prepare to alight.`,
+      meta:     { trip_id: trip.id, bus_id: busId, stop_id: stop.id, stop_name: stop.stop_name },
+    });
+  }
+
+  if (notificationsToSend.length > 0) {
+    await supabase.from('notifications').insert(notificationsToSend);
+    console.log(`[FR-21] Notified ${notificationsToSend.length} passenger(s) approaching destination`);
+  }
+}
+
 export async function getDriverProfile(userId) {
   const { data, error } = await supabase
     .from('users')
     .select('id, email, full_name, username, phone, avatar_url, role, is_active, created_at')
-    .eq('id', userId)
-    .eq('role', 'driver')
-    .single();
+    .eq('id', userId).eq('role', 'driver').single();
   if (error || !data) {
     const err = new Error('Driver profile not found');
     err.statusCode = 404; err.code = 'DRIVER_NOT_FOUND'; throw err;
@@ -27,8 +92,7 @@ export async function getAssignedBus(userId) {
         bus_stop_routes ( stop_order, bus_stops ( id, stop_name, latitude, longitude ) )
       )
     `)
-    .eq('driver_user_id', userId)
-    .maybeSingle();
+    .eq('driver_user_id', userId).maybeSingle();
   if (error) throw error;
   console.log('[Bus Debug]', JSON.stringify(data)?.substring(0, 300));
   return data;
@@ -50,10 +114,17 @@ export async function updateDriverLocation(userId, dto) {
     .select('id, bus_number, current_lat, current_lng, heading, speed_kmh')
     .single();
   if (error) throw error;
+
   await broadcastToChannel(CONSTANTS.REALTIME_CHANNEL_BUS_LOCATIONS, 'location-update', {
     bus_id: bus.id, lat: dto.lat, lng: dto.lng,
     heading: dto.heading, speed_kmh: dto.speed_kmh, timestamp: now,
   });
+
+  // FR-21: fire-and-forget — never delays the GPS response to the driver app
+  checkAndNotifyNearbyStops(bus.id, dto.lat, dto.lng).catch(err => {
+    console.warn('[FR-21] Proximity check error:', err.message);
+  });
+
   return data;
 }
 
@@ -164,7 +235,6 @@ export async function getDriverTripHistory(userId, page = 1, pageSize = 50) {
   const { data: bus } = await supabase
     .from('buses').select('id').eq('driver_user_id', userId).maybeSingle();
   if (!bus) return { trips: [], total: 0 };
-
   const offset = (page - 1) * pageSize;
   const { data, error, count } = await supabase
     .from('trips')
@@ -174,11 +244,9 @@ export async function getDriverTripHistory(userId, page = 1, pageSize = 50) {
       boarding_stop:boarding_stop_id ( stop_name ),
       alighting_stop:alighting_stop_id ( stop_name )
     `, { count: 'exact' })
-    .eq('bus_id', bus.id)
-    .eq('status', 'completed')
+    .eq('bus_id', bus.id).eq('status', 'completed')
     .order('alighted_at', { ascending: false })
     .range(offset, offset + pageSize - 1);
-
   if (error) throw error;
   return { trips: data ?? [], total: count ?? 0 };
 }
@@ -192,50 +260,8 @@ export async function uploadDriverLicense(userId, fileBuffer, mimeType) {
   const { data: signedData, error: signedError } = await supabase.storage
     .from('driver-licenses').createSignedUrl(filePath, 60*60*24*365);
   if (signedError) throw signedError;
-  const { error: dbError } = await supabase.from('users').update({ license_url: filePath }).eq('id', userId);
+  const { error: dbError } = await supabase.from('users')
+    .update({ license_url: filePath }).eq('id', userId);
   if (dbError) throw dbError;
   return { license_url: filePath, signed_url: signedData.signedUrl };
-}
-
-// ── FR-21: Notify passengers when bus arrives at their alighting stop ─────────
-export async function notifyPassengersAtStop(driverUserId, stopId) {
-  // Get bus for this driver
-  const { data: bus } = await supabase
-    .from('buses').select('id, bus_number').eq('driver_user_id', driverUserId).maybeSingle();
-  if (!bus) {
-    const err = new Error('No bus assigned to this driver');
-    err.statusCode = 404; err.code = 'NO_BUS_ASSIGNED'; throw err;
-  }
-
-  // Get stop name
-  const { data: stop } = await supabase
-    .from('bus_stops').select('stop_name').eq('id', stopId).maybeSingle();
-  const stopName = stop?.stop_name || 'your stop';
-
-  // Find all ongoing trips on this bus where alighting_stop_id matches
-  const { data: trips } = await supabase
-    .from('trips')
-    .select('id, user_id')
-    .eq('bus_id', bus.id)
-    .eq('status', 'ongoing')
-    .eq('alighting_stop_id', stopId);
-
-  if (!trips || trips.length === 0) {
-    console.log(`[FR-21] No passengers for stop ${stopName} on bus ${bus.bus_number}`);
-    return { notified: 0, stop_name: stopName };
-  }
-
-  // Send notification to each passenger whose stop this is
-  const notifications = trips.map(trip => ({
-    user_id:  trip.user_id,
-    category: 'bus_alert',
-    title:    '🚏 Your stop is approaching!',
-    body:     `Bus ${bus.bus_number} is arriving at ${stopName}. Please prepare to alight.`,
-    meta:     { trip_id: trip.id, bus_id: bus.id, stop_id: stopId, stop_name: stopName },
-  }));
-
-  await supabase.from('notifications').insert(notifications);
-
-  console.log(`[FR-21] Notified ${trips.length} passenger(s) arriving at ${stopName}`);
-  return { notified: trips.length, stop_name: stopName };
 }

@@ -62,6 +62,7 @@ export async function getCurrentTrip(req, res, next) {
   } catch (err) { next(err); }
 }
 
+// ── NEW: Trip history for driver ──────────────────────────────────────────
 export async function getTripHistory(req, res, next) {
   try {
     const page     = parseInt(req.query.page     ?? '1',  10);
@@ -80,15 +81,3 @@ export async function uploadLicense(req, res, next) {
   } catch (err) { next(err); }
 }
 
-// ── FR-21: Driver signals arrival at a stop → notifies passengers ─────────────
-export async function notifyAtStop(req, res, next) {
-  try {
-    const { stop_id } = req.body;
-    const result = await driverService.notifyPassengersAtStop(req.user.id, stop_id);
-    return sendSuccess(res, result,
-      `${result.notified} passenger(s) notified for ${result.stop_name}`);
-  } catch (err) {
-    if (err.statusCode) return sendError(res, err.message, err.statusCode, err.code);
-    next(err);
-  }
-}
