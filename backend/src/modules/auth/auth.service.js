@@ -1,4 +1,3 @@
-========== backend\src\modules\auth\auth.service.js ==========
 
 import crypto from 'crypto';
 import { supabase } from '../../config/supabase.js';
