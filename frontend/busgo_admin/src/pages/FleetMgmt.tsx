@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+﻿import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Plus, Bus, Pencil, MapPin, RotateCcw, X, CheckCircle, RefreshCw } from 'lucide-react';
 import './FleetMgmt.css';
@@ -16,6 +16,8 @@ type BusRecord = {
   speed_kmh: number | null;
   last_location_update: string | null;
   bus_routes: { id: string; route_number: string; route_name: string } | null;
+  avg_rating:    number | null;
+  total_reviews: number;
 };
 type RouteRecord = { id: string; route_number: string; route_name: string };
 
@@ -67,7 +69,7 @@ export default function FleetMgmt() {
     statusFilter === 'all' || b.status === statusFilter
   );
 
-  // ── Register bus ──────────────────────────────────────────────────────────
+  // â”€â”€ Register bus â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const handleAdd = async () => {
     if (!addForm.bus_number || !addForm.driver_name) { setAddError('Bus number and driver name required'); return; }
     setAddLoading(true); setAddError('');
@@ -81,13 +83,13 @@ export default function FleetMgmt() {
       if (!res.ok) { setAddError(json.message || 'Failed to register bus'); return; }
       setShowAdd(false);
       setAddForm({ bus_number: '', driver_name: '', driver_phone: '', route_id: '' });
-      showToast(`✅ Bus ${addForm.bus_number} registered`);
+      showToast(`âœ… Bus ${addForm.bus_number} registered`);
       fetchAll();
     } catch { setAddError('Connection failed'); }
     finally { setAddLoading(false); }
   };
 
-  // ── Edit bus ──────────────────────────────────────────────────────────────
+  // â”€â”€ Edit bus â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const openEdit = (bus: BusRecord) => {
     setEditBus(bus);
     setEditForm({ driver_name: bus.driver_name || '', driver_phone: bus.driver_phone || '', route_id: bus.bus_routes?.id || '', status: bus.status });
@@ -103,25 +105,25 @@ export default function FleetMgmt() {
       if (!res.ok) throw new Error();
       setBuses(prev => prev.map(b => b.id === editBus.id ? { ...b, ...editForm } : b));
       setEditBus(null);
-      showToast(`✅ ${editBus.bus_number} updated`);
-    } catch { showToast('❌ Failed to update bus', 'error'); }
+      showToast(`âœ… ${editBus.bus_number} updated`);
+    } catch { showToast('âŒ Failed to update bus', 'error'); }
   };
 
-  // ── Recall bus ────────────────────────────────────────────────────────────
+  // â”€â”€ Recall bus â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const handleRecall = async (bus: BusRecord) => {
     try {
       const res = await fetch(`${API}/fleet/${bus.id}/recall`, {
         method: 'PATCH', headers: { Authorization: `Bearer ${token()}` },
       });
       if (!res.ok) throw new Error();
-      showToast(`✅ ${bus.bus_number} recalled to standby`);
+      showToast(`âœ… ${bus.bus_number} recalled to standby`);
       fetchAll();
-    } catch { showToast('❌ Failed to recall bus', 'error'); }
+    } catch { showToast('âŒ Failed to recall bus', 'error'); }
   };
 
-  // ── Deploy standby bus ────────────────────────────────────────────────────
+  // â”€â”€ Deploy standby bus â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const handleDeploy = async () => {
-    if (!deployBus || !deployRoute) { showToast('❌ Select a route first', 'error'); return; }
+    if (!deployBus || !deployRoute) { showToast('âŒ Select a route first', 'error'); return; }
     try {
       const res = await fetch(`${API}/fleet/${deployBus.id}/deploy`, {
         method: 'PATCH',
@@ -129,20 +131,20 @@ export default function FleetMgmt() {
         body: JSON.stringify({ route_id: deployRoute }),
       });
       if (!res.ok) throw new Error();
-      showToast(`✅ ${deployBus.bus_number} deployed`);
+      showToast(`âœ… ${deployBus.bus_number} deployed`);
       setDeployBus(null); setDeployRoute('');
       fetchAll();
-    } catch { showToast('❌ Failed to deploy bus', 'error'); }
+    } catch { showToast('âŒ Failed to deploy bus', 'error'); }
   };
 
-  // ── Delete bus ────────────────────────────────────────────────────────────
+  // â”€â”€ Delete bus â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const handleDelete = async (bus: BusRecord) => {
     if (!confirm(`Delete bus ${bus.bus_number}? This cannot be undone.`)) return;
     try {
       await fetch(`${API}/buses/${bus.id}`, { method: 'DELETE', headers: { Authorization: `Bearer ${token()}` } });
       setBuses(prev => prev.filter(b => b.id !== bus.id));
-      showToast(`✅ ${bus.bus_number} deleted`);
-    } catch { showToast('❌ Failed to delete', 'error'); }
+      showToast(`âœ… ${bus.bus_number} deleted`);
+    } catch { showToast('âŒ Failed to delete', 'error'); }
   };
 
   const stats = {
@@ -190,7 +192,7 @@ export default function FleetMgmt() {
                 <select className="fleet-modal-input" value={addForm.route_id}
                   onChange={e => setAddForm(p => ({ ...p, route_id: e.target.value }))}>
                   <option value="">Select route</option>
-                  {routes.map(r => <option key={r.id} value={r.id}>Route {r.route_number} — {r.route_name}</option>)}
+                  {routes.map(r => <option key={r.id} value={r.id}>Route {r.route_number} â€” {r.route_name}</option>)}
                 </select>
               </div>
               <div className="fleet-modal-actions">
@@ -209,7 +211,7 @@ export default function FleetMgmt() {
         <div className="fleet-modal-overlay" onClick={() => setEditBus(null)}>
           <div className="fleet-modal" onClick={e => e.stopPropagation()}>
             <div className="fleet-modal-header">
-              <h3>Edit Bus — {editBus.bus_number}</h3>
+              <h3>Edit Bus â€” {editBus.bus_number}</h3>
               <button className="fleet-modal-close" onClick={() => setEditBus(null)}><X size={20} /></button>
             </div>
             <div className="fleet-modal-body">
@@ -227,7 +229,7 @@ export default function FleetMgmt() {
                 <select className="fleet-modal-input" value={editForm.route_id}
                   onChange={e => setEditForm(p => ({ ...p, route_id: e.target.value }))}>
                   <option value="">No route</option>
-                  {routes.map(r => <option key={r.id} value={r.id}>Route {r.route_number} — {r.route_name}</option>)}
+                  {routes.map(r => <option key={r.id} value={r.id}>Route {r.route_number} â€” {r.route_name}</option>)}
                 </select></div>
               <div className="fleet-modal-field"><label>Status</label>
                 <select className="fleet-modal-input" value={editForm.status}
@@ -258,7 +260,7 @@ export default function FleetMgmt() {
                 <select className="fleet-modal-input" value={deployRoute}
                   onChange={e => setDeployRoute(e.target.value)}>
                   <option value="">Select route</option>
-                  {routes.map(r => <option key={r.id} value={r.id}>Route {r.route_number} — {r.route_name}</option>)}
+                  {routes.map(r => <option key={r.id} value={r.id}>Route {r.route_number} â€” {r.route_name}</option>)}
                 </select></div>
               <div className="fleet-modal-actions">
                 <button className="fleet-modal-btn cancel" onClick={() => setDeployBus(null)}>Cancel</button>
@@ -311,10 +313,10 @@ export default function FleetMgmt() {
             <table className="fleet-table">
               <thead><tr>
                 <th>BUS NUMBER</th><th>ROUTE</th><th>DRIVER</th><th>PHONE</th>
-                <th>CROWD</th><th>STATUS</th><th>LAST GPS</th><th>ACTIONS</th>
+                <th>RATING</th><th>CROWD</th><th>STATUS</th><th>LAST GPS</th><th>ACTIONS</th>
               </tr></thead>
               <tbody>
-                {filtered.length === 0 && <tr><td colSpan={8} style={{ textAlign: 'center', padding: '40px', color: '#9ca3af' }}>No buses found</td></tr>}
+                {filtered.length === 0 && <tr><td colSpan={9} style={{ textAlign: 'center', padding: '40px', color: '#9ca3af' }}>No buses found</td></tr>}
                 {filtered.map(bus => (
                   <tr key={bus.id}>
                     <td className="bus-id-cell">{bus.bus_number}</td>
@@ -322,15 +324,26 @@ export default function FleetMgmt() {
                       ? <span className="route-badge">Route {bus.bus_routes.route_number}</span>
                       : <span style={{ color: '#f59e0b', fontSize: '12px' }}>Unassigned</span>}
                     </td>
-                    <td>{bus.driver_name || '—'}</td>
-                    <td>{bus.driver_phone || '—'}</td>
+                    <td>{bus.driver_name || 'â€”'}</td>
+                    <td>{bus.driver_phone || 'â€”'}</td>
+                    <td>
+                      {bus.avg_rating != null ? (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                          <span style={{ color: '#f59e0b', fontSize: '14px' }}>{'★'.repeat(Math.round(bus.avg_rating))}{'☆'.repeat(5 - Math.round(bus.avg_rating))}</span>
+                          <span style={{ fontSize: '12px', fontWeight: 600, color: '#374151' }}>{bus.avg_rating.toFixed(1)}</span>
+                          <span style={{ fontSize: '11px', color: '#9ca3af' }}>({bus.total_reviews})</span>
+                        </div>
+                      ) : (
+                        <span style={{ fontSize: '12px', color: '#9ca3af' }}>No ratings</span>
+                      )}
+                    </td>
                     <td><span style={{
                       padding: '2px 8px', borderRadius: '6px', fontSize: '12px', fontWeight: 600,
                       background: bus.crowd_level === 'high' ? '#fef2f2' : bus.crowd_level === 'medium' ? '#fffbeb' : '#f0fdf4',
                       color:      bus.crowd_level === 'high' ? '#dc2626' : bus.crowd_level === 'medium' ? '#d97706' : '#16a34a',
                     }}>{bus.crowd_level || 'low'}</span></td>
                     <td><span className={`fleet-status-badge ${bus.status}`}>
-                      {bus.status === 'breakdown' && '⚠ '}{bus.status}
+                      {bus.status === 'breakdown' && 'âš  '}{bus.status}
                     </span></td>
                     <td style={{ fontSize: '12px', color: '#9ca3af' }}>
                       {bus.last_location_update ? new Date(bus.last_location_update).toLocaleTimeString() : 'No GPS'}
@@ -372,6 +385,7 @@ export default function FleetMgmt() {
     </div>
   );
 }
+
 
 
 
