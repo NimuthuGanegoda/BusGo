@@ -1,4 +1,4 @@
-import 'dart:ui';
+﻿import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -31,7 +31,7 @@ class _RegisterScreenState extends State<RegisterScreen>
   static const _teal = Color(0xFF4ECDC4);
   static const _panel= Color(0xFF0A1628);
 
-  // ── Common passwords list (UFR_13) ──────────────────────────────────────────
+  // â”€â”€ Common passwords list (UFR_13) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   static const _commonPasswords = [
     'password', 'password1', 'password123', '12345678', '123456789',
     'qwerty123', 'iloveyou', 'admin123', 'letmein', 'welcome',
@@ -72,7 +72,7 @@ class _RegisterScreenState extends State<RegisterScreen>
     return n / 6;
   }
 
-  // ── Password strength score (UFR_12) ────────────────────────────────────────
+  // â”€â”€ Password strength score (UFR_12) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   int _strengthScore(String pass) {
     int score = 0;
     if (pass.length >= 8)  score++;
@@ -182,7 +182,7 @@ class _RegisterScreenState extends State<RegisterScreen>
                         backgroundColor: Colors.white.withOpacity(0.08),
                         valueColor: AlwaysStoppedAnimation<Color>(_teal),
                         strokeWidth: 3),
-                      Text('\${(_progress * 100).round()}%',
+                      Text('${(_progress * 100).round()}%',
                         style: GoogleFonts.poppins(
                           fontSize: 8, color: _teal, fontWeight: FontWeight.w700)),
                     ])),
@@ -214,7 +214,7 @@ class _RegisterScreenState extends State<RegisterScreen>
                         style: GoogleFonts.poppins(fontSize: 10,
                             color: Colors.white.withOpacity(0.25))),
                       const Spacer(),
-                      Text('\${(_progress * 100).round()}% complete',
+                      Text('${(_progress * 100).round()}% complete',
                         style: GoogleFonts.poppins(fontSize: 10,
                             color: _teal.withOpacity(0.7))),
                     ]),
@@ -233,7 +233,7 @@ class _RegisterScreenState extends State<RegisterScreen>
                     _field('Password', 'Min. 8 characters', Icons.lock_outline_rounded,
                       _passCtrl, error: _errors['pass'], obscure: _obscurePass,
                       onToggle: () => setState(() => _obscurePass = !_obscurePass)),
-                    // ── Password strength bar (UFR_12 / UFR_13) ──────────────
+                    // â”€â”€ Password strength bar (UFR_12 / UFR_13) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
                     _buildPasswordStrength(_passCtrl.text),
                     _field('Confirm Password', 'Re-enter password', Icons.lock_outline_rounded,
                       _confirmCtrl, error: _errors['confirm'], obscure: _obscureConfirm,
@@ -407,5 +407,6 @@ class _GridPainter extends CustomPainter {
   }
   @override bool shouldRepaint(_GridPainter _) => false;
 }
+
 
 
