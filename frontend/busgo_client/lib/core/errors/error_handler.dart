@@ -56,6 +56,14 @@ class ErrorHandler {
           fieldErrors: _extractFieldErrors(body),
         );
       case 401:
+        final code401 = body is Map<String, dynamic> ? (body['code'] ?? '') : '';
+        if (code401 == 'VERIFICATION_FAILED') {
+          return ValidationException(
+            serverMessage.isNotEmpty
+                ? serverMessage
+                : 'Incorrect PIN or answers. Please try again.',
+          );
+        }
         return UnauthorizedException(
           serverMessage.isNotEmpty ? serverMessage : 'Authentication required.',
         );
