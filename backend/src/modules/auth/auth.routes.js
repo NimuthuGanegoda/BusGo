@@ -17,8 +17,10 @@ import {
 import { z } from 'zod';
 import { hashPassword } from '../../utils/password.utils.js';
 import { hashPin, verifyPin } from '../../utils/pin.utils.js';
+import { signResetToken } from '../../utils/jwt.utils.js';
 import { supabase } from '../../config/supabase.js';
 import { sendSuccess, sendError } from '../../utils/response.utils.js';
+import { verifyPassengerIdentity } from './auth.service.js';
 
 const router = Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024 } });
@@ -34,11 +36,11 @@ router.post('/register', (req, res, next) => {
   if (!result.success) console.log('[VALIDATION ERRORS]', JSON.stringify(result.error.issues));
   next();
 }, validate(registerSchema), controller.register);
-router.post('/login',     validate(loginSchema),    controller.login);
-router.post('/logout',    controller.logout);
-router.post('/refresh',   validate(refreshSchema),  controller.refresh);
+router.post('/login',   validate(loginSchema),   controller.login);
+router.post('/logout',  controller.logout);
+router.post('/refresh', validate(refreshSchema), controller.refresh);
 
-// ── Email verification ─────────────────────────────────────────────────────────
+// ── Email verification ──────────────────────────────────────────────────────
 router.post('/verify-email/resend',
   validate(z.object({ email: z.string().email() })),
   controller.resendVerificationPin
@@ -48,12 +50,29 @@ router.post('/verify-email',
   controller.verifyEmail
 );
 
-// ── Forgot password ────────────────────────────────────────────────────────────
+// ── Forgot password (old email PIN flow — kept for compatibility) ────────────
 router.post('/forgot-password/request', validate(forgotPasswordRequestSchema), controller.forgotPasswordRequest);
 router.post('/forgot-password/verify',  validate(forgotPasswordVerifySchema),  controller.forgotPasswordVerify);
 router.post('/forgot-password/reset',   validate(forgotPasswordResetSchema),   controller.forgotPasswordReset);
 
-// ── Change password (logged-in user) ──────────────────────────────────────────
+// ── NEW: Passenger forgot password via recovery PIN + security questions ─────
+router.post('/forgot-password/verify-identity', async (req, res, next) => {
+  try {
+    const { email, recovery_pin, answer_1, answer_2, answer_3 } = req.body;
+
+    if (!email || !recovery_pin || !answer_1 || !answer_2 || !answer_3) {
+      return sendError(res, 'All fields are required', 400, 'MISSING_FIELDS');
+    }
+
+    const result = await verifyPassengerIdentity(
+      email, recovery_pin, answer_1, answer_2, answer_3
+    );
+
+    return sendSuccess(res, result, 'Identity verified successfully.');
+  } catch (err) { next(err); }
+});
+
+// ── Change password (logged-in user) ─────────────────────────────────────────
 router.post('/change-password',
   authenticate,
   validate(z.object({
@@ -64,10 +83,10 @@ router.post('/change-password',
   controller.changePassword
 );
 
-// ── License upload ─────────────────────────────────────────────────────────────
+// ── License upload ────────────────────────────────────────────────────────────
 router.post('/upload-license', upload.single('license'), controller.uploadLicense);
 
-// ── FR-48: Admin first-login setup (password + PIN + security questions) ──────
+// ── Admin first-login setup ───────────────────────────────────────────────────
 router.post('/admin/setup', authenticate, async (req, res, next) => {
   try {
     const { new_password, recovery_pin, answer_1, answer_2, answer_3 } = req.body;
@@ -100,7 +119,6 @@ router.post('/admin/setup', authenticate, async (req, res, next) => {
 
     if (error) throw error;
 
-    // Audit log
     await supabase.from('security_audit_log').insert({
       event_type: 'ADMIN_FIRST_LOGIN_SETUP',
       user_id:    userId,
@@ -113,7 +131,7 @@ router.post('/admin/setup', authenticate, async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
-// ── FR-48: Admin recovery request (verify PIN + 3 questions) ──────────────────
+// ── Admin recovery request ────────────────────────────────────────────────────
 router.post('/admin/recovery-request', async (req, res, next) => {
   try {
     const { email, recovery_pin, answer_1, answer_2, answer_3 } = req.body;
@@ -127,13 +145,7 @@ router.post('/admin/recovery-request', async (req, res, next) => {
       .eq('email', email.toLowerCase().trim())
       .maybeSingle();
 
-    // Generic message — do not reveal if email exists
-    const FAIL = () => sendError(
-      res,
-      'Verification failed. Please check your PIN and answers.',
-      401,
-      'VERIFICATION_FAILED'
-    );
+    const FAIL = () => sendError(res, 'Verification failed. Please check your PIN and answers.', 401, 'VERIFICATION_FAILED');
 
     if (!user || !['admin', 'developer'].includes(user.role)) return FAIL();
     if (!user.recovery_pin_hash || !user.security_answer_1_hash) return FAIL();
@@ -146,7 +158,6 @@ router.post('/admin/recovery-request', async (req, res, next) => {
     const a3Ok = await verifyPin(answer_3.trim().toLowerCase(), user.security_answer_3_hash);
     if (!a1Ok || !a2Ok || !a3Ok) return FAIL();
 
-    // Log recovery request for developer to action
     await supabase.from('security_audit_log').insert({
       event_type: 'ADMIN_RECOVERY_REQUEST',
       user_id:    user.id,
@@ -159,16 +170,13 @@ router.post('/admin/recovery-request', async (req, res, next) => {
       severity: 'warning',
     });
 
-    return sendSuccess(
-      res, {},
-      'Identity verified. A developer will provide a temporary password within 24 hours.'
-    );
+    return sendSuccess(res, {}, 'Identity verified. A developer will provide a temporary password within 24 hours.');
   } catch (err) { next(err); }
 });
 
 export default router;
 
-// ── FR-48: Developer approves recovery request + emails temp password ──────────
+// ── Developer approves recovery request ──────────────────────────────────────
 router.post('/admin/resolve-recovery', authenticate, async (req, res, next) => {
   try {
     const { user_id, email, temp_password } = req.body;
@@ -180,27 +188,22 @@ router.post('/admin/resolve-recovery', authenticate, async (req, res, next) => {
       return sendError(res, 'Missing required fields', 400, 'MISSING_FIELDS');
     }
 
-    // Hash and set the temp password
     const password_hash = await hashPassword(temp_password);
     await supabase.from('users').update({
       password_hash,
-      is_first_login: true,  // force setup on next login
+      is_first_login: true,
     }).eq('id', user_id);
 
-    // Get admin's full name for the email
     const { data: adminUser } = await supabase
       .from('users').select('full_name').eq('id', user_id).maybeSingle();
 
-    // Send temp password via email
     const { sendAdminTempPassword } = await import('../../utils/email.utils.js');
     try {
       await sendAdminTempPassword(email, temp_password, adminUser?.full_name || 'Admin');
     } catch (emailErr) {
       console.error('[Recovery] Email failed:', emailErr.message);
-      // Don't fail the whole request if email fails
     }
 
-    // Log resolution
     await supabase.from('security_audit_log').insert({
       event_type: 'ADMIN_RECOVERY_RESOLVED',
       user_id:    req.user.id,
@@ -217,4 +220,3 @@ router.post('/admin/resolve-recovery', authenticate, async (req, res, next) => {
     return sendSuccess(res, {}, 'Recovery approved and temporary password sent via email.');
   } catch (err) { next(err); }
 });
-
