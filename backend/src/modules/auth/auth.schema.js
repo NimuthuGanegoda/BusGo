@@ -11,6 +11,9 @@ export const registerSchema = z.object({
   // ← Allows Drive app to register as driver, Client app as passenger
   role:            z.enum(['passenger', 'driver']).default('passenger'),
   experience_areas: z.array(z.string()).optional().default([]),
+  answer_1:        z.string().min(1).trim().optional(),
+  answer_2:        z.string().min(1).trim().optional(),
+  answer_3:        z.string().min(1).trim().optional(),
 });
 
 export const loginSchema = z.object({
