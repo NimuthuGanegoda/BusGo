@@ -1,4 +1,6 @@
-﻿import crypto from 'crypto';
+import crypto from 'crypto';
+import dns from 'dns';
+dns.setDefaultResultOrder('ipv4first');
 import { supabase } from '../../config/supabase.js';
 import { CONSTANTS } from '../../config/constants.js';
 import { env } from '../../config/env.js';
@@ -12,7 +14,7 @@ import {
   verifyResetToken,
 } from '../../utils/jwt.utils.js';
 import { logger } from '../../utils/logger.js';
-import { sendPasswordResetPin, sendEmailVerificationPin } from '../../utils/email.utils.js';
+import { sendPasswordResetPin } from '../../utils/email.utils.js';
 import { logSecurityEvent, SECURITY_EVENTS } from '../../services/security-audit.service.js';
 
 const MAX_FAILED_ATTEMPTS  = 5;
@@ -22,16 +24,9 @@ function hashToken(token) {
   return crypto.createHash('sha256').update(token).digest('hex');
 }
 
-/**
- * Register a new user.
- * Instead of issuing tokens immediately, we send a 6-digit PIN
- * to the provided email. The user must verify the PIN before
- * they are fully logged in.
- */
 export async function registerUser(dto, req = null) {
   const email = dto.email.toLowerCase().trim();
 
-  // Check email uniqueness
   const { data: existing } = await supabase
     .from('users').select('id').eq('email', email).maybeSingle();
   if (existing) {
@@ -39,7 +34,6 @@ export async function registerUser(dto, req = null) {
     err.statusCode = 409; err.code = 'EMAIL_TAKEN'; throw err;
   }
 
-  // Check username uniqueness
   if (dto.username) {
     const { data: existingUsername } = await supabase
       .from('users').select('id').eq('username', dto.username).maybeSingle();
@@ -54,33 +48,26 @@ export async function registerUser(dto, req = null) {
   const role          = dto.role === 'driver' ? 'driver' : 'passenger';
   const is_active     = role === 'driver' ? false : true;
 
-  // â”€â”€ Generate verification PIN â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-  const pin       = generatePin();
-  const pinHash   = await hashPin(pin);
-  const expiresAt = new Date(Date.now() + CONSTANTS.RESET_PIN_EXPIRES_MS).toISOString();
-
   const { data: user, error } = await supabase
     .from('users')
     .insert({
       email,
       password_hash,
-      full_name:       dto.full_name,
-      username:        dto.username      || null,
-      phone:           dto.phone         || null,
-      date_of_birth:   dto.date_of_birth || null,
+      full_name:        dto.full_name,
+      username:         dto.username       || null,
+      phone:            dto.phone          || null,
+      date_of_birth:    dto.date_of_birth  || null,
       experience_areas: dto.experience_areas || [],
       role,
       is_active,
-      // Store verification PIN in the same columns used for password reset
-      reset_pin:            pinHash,
-      reset_pin_expires_at: expiresAt,
+      reset_pin:            null,
+      reset_pin_expires_at: null,
     })
     .select('id, email, full_name, username, phone, avatar_url, membership_type, role, is_active, qr_token, created_at')
     .single();
 
   if (error) throw error;
 
-  // Create default notification preferences
   await supabase.from('notification_preferences').insert({ user_id: user.id });
 
   await logSecurityEvent({
@@ -92,40 +79,26 @@ export async function registerUser(dto, req = null) {
     severity:  'info',
   });
 
-  // â”€â”€ Send verification PIN email â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-  // Fire-and-forget — never blocks registration response
-  sendEmailVerificationPin(email, pin, user.full_name)
-    .then(() => logger.info(`Email verification PIN sent to ${email}`))
-    .catch(emailErr => {
-      logger.error(`Failed to send verification email to ${email}: ${emailErr.message}`);
-      console.log(`\n==============================`);
-      console.log(`  BusGo Email Verification PIN`);
-      console.log(`  Email : ${email}`);
-      console.log(`  PIN   : ${pin}`);
-      console.log(`==============================\n`);
-    });
-
   if (role === 'driver') {
     return {
-      pending_verification: true,
+      pending_verification: false,
       pending_approval:     true,
       email,
-      message: 'Registration submitted. Please verify your email, then wait for admin approval.',
+      message: 'Registration submitted. Please wait for admin approval.',
     };
   }
 
-  // â”€â”€ Return pending state â€” tokens issued only after PIN verified â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  const { access_token, refresh_token } = await issueTokenPair(user.id, user.email);
   return {
-    pending_verification: true,
+    pending_verification: false,
     email,
-    message: 'Registration successful. Please check your email for a 6-digit verification PIN.',
+    user,
+    access_token,
+    refresh_token,
+    message: 'Registration successful.',
   };
 }
 
-/**
- * Verify the email PIN entered after registration.
- * On success, issues tokens so the user is immediately logged in.
- */
 export async function verifyEmailPin(email, pin) {
   const { data: user, error } = await supabase
     .from('users')
@@ -154,7 +127,6 @@ export async function verifyEmailPin(email, pin) {
     err.statusCode = 400; err.code = 'INVALID_PIN'; throw err;
   }
 
-  // â”€â”€ Clear the PIN and issue tokens â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   await supabase
     .from('users')
     .update({ reset_pin: null, reset_pin_expires_at: null })
@@ -166,9 +138,6 @@ export async function verifyEmailPin(email, pin) {
   return { user: safeUser, access_token, refresh_token };
 }
 
-/**
- * Resend a fresh verification PIN to the email.
- */
 export async function resendVerificationPin(email) {
   const { data: user } = await supabase
     .from('users')
@@ -176,7 +145,6 @@ export async function resendVerificationPin(email) {
     .eq('email', email.toLowerCase().trim())
     .maybeSingle();
 
-  // Silent if not found â€” don't reveal if email exists
   if (!user) return;
 
   const pin       = generatePin();
@@ -188,21 +156,13 @@ export async function resendVerificationPin(email) {
     .update({ reset_pin: pinHash, reset_pin_expires_at: expiresAt })
     .eq('id', user.id);
 
-  try {
-    await sendEmailVerificationPin(email.toLowerCase().trim(), pin, user.full_name);
-  } catch (emailErr) {
-    logger.error(`Failed to resend verification PIN: ${emailErr.message}`);
-    console.log(`\n==============================`);
-    console.log(`  BusGo Verification PIN (resend)`);
-    console.log(`  Email : ${email}`);
-    console.log(`  PIN   : ${pin}`);
-    console.log(`==============================\n`);
-  }
+  console.log(`\n==============================`);
+  console.log(`  BusGo Verification PIN (resend)`);
+  console.log(`  Email : ${email}`);
+  console.log(`  PIN   : ${pin}`);
+  console.log(`==============================\n`);
 }
 
-/**
- * Authenticate a user with email & password.
- */
 export async function loginUser(dto, req = null) {
   const email = dto.email.toLowerCase().trim();
 
@@ -223,7 +183,6 @@ export async function loginUser(dto, req = null) {
     err.statusCode = 401; err.code = 'INVALID_CREDENTIALS'; throw err;
   }
 
-  // â”€â”€ Check if email is still unverified â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   if (user.reset_pin) {
     const err = new Error('Please verify your email first. Check your inbox for the PIN.');
     err.statusCode = 403; err.code = 'EMAIL_NOT_VERIFIED'; throw err;
@@ -447,12 +406,3 @@ async function issueTokenPair(userId, email) {
   });
   return { access_token, refresh_token };
 }
-
-
-
-
-
-
-
-
-
