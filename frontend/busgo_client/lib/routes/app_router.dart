@@ -5,6 +5,7 @@ import '../screens/auth/login_screen.dart';
 import '../screens/auth/register_screen.dart';
 import '../screens/auth/forgot_password_screen.dart';
 import '../screens/auth/verify_email_screen.dart';
+import '../screens/auth/recovery_pin_screen.dart';
 import '../screens/dashboard/dashboard_screen.dart';
 import '../screens/map/live_map_screen.dart';
 import '../screens/profile/profile_screen.dart';
@@ -46,6 +47,12 @@ final GoRouter appRouter = GoRouter(
       path: '/verify-email',
       builder: (context, state) => VerifyEmailScreen(
         email: state.extra as String? ?? '',
+      ),
+    ),
+    GoRoute(
+      path: '/recovery-pin',
+      builder: (context, state) => RecoveryPinScreen(
+        pin: state.extra as String? ?? '',
       ),
     ),
     GoRoute(
@@ -115,7 +122,6 @@ final GoRouter appRouter = GoRouter(
         );
       },
     ),
-    
     GoRoute(
       path: '/rating',
       builder: (context, state) => const DriverRatingScreen(),
@@ -131,7 +137,6 @@ final GoRouter appRouter = GoRouter(
   ],
 );
 
-// ── Main shell widget ─────────────────────────────────────────────────────────
 class _MainShell extends StatefulWidget {
   final StatefulNavigationShell navigationShell;
   const _MainShell({required this.navigationShell});
@@ -157,7 +162,6 @@ class _MainShellState extends State<_MainShell> {
     if (auth.currentUser != null && auth.currentUser!.id.isNotEmpty) {
       trip.startWatchingTrips(auth.currentUser!.id);
       _watchingStarted = true;
-      debugPrint('[MainShell] Started watching trips for ${auth.currentUser!.id}');
     }
   }
 
@@ -180,9 +184,7 @@ class _MainShellState extends State<_MainShell> {
               context: context,
               barrierDismissible: false,
               builder: (_) => RatingPopup(trip: pendingTrip),
-            ).then((_) {
-              _dialogShowing = false;
-            });
+            ).then((_) => _dialogShowing = false);
           });
         }
 
@@ -192,7 +194,8 @@ class _MainShellState extends State<_MainShell> {
             currentIndex: widget.navigationShell.currentIndex,
             onTap: (index) => widget.navigationShell.goBranch(
               index,
-              initialLocation: index == widget.navigationShell.currentIndex,
+              initialLocation:
+                  index == widget.navigationShell.currentIndex,
             ),
           ),
         );
@@ -200,13 +203,3 @@ class _MainShellState extends State<_MainShell> {
     );
   }
 }
-
-
-
-
-
-
-
-
-
-
