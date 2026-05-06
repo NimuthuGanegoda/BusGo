@@ -23,7 +23,10 @@ import { sendSuccess, sendError } from '../../utils/response.utils.js';
 const router = Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024 } });
 
-router.use(authLimiter);
+router.use((req, res, next) => {
+  if (req.path === '/admin/resolve-recovery') return next();
+  authLimiter(req, res, next);
+});
 
 router.post('/register', (req, res, next) => {
   console.log('[RAW BODY]', JSON.stringify(req.body));
