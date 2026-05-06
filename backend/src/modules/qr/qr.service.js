@@ -48,7 +48,6 @@ async function recordQrExpiredAttempt(passengerId, passengerEmail, driverUserId,
     .update({ failed_scan_attempts: attempts, scan_locked_until: lockUntil })
     .eq('id', passengerId);
 
-  // UFR_51: Log every attempt to audit
   await logSecurityEvent({
     eventType: SECURITY_EVENTS.REPEATED_QR_SCAN,
     userId:    driverUserId,
@@ -102,15 +101,13 @@ export async function getMyQrCard(userId, force = false) {
   };
 }
 
-// â”€â”€ req is passed in so IP address and email appear in audit logs (UFR_51) â”€â”€
 export async function scanIn(scannedToken, driverUserId, context = {}, req = null) {
 
-  // Fetch driver email for audit log
   const { data: driverUser } = await supabase
     .from('users').select('email').eq('id', driverUserId).maybeSingle();
   const driverEmail = driverUser?.email ?? null;
 
-  // â”€â”€ STEP 1: Check if this is a PAYMENT QR (trip_tickets.qr_data) â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── STEP 1: Check if this is a PAYMENT QR (trip_tickets.qr_data) ──────────
   const { data: ticket } = await supabase
     .from('trip_tickets')
     .select('id, user_id, route_id, boarding_stop_id, alighting_stop_id, payment_status, valid_until, verified_at, amount')
@@ -125,7 +122,6 @@ export async function scanIn(scannedToken, driverUserId, context = {}, req = nul
       const e = new Error('Ticket expired'); e.statusCode = 410; e.code = 'TICKET_EXPIRED'; throw e;
     }
     if (ticket.verified_at) {
-      // UFR_51: Log repeated scan of already-used payment ticket
       await logSecurityEvent({
         eventType: SECURITY_EVENTS.REPEATED_QR_SCAN,
         userId:    driverUserId,
@@ -156,7 +152,6 @@ export async function scanIn(scannedToken, driverUserId, context = {}, req = nul
     const { data: ongoing } = await supabase
       .from('trips').select('id').eq('user_id', passenger.id).eq('status', 'ongoing').maybeSingle();
     if (ongoing) {
-      // UFR_51: Log repeated scan â€” passenger already on bus (payment QR)
       await logSecurityEvent({
         eventType: SECURITY_EVENTS.REPEATED_QR_SCAN,
         userId:    driverUserId,
@@ -221,6 +216,11 @@ export async function scanIn(scannedToken, driverUserId, context = {}, req = nul
       .select('id, boarded_at').single();
     if (tErr) throw tErr;
 
+    // ── RESET failed_scan_attempts on successful payment QR boarding ─────────
+    await supabase.from('users')
+      .update({ failed_scan_attempts: 0, scan_locked_until: null })
+      .eq('id', passenger.id);
+
     const activeAfterBoarding = activeBeforeBoarding + 1;
     const isNowFull = activeAfterBoarding >= capacity;
 
@@ -234,7 +234,7 @@ export async function scanIn(scannedToken, driverUserId, context = {}, req = nul
     await supabase.from('notifications').insert({
       user_id:  passenger.id,
       category: 'trip',
-      title:    'ðŸšŒ Boarded Successfully',
+      title:    '🚌 Boarded Successfully',
       body:     'Your prepaid journey has started. Have a safe trip!',
       meta:     { trip_id: trip.id, bus_id: busId, ticket_id: ticket.id },
     });
@@ -255,7 +255,7 @@ export async function scanIn(scannedToken, driverUserId, context = {}, req = nul
     };
   }
 
-  // â”€â”€ STEP 2: Normal QR scan (users.qr_token) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── STEP 2: Normal QR scan (users.qr_token) ───────────────────────────────
   const { data: passenger, error: pErr } = await supabase
     .from('users')
     .select('id, full_name, username, membership_type, qr_token, qr_expires_at, is_active')
@@ -268,7 +268,6 @@ export async function scanIn(scannedToken, driverUserId, context = {}, req = nul
     const e = new Error('Account deactivated'); e.statusCode = 403; e.code = 'ACCOUNT_INACTIVE'; throw e;
   }
   if (new Date(passenger.qr_expires_at) <= new Date()) {
-    // UFR_48: Check lock, record attempt, throw with remaining count
     await checkQrScanLock(passenger.id);
     await recordQrExpiredAttempt(passenger.id, passenger.full_name, driverUserId, req);
   }
@@ -276,7 +275,6 @@ export async function scanIn(scannedToken, driverUserId, context = {}, req = nul
   const { data: ongoing } = await supabase
     .from('trips').select('id').eq('user_id', passenger.id).eq('status', 'ongoing').maybeSingle();
   if (ongoing) {
-    // UFR_51: Log repeated scan â€” passenger already on bus (normal QR)
     await logSecurityEvent({
       eventType: SECURITY_EVENTS.REPEATED_QR_SCAN,
       userId:    driverUserId,
@@ -334,6 +332,11 @@ export async function scanIn(scannedToken, driverUserId, context = {}, req = nul
     .select('id, boarded_at').single();
   if (tErr) throw tErr;
 
+  // ── RESET failed_scan_attempts on successful normal QR boarding ───────────
+  await supabase.from('users')
+    .update({ failed_scan_attempts: 0, scan_locked_until: null })
+    .eq('id', passenger.id);
+
   await supabase
     .from('users')
     .update({ qr_expires_at: new Date(Date.now() - 1).toISOString() })
@@ -373,7 +376,7 @@ export async function scanIn(scannedToken, driverUserId, context = {}, req = nul
   await supabase.from('notifications').insert({
     user_id:  passenger.id,
     category: 'trip',
-    title:    'ðŸšŒ Boarded Successfully',
+    title:    '🚌 Boarded Successfully',
     body:     'Your journey has started. Have a safe trip!',
     meta:     { trip_id: trip.id, bus_id: busId },
   });
@@ -462,7 +465,7 @@ export async function scanExit(driverUserId, dto = {}) {
   await supabase.from('notifications').insert({
     user_id:  passenger.id,
     category: 'trip',
-    title:    'â­ How was your ride?',
+    title:    '⭐ How was your ride?',
     body:     'Please rate your recent bus journey.',
     meta:     { trip_id: trip.id, bus_id: trip.bus_id },
   });
