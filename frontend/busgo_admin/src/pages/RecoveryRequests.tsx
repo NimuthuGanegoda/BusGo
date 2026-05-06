@@ -62,7 +62,6 @@ export default function RecoveryRequests() {
       );
       const json = await res.json();
       const data = json.data?.data ?? json.data ?? [];
-      // Show all that are not resolved
       const pending = (Array.isArray(data) ? data : []).filter(
         (r: any) => r.details?.status !== 'resolved'
       );
@@ -103,7 +102,7 @@ export default function RecoveryRequests() {
         return;
       }
       setDoneMap(prev => ({ ...prev, [entry.id]: tempPassword }));
-      showToast(`✅ Temp password sent to ${entry.email} via email`);
+      showToast(`✅ Temp password generated for ${entry.email}`);
       fetchRequests();
     } catch (e) {
       showToast('Network error — could not reach backend', 'error');
@@ -166,8 +165,8 @@ export default function RecoveryRequests() {
         fontSize: '13px', color: '#92400e', marginBottom: '24px',
       }}>
         ⚠ <strong>Developer only.</strong> Clicking Approve will automatically generate a
-        temporary password and email it directly to the admin. The admin will be forced
-        to set a new password, PIN and security questions on next login.
+        temporary password and share it securely with the admin via a secure channel (e.g. WhatsApp or Google Meet).
+        The admin will be forced to set a new password, PIN and security questions on next login.
       </div>
 
       {loading ? (
@@ -213,15 +212,19 @@ export default function RecoveryRequests() {
                         <span style={{
                           background: '#f0fdf4', color: '#16a34a', border: '1px solid #bbf7d0',
                           padding: '3px 10px', borderRadius: '6px', fontSize: '11px', fontWeight: 700,
-                        }}>✅ EMAIL SENT</span>
+                        }}>✅ PASSWORD GENERATED</span>
                         <div style={{
                           background: '#f9fafb', border: '1px solid #e5e7eb',
                           borderRadius: '8px', padding: '10px 14px',
                           display: 'flex', alignItems: 'center', gap: '10px',
                         }}>
                           <div>
-                            <div style={{ fontSize: '11px', color: '#6b7280', marginBottom: '2px' }}>Backup copy:</div>
-                            <code style={{ fontSize: '14px', fontWeight: 700, color: '#111827' }}>{doneMap[entry.id]}</code>
+                            <div style={{ fontSize: '11px', color: '#6b7280', marginBottom: '2px' }}>
+                              Share via secure channel:
+                            </div>
+                            <code style={{ fontSize: '14px', fontWeight: 700, color: '#111827' }}>
+                              {doneMap[entry.id]}
+                            </code>
                           </div>
                           <button onClick={() => copyToClipboard(doneMap[entry.id])}
                             style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#6b7280' }}>
@@ -241,7 +244,7 @@ export default function RecoveryRequests() {
                           cursor: processing === entry.id ? 'not-allowed' : 'pointer',
                           opacity: processing === entry.id ? 0.7 : 1,
                         }}>
-                          {processing === entry.id ? 'Sending...' : '✓ Approve & Email Password'}
+                          {processing === entry.id ? 'Generating...' : '✓ Approve & Generate Password'}
                         </button>
                       </>
                     )}
@@ -255,5 +258,3 @@ export default function RecoveryRequests() {
     </div>
   );
 }
-
-
