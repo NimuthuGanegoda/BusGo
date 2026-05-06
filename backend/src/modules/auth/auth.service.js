@@ -1,4 +1,4 @@
-import crypto from 'crypto';
+﻿import crypto from 'crypto';
 import dns from 'dns';
 dns.setDefaultResultOrder('ipv4first');
 import { supabase } from '../../config/supabase.js';
@@ -17,8 +17,8 @@ import { logger } from '../../utils/logger.js';
 import { sendPasswordResetPin } from '../../utils/email.utils.js';
 import { logSecurityEvent, SECURITY_EVENTS } from '../../services/security-audit.service.js';
 
-const MAX_FAILED_ATTEMPTS  = 5;
-const LOCKOUT_DURATION_MS  = 15 * 60 * 1000;
+const MAX_FAILED_ATTEMPTS = 5;
+const LOCKOUT_DURATION_MS = 15 * 60 * 1000;
 
 function hashToken(token) {
   return crypto.createHash('sha256').update(token).digest('hex');
@@ -48,20 +48,35 @@ export async function registerUser(dto, req = null) {
   const role          = dto.role === 'driver' ? 'driver' : 'passenger';
   const is_active     = role === 'driver' ? false : true;
 
+  // Generate recovery PIN and hash security answers
+  const recovery_pin      = generatePin();
+  const recovery_pin_hash = await hashPin(recovery_pin);
+
+  let answer_1_hash = null, answer_2_hash = null, answer_3_hash = null;
+  if (dto.answer_1 && dto.answer_2 && dto.answer_3) {
+    answer_1_hash = await hashPin(dto.answer_1.trim().toLowerCase());
+    answer_2_hash = await hashPin(dto.answer_2.trim().toLowerCase());
+    answer_3_hash = await hashPin(dto.answer_3.trim().toLowerCase());
+  }
+
   const { data: user, error } = await supabase
     .from('users')
     .insert({
       email,
       password_hash,
-      full_name:        dto.full_name,
-      username:         dto.username       || null,
-      phone:            dto.phone          || null,
-      date_of_birth:    dto.date_of_birth  || null,
-      experience_areas: dto.experience_areas || [],
+      full_name:              dto.full_name,
+      username:               dto.username       || null,
+      phone:                  dto.phone          || null,
+      date_of_birth:          dto.date_of_birth  || null,
+      experience_areas:       dto.experience_areas || [],
       role,
       is_active,
-      reset_pin:            null,
-      reset_pin_expires_at: null,
+      reset_pin:              null,
+      reset_pin_expires_at:   null,
+      recovery_pin_hash,
+      security_answer_1_hash: answer_1_hash,
+      security_answer_2_hash: answer_2_hash,
+      security_answer_3_hash: answer_3_hash,
     })
     .select('id, email, full_name, username, phone, avatar_url, membership_type, role, is_active, qr_token, created_at')
     .single();
@@ -95,6 +110,7 @@ export async function registerUser(dto, req = null) {
     user,
     access_token,
     refresh_token,
+    recovery_pin, // shown once on screen — never stored in plain text again
     message: 'Registration successful.',
   };
 }
@@ -112,55 +128,75 @@ export async function verifyEmailPin(email, pin) {
   }
 
   if (!user.reset_pin) {
-    const err = new Error('No verification PIN found. Please register again or request a new PIN.');
+    const err = new Error('No verification PIN found.');
     err.statusCode = 400; err.code = 'INVALID_PIN'; throw err;
   }
 
   if (new Date(user.reset_pin_expires_at) < new Date()) {
-    const err = new Error('PIN has expired. Please request a new one.');
+    const err = new Error('PIN has expired.');
     err.statusCode = 400; err.code = 'PIN_EXPIRED'; throw err;
   }
 
   const valid = await verifyPin(pin, user.reset_pin);
   if (!valid) {
-    const err = new Error('Incorrect PIN. Please try again.');
+    const err = new Error('Incorrect PIN.');
     err.statusCode = 400; err.code = 'INVALID_PIN'; throw err;
   }
 
-  await supabase
-    .from('users')
-    .update({ reset_pin: null, reset_pin_expires_at: null })
-    .eq('id', user.id);
+  await supabase.from('users')
+    .update({ reset_pin: null, reset_pin_expires_at: null }).eq('id', user.id);
 
   const { access_token, refresh_token } = await issueTokenPair(user.id, user.email);
-
   const { reset_pin: _, reset_pin_expires_at: __, ...safeUser } = user;
   return { user: safeUser, access_token, refresh_token };
 }
 
 export async function resendVerificationPin(email) {
   const { data: user } = await supabase
-    .from('users')
-    .select('id, full_name, reset_pin')
-    .eq('email', email.toLowerCase().trim())
-    .maybeSingle();
-
+    .from('users').select('id, full_name, reset_pin')
+    .eq('email', email.toLowerCase().trim()).maybeSingle();
   if (!user) return;
 
   const pin       = generatePin();
   const pinHash   = await hashPin(pin);
   const expiresAt = new Date(Date.now() + CONSTANTS.RESET_PIN_EXPIRES_MS).toISOString();
 
-  await supabase
-    .from('users')
-    .update({ reset_pin: pinHash, reset_pin_expires_at: expiresAt })
-    .eq('id', user.id);
+  await supabase.from('users')
+    .update({ reset_pin: pinHash, reset_pin_expires_at: expiresAt }).eq('id', user.id);
 
   console.log(`\n==============================`);
   console.log(`  BusGo Verification PIN (resend)`);
   console.log(`  Email : ${email}`);
   console.log(`  PIN   : ${pin}`);
   console.log(`==============================\n`);
+}
+
+// NEW: Verify passenger identity using recovery PIN + 3 security answers
+export async function verifyPassengerIdentity(email, recoveryPin, answer1, answer2, answer3) {
+  const { data: user } = await supabase
+    .from('users')
+    .select('id, email, role, recovery_pin_hash, security_answer_1_hash, security_answer_2_hash, security_answer_3_hash')
+    .eq('email', email.toLowerCase().trim())
+    .maybeSingle();
+
+  const FAIL = () => {
+    const err = new Error('Verification failed. Please check your PIN and answers.');
+    err.statusCode = 401; err.code = 'VERIFICATION_FAILED'; throw err;
+  };
+
+  if (!user || user.role !== 'passenger') FAIL();
+  if (!user.recovery_pin_hash || !user.security_answer_1_hash) FAIL();
+
+  const pinOk = await verifyPin(recoveryPin, user.recovery_pin_hash);
+  if (!pinOk) FAIL();
+
+  const a1Ok = await verifyPin(answer1.trim().toLowerCase(), user.security_answer_1_hash);
+  const a2Ok = await verifyPin(answer2.trim().toLowerCase(), user.security_answer_2_hash);
+  const a3Ok = await verifyPin(answer3.trim().toLowerCase(), user.security_answer_3_hash);
+  if (!a1Ok || !a2Ok || !a3Ok) FAIL();
+
+  const reset_token = signResetToken({ id: user.id, email: user.email });
+  return { reset_token };
 }
 
 export async function loginUser(dto, req = null) {
@@ -184,7 +220,7 @@ export async function loginUser(dto, req = null) {
   }
 
   if (user.reset_pin) {
-    const err = new Error('Please verify your email first. Check your inbox for the PIN.');
+    const err = new Error('Please verify your email first.');
     err.statusCode = 403; err.code = 'EMAIL_NOT_VERIFIED'; throw err;
   }
 
@@ -226,8 +262,8 @@ export async function loginUser(dto, req = null) {
 
   const valid = await comparePassword(dto.password, user.password_hash);
   if (!valid) {
-    const attempts    = (user.failed_login_attempts || 0) + 1;
-    const updateData  = { failed_login_attempts: attempts, last_failed_login: new Date().toISOString() };
+    const attempts   = (user.failed_login_attempts || 0) + 1;
+    const updateData = { failed_login_attempts: attempts, last_failed_login: new Date().toISOString() };
     if (attempts >= MAX_FAILED_ATTEMPTS) {
       updateData.locked_until = new Date(Date.now() + LOCKOUT_DURATION_MS).toISOString();
       await logSecurityEvent({
@@ -335,7 +371,7 @@ export async function verifyResetPin(email, pin) {
     err.statusCode = 400; err.code = 'INVALID_PIN'; throw err;
   }
   if (new Date(user.reset_pin_expires_at) < new Date()) {
-    const err = new Error('PIN has expired. Please request a new one.');
+    const err = new Error('PIN has expired.');
     err.statusCode = 400; err.code = 'PIN_EXPIRED'; throw err;
   }
   const valid = await verifyPin(pin, user.reset_pin);

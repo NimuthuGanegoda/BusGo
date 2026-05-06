@@ -9,7 +9,7 @@ class AuthService {
 
   AuthService(this._api, this._tokenService);
 
-  Future<void> register({
+  Future<String?> register({
     required String fullName,
     required String email,
     required String username,
@@ -17,8 +17,11 @@ class AuthService {
     required String password,
     String? dateOfBirth,
     String membershipType = 'standard',
+    required String answer1,
+    required String answer2,
+    required String answer3,
   }) async {
-    await _api.post(ApiEndpoints.register, data: {
+    final data = await _api.post(ApiEndpoints.register, data: {
       'full_name':       fullName,
       'email':           email,
       'username':        username,
@@ -26,7 +29,37 @@ class AuthService {
       'password':        password,
       if (dateOfBirth != null) 'date_of_birth': dateOfBirth,
       'membership_type': membershipType,
+      'answer_1':        answer1,
+      'answer_2':        answer2,
+      'answer_3':        answer3,
     });
+    final map = data as Map<String, dynamic>?;
+    if (map != null &&
+        map['access_token'] != null &&
+        map['refresh_token'] != null) {
+      await _tokenService.saveTokens(
+        map['access_token']  as String,
+        map['refresh_token'] as String,
+      );
+    }
+    return map?['recovery_pin'] as String?;
+  }
+
+  Future<String> verifyIdentity({
+    required String email,
+    required String recoveryPin,
+    required String answer1,
+    required String answer2,
+    required String answer3,
+  }) async {
+    final data = await _api.post('/auth/forgot-password/verify-identity', data: {
+      'email':        email,
+      'recovery_pin': recoveryPin,
+      'answer_1':     answer1,
+      'answer_2':     answer2,
+      'answer_3':     answer3,
+    });
+    return (data as Map<String, dynamic>)['reset_token'] as String;
   }
 
   Future<UserModel> verifyEmail(String email, String pin) async {
@@ -98,8 +131,6 @@ class AuthService {
     });
   }
 
-  /// POST /auth/change-password
-  /// Changes password for a logged-in user using their current password.
   Future<bool> changePassword({
     required String currentPassword,
     required String newPassword,
@@ -121,4 +152,3 @@ class AuthService {
     }
   }
 }
-

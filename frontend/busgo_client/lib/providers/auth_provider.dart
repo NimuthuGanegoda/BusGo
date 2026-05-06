@@ -14,11 +14,12 @@ class AuthProvider extends ChangeNotifier {
   String?    _errorMessage;
   UserModel? _currentUser;
   String?    _accessToken;
+  String?    _recoveryPin;
 
   // Forgot password state
+  String _forgotEmail  = '';
+  String _resetToken   = '';
   int    _forgotPasswordStep = 0;
-  String _forgotEmail        = '';
-  String _resetToken         = '';
 
   // Email verification state
   String? _pendingVerificationEmail;
@@ -26,11 +27,12 @@ class AuthProvider extends ChangeNotifier {
 
   AuthProvider(this._authService, this._tokenService);
 
-  bool       get isLoggedIn  => _isLoggedIn;
-  bool       get isLoading   => _isLoading;
-  String?    get errorMessage => _errorMessage;
-  UserModel? get currentUser  => _currentUser;
-  String?    get accessToken  => _accessToken;
+  bool       get isLoggedIn         => _isLoggedIn;
+  bool       get isLoading          => _isLoading;
+  String?    get errorMessage       => _errorMessage;
+  UserModel? get currentUser        => _currentUser;
+  String?    get accessToken        => _accessToken;
+  String?    get recoveryPin        => _recoveryPin;
   int        get forgotPasswordStep => _forgotPasswordStep;
   String     get forgotEmail        => _forgotEmail;
 
@@ -93,9 +95,6 @@ class AuthProvider extends ChangeNotifier {
     }
   }
 
-  /// Register a new passenger.
-  /// Returns true if registration succeeded and a verification PIN was sent.
-  /// The caller should then navigate to the verify-email screen.
   Future<bool> register({
     required String fullName,
     required String email,
@@ -103,22 +102,28 @@ class AuthProvider extends ChangeNotifier {
     required String phone,
     required String password,
     String? dateOfBirth,
+    required String answer1,
+    required String answer2,
+    required String answer3,
   }) async {
     _isLoading    = true;
     _errorMessage = null;
     notifyListeners();
     try {
-      await _authService.register(
+      final pin = await _authService.register(
         fullName:    fullName,
         email:       email,
         username:    username,
         phone:       phone,
         password:    password,
         dateOfBirth: dateOfBirth,
+        answer1:     answer1,
+        answer2:     answer2,
+        answer3:     answer3,
       );
-      // Store email so verify screen knows where the PIN was sent
+      _recoveryPin              = pin;
       _pendingVerificationEmail = email;
-      _isLoading = false;
+      _isLoading                = false;
       notifyListeners();
       return true;
     } on AppException catch (e) {
@@ -134,8 +139,6 @@ class AuthProvider extends ChangeNotifier {
     }
   }
 
-  /// Verify the 6-digit PIN sent to the email after registration.
-  /// On success, issues tokens and marks the user as logged in.
   Future<bool> verifyEmail(String email, String pin) async {
     _isLoading    = true;
     _errorMessage = null;
@@ -161,7 +164,6 @@ class AuthProvider extends ChangeNotifier {
     }
   }
 
-  /// Resend the verification PIN to the given email.
   Future<bool> resendVerificationPin(String email) async {
     _isLoading    = true;
     _errorMessage = null;
@@ -217,6 +219,44 @@ class AuthProvider extends ChangeNotifier {
     try {
       _resetToken         = await _authService.verifyResetPin(_forgotEmail, pin);
       _forgotPasswordStep = 2;
+      _isLoading          = false;
+      notifyListeners();
+      return true;
+    } on AppException catch (e) {
+      _isLoading    = false;
+      _errorMessage = ErrorHandler.userMessage(e);
+      notifyListeners();
+      return false;
+    } catch (e) {
+      _isLoading    = false;
+      _errorMessage = ErrorHandler.userMessage(ErrorHandler.handle(e));
+      notifyListeners();
+      return false;
+    }
+  }
+
+  // ── NEW: Passenger identity verification via recovery PIN + answers ────────
+
+  Future<bool> verifyIdentity({
+    required String email,
+    required String recoveryPin,
+    required String answer1,
+    required String answer2,
+    required String answer3,
+  }) async {
+    _isLoading    = true;
+    _errorMessage = null;
+    notifyListeners();
+    try {
+      _resetToken = await _authService.verifyIdentity(
+        email:       email,
+        recoveryPin: recoveryPin,
+        answer1:     answer1,
+        answer2:     answer2,
+        answer3:     answer3,
+      );
+      _forgotEmail        = email;
+      _forgotPasswordStep = 3;
       _isLoading          = false;
       notifyListeners();
       return true;
@@ -299,39 +339,27 @@ class AuthProvider extends ChangeNotifier {
   }
 
   Future<String?> getAccessToken() => _tokenService.getAccessToken();
-  
+
   Future<bool> changePassword({
-  required String currentPassword,
-  required String newPassword,
-}) async {
-  _isLoading = true;
-  _errorMessage = null;
-  notifyListeners();
-  try {
-    final ok = await _authService.changePassword(
-      currentPassword: currentPassword,
-      newPassword:     newPassword,
-    );
-    _isLoading = false;
+    required String currentPassword,
+    required String newPassword,
+  }) async {
+    _isLoading    = true;
+    _errorMessage = null;
     notifyListeners();
-    return ok;
-  } catch (e) {
-    _isLoading    = false;
-    _errorMessage = 'Failed to change password';
-    notifyListeners();
-    return false;
+    try {
+      final ok = await _authService.changePassword(
+        currentPassword: currentPassword,
+        newPassword:     newPassword,
+      );
+      _isLoading = false;
+      notifyListeners();
+      return ok;
+    } catch (e) {
+      _isLoading    = false;
+      _errorMessage = 'Failed to change password';
+      notifyListeners();
+      return false;
+    }
   }
 }
-
-  
-}
-
-
-
-
-
-
-
-
-
-
