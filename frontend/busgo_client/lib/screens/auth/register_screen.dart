@@ -98,33 +98,53 @@ class _RegisterScreenState extends State<RegisterScreen>
 
   Widget _buildPasswordStrength(String pass) {
     if (pass.isEmpty) return const SizedBox.shrink();
-    final score = _strengthScore(pass);
-    final label = score <= 1 ? 'Weak' : score <= 3 ? 'Fair' : 'Strong';
-    final color = score <= 1
+    final isCommon = _isCommonPassword(pass);
+    final score    = _strengthScore(pass);
+    final label    = isCommon
+        ? 'Too Common'
+        : score <= 1 ? 'Weak'
+        : score <= 3 ? 'Fair'
+        : 'Strong';
+    final color    = (isCommon || score <= 1)
         ? const Color(0xFFEF4444)
-        : score <= 3 ? const Color(0xFFF59E0B) : const Color(0xFF22C55E);
+        : score <= 3
+            ? const Color(0xFFF59E0B)
+            : const Color(0xFF22C55E);
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
-      child: Row(children: [
-        Expanded(child: ClipRRect(
-          borderRadius: BorderRadius.circular(2),
-          child: LinearProgressIndicator(
-            value: score / 5,
-            backgroundColor: Colors.white.withOpacity(0.08),
-            valueColor: AlwaysStoppedAnimation<Color>(color),
-            minHeight: 3))),
-        const SizedBox(width: 8),
-        Text(label, style: GoogleFonts.poppins(
-            fontSize: 10, color: color, fontWeight: FontWeight.w600)),
-      ]),
-    );
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(children: [
+            Expanded(child: ClipRRect(
+              borderRadius: BorderRadius.circular(2),
+              child: LinearProgressIndicator(
+                value: isCommon ? 0.2 : score / 5,
+                backgroundColor: Colors.white.withOpacity(0.08),
+                valueColor: AlwaysStoppedAnimation<Color>(color),
+                minHeight: 3))),
+            const SizedBox(width: 8),
+            Text(label, style: GoogleFonts.poppins(
+                fontSize: 10, color: color,
+                fontWeight: FontWeight.w600)),
+          ]),
+          if (isCommon)
+            Padding(
+              padding: const EdgeInsets.only(top: 4),
+              child: Text(
+                'This password is too common. Choose something unique.',
+                style: GoogleFonts.poppins(
+                    fontSize: 10,
+                    color: const Color(0xFFFF9999)))),
+        ]));
   }
 
   bool _validate() {
     _errors.clear();
     if (_fullNameCtrl.text.trim().isEmpty)
       _errors['name'] = 'Full name is required';
-    final emailRx = RegExp(r'^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$');
+    final emailRx = RegExp(
+        r'^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$');
     if (_emailCtrl.text.trim().isEmpty)
       _errors['email'] = 'Email is required';
     else if (!emailRx.hasMatch(_emailCtrl.text.trim()))
@@ -164,11 +184,13 @@ class _RegisterScreenState extends State<RegisterScreen>
       backgroundColor: _bg,
       resizeToAvoidBottomInset: true,
       body: FadeTransition(
-        opacity: CurvedAnimation(parent: _enterCtrl, curve: Curves.easeOut),
+        opacity: CurvedAnimation(
+            parent: _enterCtrl, curve: Curves.easeOut),
         child: Stack(children: [
-          Container(decoration: const BoxDecoration(gradient: RadialGradient(
-            center: Alignment(0.3, -0.5), radius: 1.2,
-            colors: [Color(0xFF0A1E30), Color(0xFF040D18)]))),
+          Container(decoration: const BoxDecoration(
+              gradient: RadialGradient(
+                center: Alignment(0.3, -0.5), radius: 1.2,
+                colors: [Color(0xFF0A1E30), Color(0xFF040D18)]))),
           CustomPaint(size: size, painter: _GridPainter()),
 
           // Header
@@ -184,24 +206,31 @@ class _RegisterScreenState extends State<RegisterScreen>
                       width: 38, height: 38,
                       decoration: BoxDecoration(
                         shape: BoxShape.circle, color: _panel,
-                        border: Border.all(color: _teal.withOpacity(0.2))),
+                        border: Border.all(
+                            color: _teal.withOpacity(0.2))),
                       child: const Icon(Icons.arrow_back_rounded,
                           size: 18, color: Colors.white70))),
                   const SizedBox(width: 14),
-                  Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    Text('BUSGO', style: GoogleFonts.poppins(
-                        fontSize: 22, fontWeight: FontWeight.w800,
-                        color: Colors.white, letterSpacing: 5)),
-                    Text('Create your account', style: GoogleFonts.poppins(
-                        fontSize: 11, color: Colors.white.withOpacity(0.35))),
-                  ]),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('BUSGO', style: GoogleFonts.poppins(
+                          fontSize: 22, fontWeight: FontWeight.w800,
+                          color: Colors.white, letterSpacing: 5)),
+                      Text('Create your account',
+                          style: GoogleFonts.poppins(
+                              fontSize: 11,
+                              color: Colors.white.withOpacity(0.35))),
+                    ]),
                   const Spacer(),
                   SizedBox(width: 38, height: 38,
                     child: Stack(alignment: Alignment.center, children: [
                       CircularProgressIndicator(
                         value: _progress,
-                        backgroundColor: Colors.white.withOpacity(0.08),
-                        valueColor: AlwaysStoppedAnimation<Color>(_teal),
+                        backgroundColor:
+                            Colors.white.withOpacity(0.08),
+                        valueColor:
+                            AlwaysStoppedAnimation<Color>(_teal),
                         strokeWidth: 3),
                       Text('${(_progress * 100).round()}%',
                         style: GoogleFonts.poppins(
@@ -219,16 +248,21 @@ class _RegisterScreenState extends State<RegisterScreen>
             child: SafeArea(
               child: SingleChildScrollView(
                 padding: const EdgeInsets.fromLTRB(20, 80, 20, 20),
-                child: Consumer<AuthProvider>(builder: (ctx, auth, _) =>
-                  Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                child: Consumer<AuthProvider>(
+                  builder: (ctx, auth, _) =>
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
 
                     const SizedBox(height: 12),
                     ClipRRect(
                       borderRadius: BorderRadius.circular(4),
                       child: LinearProgressIndicator(
                         value: _progress,
-                        backgroundColor: Colors.white.withOpacity(0.06),
-                        valueColor: AlwaysStoppedAnimation<Color>(_teal),
+                        backgroundColor:
+                            Colors.white.withOpacity(0.06),
+                        valueColor:
+                            AlwaysStoppedAnimation<Color>(_teal),
                         minHeight: 3)),
                     const SizedBox(height: 4),
                     Row(children: [
@@ -266,9 +300,10 @@ class _RegisterScreenState extends State<RegisterScreen>
                     _section('Security'),
                     _field('Password', 'Min. 8 characters',
                         Icons.lock_outline_rounded, _passCtrl,
-                        error: _errors['pass'], obscure: _obscurePass,
-                        onToggle: () =>
-                            setState(() => _obscurePass = !_obscurePass)),
+                        error: _errors['pass'],
+                        obscure: _obscurePass,
+                        onToggle: () => setState(
+                            () => _obscurePass = !_obscurePass)),
                     _buildPasswordStrength(_passCtrl.text),
                     _field('Confirm Password', 'Re-enter password',
                         Icons.lock_outline_rounded, _confirmCtrl,
@@ -280,22 +315,22 @@ class _RegisterScreenState extends State<RegisterScreen>
                     const SizedBox(height: 8),
                     _section('Recovery Questions'),
 
-                    // Info banner
                     Container(
                       margin: const EdgeInsets.only(bottom: 16),
                       padding: const EdgeInsets.all(12),
                       decoration: BoxDecoration(
                         color: _teal.withOpacity(0.07),
                         borderRadius: BorderRadius.circular(10),
-                        border: Border.all(color: _teal.withOpacity(0.2))),
+                        border: Border.all(
+                            color: _teal.withOpacity(0.2))),
                       child: Row(children: [
                         Icon(Icons.shield_outlined,
                             size: 16, color: _teal.withOpacity(0.8)),
                         const SizedBox(width: 10),
                         Expanded(child: Text(
-                          'These answers + a recovery PIN will be shown '
-                          'after registration. Save them — you\'ll need '
-                          'them to reset your password.',
+                          'These answers + a recovery PIN will be '
+                          'shown after registration. Save them — '
+                          'you\'ll need them to reset your password.',
                           style: GoogleFonts.poppins(
                               fontSize: 10,
                               color: _teal.withOpacity(0.8),
@@ -307,38 +342,38 @@ class _RegisterScreenState extends State<RegisterScreen>
                       'Your answer',
                       Icons.help_outline_rounded,
                       _answer1Ctrl,
-                      error: _errors['a1'],
-                    ),
+                      error: _errors['a1']),
                     _field(
                       'Q2: What was the name of your first pet?',
                       'Your answer',
                       Icons.help_outline_rounded,
                       _answer2Ctrl,
-                      error: _errors['a2'],
-                    ),
+                      error: _errors['a2']),
                     _field(
                       'Q3: What city were you born in?',
                       'Your answer',
                       Icons.help_outline_rounded,
                       _answer3Ctrl,
-                      error: _errors['a3'],
-                    ),
+                      error: _errors['a3']),
 
                     if (auth.errorMessage != null) ...[
                       const SizedBox(height: 8),
                       Container(
                         padding: const EdgeInsets.all(12),
                         decoration: BoxDecoration(
-                          color: const Color(0xFFFF6B6B).withOpacity(0.1),
+                          color: const Color(0xFFFF6B6B)
+                              .withOpacity(0.1),
                           borderRadius: BorderRadius.circular(10),
                           border: Border.all(
-                              color: const Color(0xFFFF6B6B).withOpacity(0.3))),
+                              color: const Color(0xFFFF6B6B)
+                                  .withOpacity(0.3))),
                         child: Row(children: [
                           const Icon(Icons.warning_amber_rounded,
                               size: 14, color: Color(0xFFFF9999)),
                           const SizedBox(width: 8),
                           Expanded(child: Text(auth.errorMessage!,
-                            style: GoogleFonts.poppins(fontSize: 11,
+                            style: GoogleFonts.poppins(
+                                fontSize: 11,
                                 color: const Color(0xFFFF9999)))),
                         ])),
                     ],
@@ -351,14 +386,16 @@ class _RegisterScreenState extends State<RegisterScreen>
                         decoration: BoxDecoration(
                           borderRadius: BorderRadius.circular(14),
                           gradient: auth.isLoading ? null
-                              : const LinearGradient(
-                                  colors: [Color(0xFF3BBFB8), Color(0xFF4ECDC4)]),
+                              : const LinearGradient(colors: [
+                                  Color(0xFF3BBFB8),
+                                  Color(0xFF4ECDC4)]),
                           color: auth.isLoading
                               ? _teal.withOpacity(0.3) : null,
-                          boxShadow: auth.isLoading ? null : [BoxShadow(
-                            color: _teal.withOpacity(0.28),
-                            blurRadius: 14,
-                            offset: const Offset(0, 5))]),
+                          boxShadow: auth.isLoading ? null
+                              : [BoxShadow(
+                                  color: _teal.withOpacity(0.28),
+                                  blurRadius: 14,
+                                  offset: const Offset(0, 5))]),
                         child: ElevatedButton(
                           onPressed: auth.isLoading ? null : () async {
                             auth.clearError();
@@ -366,7 +403,8 @@ class _RegisterScreenState extends State<RegisterScreen>
                             if (_dobCtrl.text.trim().isNotEmpty &&
                                 !RegExp(r'^\d{4}-\d{2}-\d{2}$')
                                     .hasMatch(_dobCtrl.text.trim())) {
-                              setState(() => _errors['dob'] = 'Use YYYY-MM-DD');
+                              setState(() =>
+                                  _errors['dob'] = 'Use YYYY-MM-DD');
                               return;
                             }
                             final ok = await auth.register(
@@ -377,14 +415,15 @@ class _RegisterScreenState extends State<RegisterScreen>
                               password:    _passCtrl.text,
                               dateOfBirth: _dobCtrl.text.trim().isNotEmpty
                                   ? _dobCtrl.text.trim() : null,
-                              answer1:     _answer1Ctrl.text.trim(),
-                              answer2:     _answer2Ctrl.text.trim(),
-                              answer3:     _answer3Ctrl.text.trim(),
+                              answer1: _answer1Ctrl.text.trim(),
+                              answer2: _answer2Ctrl.text.trim(),
+                              answer3: _answer3Ctrl.text.trim(),
                             );
                             if (ok && mounted) {
                               final pin = auth.recoveryPin;
                               if (pin != null) {
-                                context.push('/recovery-pin', extra: pin);
+                                context.push('/recovery-pin',
+                                    extra: pin);
                               } else {
                                 context.go('/login');
                               }
@@ -394,11 +433,13 @@ class _RegisterScreenState extends State<RegisterScreen>
                             backgroundColor: Colors.transparent,
                             shadowColor: Colors.transparent,
                             shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(14))),
+                                borderRadius:
+                                    BorderRadius.circular(14))),
                           child: auth.isLoading
                               ? const SizedBox(width: 22, height: 22,
                                   child: CircularProgressIndicator(
-                                      strokeWidth: 2.5, color: Colors.white))
+                                      strokeWidth: 2.5,
+                                      color: Colors.white))
                               : Text('Create Account',
                                   style: GoogleFonts.poppins(
                                     fontSize: 15,
@@ -407,15 +448,18 @@ class _RegisterScreenState extends State<RegisterScreen>
 
                     const SizedBox(height: 14),
 
-                    Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                    Row(mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
                       Text('Already have an account? ',
                         style: GoogleFonts.poppins(fontSize: 12,
                             color: Colors.white.withOpacity(0.35))),
                       GestureDetector(
                         onTap: () => context.go('/login'),
-                        child: Text('Sign In', style: GoogleFonts.poppins(
-                          fontSize: 12, fontWeight: FontWeight.w600,
-                          color: _teal))),
+                        child: Text('Sign In',
+                            style: GoogleFonts.poppins(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                              color: _teal))),
                     ]),
 
                     const SizedBox(height: 20),
@@ -435,15 +479,18 @@ class _RegisterScreenState extends State<RegisterScreen>
         fontSize: 11, fontWeight: FontWeight.w600,
         color: _teal.withOpacity(0.7), letterSpacing: 1.2)),
       const SizedBox(width: 8),
-      Expanded(child: Divider(color: _teal.withOpacity(0.12), thickness: 1)),
+      Expanded(child: Divider(
+          color: _teal.withOpacity(0.12), thickness: 1)),
     ]));
 
   Widget _field(String label, String hint, IconData icon,
       TextEditingController ctrl,
-      {String? error, bool obscure = false, VoidCallback? onToggle,
-       TextInputType? keyboard}) {
+      {String? error, bool obscure = false,
+       VoidCallback? onToggle, TextInputType? keyboard}) {
     final hasError = error != null;
-    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
       Text(label, style: GoogleFonts.poppins(
           fontSize: 10, fontWeight: FontWeight.w600,
           color: Colors.white.withOpacity(0.45))),
@@ -461,7 +508,8 @@ class _RegisterScreenState extends State<RegisterScreen>
                     ? _teal.withOpacity(0.35)
                     : Colors.white.withOpacity(0.08),
             width: 1.2)),
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 2),
+        padding: const EdgeInsets.symmetric(
+            horizontal: 14, vertical: 2),
         child: Row(children: [
           Icon(icon, size: 16,
               color: ctrl.text.isNotEmpty
@@ -471,7 +519,8 @@ class _RegisterScreenState extends State<RegisterScreen>
             controller: ctrl,
             obscureText: obscure,
             keyboardType: keyboard,
-            style: GoogleFonts.poppins(fontSize: 13, color: Colors.white),
+            style: GoogleFonts.poppins(
+                fontSize: 13, color: Colors.white),
             decoration: InputDecoration(
               hintText: hint,
               border: InputBorder.none,
@@ -488,15 +537,15 @@ class _RegisterScreenState extends State<RegisterScreen>
                   obscure
                       ? Icons.visibility_off_outlined
                       : Icons.visibility_outlined,
-                  size: 16,
-                  color: Colors.white30)),
+                  size: 16, color: Colors.white30)),
         ])),
       if (hasError)
         Padding(
           padding: const EdgeInsets.only(top: 4, left: 2),
           child: Text(error,
               style: GoogleFonts.poppins(
-                  fontSize: 10, color: const Color(0xFFFF9999)))),
+                  fontSize: 10,
+                  color: const Color(0xFFFF9999)))),
       const SizedBox(height: 12),
     ]);
   }
