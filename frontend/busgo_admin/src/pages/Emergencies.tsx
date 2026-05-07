@@ -116,8 +116,8 @@ export default function Emergencies() {
   const openDetail = (e: React.MouseEvent, alert: any) => {
     e.stopPropagation();
     e.preventDefault();
-    console.log('[Emergencies] Opening detail for:', alert.id);
     setDetail(alert);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   const totals = {
