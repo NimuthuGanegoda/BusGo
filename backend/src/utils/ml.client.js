@@ -10,7 +10,7 @@ import { env } from '../config/env.js';
 import { logger } from './logger.js';
 
 const ML_BASE = env.ML_SERVICE_URL || 'http://localhost:8000';
-const TIMEOUT_MS = 8000;
+const TIMEOUT_MS = 30000;
 
 /**
  * Internal fetch wrapper with timeout and JSON parsing.
