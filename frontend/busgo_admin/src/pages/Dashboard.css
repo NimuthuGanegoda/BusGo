@@ -475,3 +475,118 @@
   .stats-grid { grid-template-columns: 1fr; }
   .notif-dropdown { width: calc(100vw - 32px); right: -60px; }
 }
+
+/* ===================================================================
+   ACTIVE DRIVER STATUS PANEL
+   =================================================================== */
+
+.driver-status-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-height: 310px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.driver-status-list::-webkit-scrollbar { width: 4px; }
+.driver-status-list::-webkit-scrollbar-track { background: transparent; }
+.driver-status-list::-webkit-scrollbar-thumb { background: #d0d5dd; border-radius: 4px; }
+
+.driver-status-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 40px 20px;
+  color: #9ca3af;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.driver-status-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  border-radius: 10px;
+  background: #f8fafb;
+  border: 1px solid #edf0f4;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.driver-status-item:hover {
+  background: #f0f7ff;
+  border-color: #dbeafe;
+}
+
+.driver-bus-badge {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  background: #1a2332;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 5px 10px;
+  border-radius: 8px;
+  white-space: nowrap;
+  flex-shrink: 0;
+  letter-spacing: 0.3px;
+}
+
+.driver-status-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.driver-status-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 5px;
+}
+
+.driver-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: #1a2332;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.driver-crowd-badge {
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 5px;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  flex-shrink: 0;
+}
+
+.driver-status-meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 11px;
+  color: #6b7280;
+}
+
+.driver-status-meta span {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.driver-gps-dot {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+}
