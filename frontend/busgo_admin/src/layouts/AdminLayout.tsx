@@ -41,7 +41,7 @@ export default function AdminLayout() {
           padding: '0 2rem',
           position: 'sticky',
           top: 0,
-          zIndex: 50,
+          zIndex: 10,
           boxShadow: '0 2px 12px rgba(0,0,0,0.15)',
         }}>
           {/* Left — hamburger + search */}
