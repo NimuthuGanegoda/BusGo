@@ -35,7 +35,6 @@ class ForgotPasswordScreen extends StatefulWidget {
 }
 
 class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
-  // Local step: 1=email, 2=recovery PIN, 3=security questions, 4=new password
   int     _step    = 1;
   bool    _loading = false;
   String? _error;
@@ -76,7 +75,6 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
     super.dispose();
   }
 
-  // ── Step 1: store email locally ───────────────────────────────────────────
   void _submitEmail() {
     final email = _emailCtrl.text.trim();
     if (email.isEmpty) {
@@ -90,7 +88,6 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
     setState(() { _email = email; _error = null; _step = 2; });
   }
 
-  // ── Step 2: store PIN locally ─────────────────────────────────────────────
   void _submitPin() {
     final pin = _pinCtrl.text.trim();
     if (pin.isEmpty) {
@@ -100,7 +97,6 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
     setState(() { _pin = pin; _error = null; _step = 3; });
   }
 
-  // ── Step 3: verify identity with backend ──────────────────────────────────
   Future<void> _submitAnswers() async {
     final a1 = _answer1Ctrl.text.trim();
     final a2 = _answer2Ctrl.text.trim();
@@ -135,11 +131,13 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
         });
       }
     } catch (e) {
-      setState(() { _error = 'Connection failed. Try again.'; _loading = false; });
+      setState(() {
+        _error   = 'Connection failed. Try again.';
+        _loading = false;
+      });
     }
   }
 
-  // ── Step 4: reset password ────────────────────────────────────────────────
   Future<void> _resetPassword() async {
     final pass    = _passCtrl.text;
     final confirm = _confirmCtrl.text;
@@ -187,7 +185,10 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
         });
       }
     } catch (e) {
-      setState(() { _error = 'Connection failed. Try again.'; _loading = false; });
+      setState(() {
+        _error   = 'Connection failed. Try again.';
+        _loading = false;
+      });
     }
   }
 
@@ -214,7 +215,6 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
         padding: const EdgeInsets.all(28),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
 
-          // Step indicator
           Row(children: List.generate(4, (i) => Expanded(child: Container(
             height: 4,
             margin: EdgeInsets.only(right: i < 3 ? 6 : 0),
@@ -251,13 +251,12 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
                   fontSize: 12, color: Colors.redAccent))),
             ])),
 
-          // Step content
           if (_step == 1) ...[
             _field(ctrl: _emailCtrl, hint: 'your@email.com',
                 icon: Icons.email_outlined,
                 keyboard: TextInputType.emailAddress),
             const SizedBox(height: 24),
-            _btn('Continue', _submitPin: false, onTap: _submitEmail),
+            _btn('Continue', onTap: _submitEmail),
           ],
 
           if (_step == 2) ...[
@@ -283,7 +282,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
                 icon: Icons.lock_outline,
                 keyboard: TextInputType.number),
             const SizedBox(height: 24),
-            _btn('Continue', _submitPin: true, onTap: _submitPin),
+            _btn('Continue', onTap: _submitPin),
           ],
 
           if (_step == 3) ...[
@@ -302,8 +301,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
             _field(ctrl: _answer3Ctrl, hint: 'Your answer',
                 icon: Icons.help_outline_rounded),
             const SizedBox(height: 24),
-            _btn('Verify Identity', _submitPin: false,
-                onTap: _submitAnswers),
+            _btn('Verify Identity', onTap: _submitAnswers),
           ],
 
           if (_step == 4) ...[
@@ -327,8 +325,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
                 onSuffix: () =>
                     setState(() => _obscureConfirm = !_obscureConfirm)),
             const SizedBox(height: 24),
-            _btn('Reset Password', _submitPin: false,
-                onTap: _resetPassword),
+            _btn('Reset Password', onTap: _resetPassword),
           ],
 
         ]),
@@ -425,20 +422,19 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
               color: Color(0xFF64B5F6), width: 1.5)),
     ));
 
-  Widget _btn(String label,
-      {required bool _submitPin, required VoidCallback onTap}) =>
-      SizedBox(width: double.infinity, height: 52,
-        child: ElevatedButton(
-          onPressed: _loading ? null : onTap,
-          style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF1565C0),
-              foregroundColor: Colors.white,
-              shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(14))),
-          child: _loading
-              ? const SizedBox(width: 22, height: 22,
-                  child: CircularProgressIndicator(
-                      strokeWidth: 2.5, color: Colors.white))
-              : Text(label, style: GoogleFonts.inter(
-                  fontSize: 15, fontWeight: FontWeight.w700))));
+  Widget _btn(String label, {required VoidCallback onTap}) =>
+    SizedBox(width: double.infinity, height: 52,
+      child: ElevatedButton(
+        onPressed: _loading ? null : onTap,
+        style: ElevatedButton.styleFrom(
+            backgroundColor: const Color(0xFF1565C0),
+            foregroundColor: Colors.white,
+            shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(14))),
+        child: _loading
+            ? const SizedBox(width: 22, height: 22,
+                child: CircularProgressIndicator(
+                    strokeWidth: 2.5, color: Colors.white))
+            : Text(label, style: GoogleFonts.inter(
+                fontSize: 15, fontWeight: FontWeight.w700))));
 }

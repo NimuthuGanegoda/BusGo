@@ -136,8 +136,8 @@ class _RecoveryPinScreenState extends State<RecoveryPinScreen>
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: widget.pin.split('').map((digit) =>
                       Container(
-                        width: 44, height: 52,
-                        margin: const EdgeInsets.symmetric(horizontal: 4),
+                        width: 38, height: 48,
+                        margin: const EdgeInsets.symmetric(horizontal: 3),
                         decoration: BoxDecoration(
                           color: _teal.withOpacity(0.08),
                           borderRadius: BorderRadius.circular(10),
