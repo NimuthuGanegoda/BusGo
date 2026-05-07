@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { CheckCircle, Eye, RefreshCw, X } from 'lucide-react';
 import './Emergencies.css';
 
@@ -25,7 +26,7 @@ const STATUS_CONFIG: Record<string, { label: string; color: string; bg: string }
 };
 
 const TYPE_ICONS: Record<string, string> = {
-  medical:    '🏥',
+  medical:    '🥺',
   criminal:   '🚨',
   breakdown:  '🔧',
   harassment: '⚠️',
@@ -33,6 +34,7 @@ const TYPE_ICONS: Record<string, string> = {
 };
 
 const ADMIN_API = 'https://busgo-production.up.railway.app/api/admin';
+const PAGE_SIZE = 10;
 
 export default function Emergencies() {
   const [alerts,       setAlerts]       = useState<any[]>([]);
@@ -42,9 +44,13 @@ export default function Emergencies() {
   const [toast,        setToast]        = useState('');
   const [detail,       setDetail]       = useState<any>(null);
   const [lastUpdated,  setLastUpdated]  = useState<Date | null>(null);
+  const [currentPage,  setCurrentPage]  = useState(1);
+  const [total,        setTotal]        = useState(0);
 
   const prevCountRef = useRef(0);
   const pollRef      = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
   const showToast = (msg: string) => {
     setToast(msg);
@@ -54,7 +60,10 @@ export default function Emergencies() {
   const fetchAlerts = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
     try {
-      const params = new URLSearchParams({ page_size: '50' });
+      const params = new URLSearchParams({
+        page:      String(currentPage),
+        page_size: String(PAGE_SIZE),
+      });
       if (statusFilter !== 'all') params.set('status', statusFilter);
       if (typeFilter   !== 'all') params.set('alert_type', typeFilter);
 
@@ -63,14 +72,16 @@ export default function Emergencies() {
       });
 
       if (!res.ok) {
-        console.error('[Emergencies] HTTP error:', res.status, res.statusText);
+        console.error('[Emergencies] HTTP error:', res.status);
         return;
       }
 
       const json = await res.json();
-      console.log('[Emergencies] Response:', json);
 
-      const found: any[] = Array.isArray(json.data) ? json.data : [];
+      // Backend returns { data: { alerts: [...], pagination: {...} } }
+      const found: any[]   = json.data?.alerts ?? (Array.isArray(json.data) ? json.data : []);
+      const pagination     = json.data?.pagination ?? json.pagination ?? null;
+      const totalCount     = pagination?.total ?? found.length;
 
       if (silent && found.length > prevCountRef.current) {
         const newCount = found.length - prevCountRef.current;
@@ -79,13 +90,14 @@ export default function Emergencies() {
       prevCountRef.current = found.length;
 
       setAlerts(found);
+      setTotal(totalCount);
       setLastUpdated(new Date());
     } catch (e) {
       console.error('[Emergencies] Fetch error:', e);
     } finally {
       if (!silent) setLoading(false);
     }
-  }, [statusFilter, typeFilter]);
+  }, [statusFilter, typeFilter, currentPage]);
 
   useEffect(() => { fetchAlerts(); }, [fetchAlerts]);
 
@@ -93,6 +105,9 @@ export default function Emergencies() {
     pollRef.current = setInterval(() => fetchAlerts(true), 20_000);
     return () => { if (pollRef.current) clearInterval(pollRef.current); };
   }, [fetchAlerts]);
+
+  // Reset to page 1 when filters change
+  useEffect(() => { setCurrentPage(1); }, [statusFilter, typeFilter]);
 
   const updateStatus = async (id: string, status: string) => {
     try {
@@ -117,18 +132,100 @@ export default function Emergencies() {
     e.stopPropagation();
     e.preventDefault();
     setDetail(alert);
-    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   const totals = {
-    all:          alerts.length,
+    all:          total,
     pending:      alerts.filter(a => a.status === 'pending').length,
     acknowledged: alerts.filter(a => a.status === 'acknowledged').length,
     resolved:     alerts.filter(a => a.status === 'resolved').length,
   };
 
+  // ── Detail Modal rendered via Portal directly into document.body ──────────
+  const detailModal = detail ? createPortal(
+    <div
+      style={{
+        position: 'fixed', inset: 0,
+        background: 'rgba(0,0,0,0.5)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        zIndex: 999999,
+      }}
+      onClick={() => setDetail(null)}
+    >
+      <div
+        style={{
+          background: '#fff', borderRadius: '16px',
+          width: '100%', maxWidth: '520px',
+          boxShadow: '0 20px 60px rgba(0,0,0,0.2)',
+          maxHeight: '90vh', overflowY: 'auto',
+        }}
+        onClick={e => e.stopPropagation()}
+      >
+        {/* Modal Header */}
+        <div style={{
+          display: 'flex', alignItems: 'center',
+          justifyContent: 'space-between',
+          padding: '20px 24px',
+          borderBottom: '1px solid #f0f2f5',
+          position: 'sticky', top: 0, background: '#fff',
+          borderRadius: '16px 16px 0 0',
+        }}>
+          <h3 style={{ fontSize: '18px', fontWeight: 700, color: '#111827', margin: 0 }}>
+            Alert Details
+          </h3>
+          <button
+            onClick={() => setDetail(null)}
+            style={{
+              background: 'none', border: 'none',
+              color: '#9ca3af', cursor: 'pointer',
+              padding: '4px', borderRadius: '6px',
+            }}
+          >
+            <X size={20} />
+          </button>
+        </div>
+
+        {/* Modal Body */}
+        <div style={{ padding: '20px 24px 28px' }}>
+          {[
+            ['Alert ID',     detail.id],
+            ['Type',         detail.alert_type?.toUpperCase()],
+            ['ML Priority',  detail.ml_priority ? PRIORITY_LABELS[detail.ml_priority] : '—'],
+            ['ML Action',    detail.ml_action || '—'],
+            ['False Alert?', detail.ml_is_false ? '⚠️ YES' : 'No'],
+            ['Confidence',   detail.ml_confidence ? `${(detail.ml_confidence * 100).toFixed(0)}%` : '—'],
+            ['Description',  detail.description || '—'],
+            ['Reporter',     detail.users?.full_name || '—'],
+            ['Role',         detail.users?.role || '—'],
+            ['Phone',        detail.users?.phone || '—'],
+            ['Bus',          detail.buses?.bus_number || '—'],
+            ['Status',       detail.status],
+            ['Time',         new Date(detail.created_at).toLocaleString()],
+          ].map(([label, value]) => (
+            <div key={label} style={{
+              display: 'flex', justifyContent: 'space-between',
+              padding: '10px 0', borderBottom: '1px solid #f5f7fa',
+              fontSize: '14px', color: '#374151',
+            }}>
+              <span style={{ fontWeight: 600, color: '#6b7280', fontSize: '13px' }}>
+                {label}
+              </span>
+              <span style={{ maxWidth: '60%', textAlign: 'right', wordBreak: 'break-word' }}>
+                {value}
+              </span>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>,
+    document.body
+  ) : null;
+
   return (
     <div className="emergencies-page">
+
+      {/* Portal modal */}
+      {detailModal}
 
       {/* Toast */}
       {toast && (
@@ -136,46 +233,6 @@ export default function Emergencies() {
           <CheckCircle size={16} />
           <span>{toast}</span>
           <button onClick={() => setToast('')}><X size={14} /></button>
-        </div>
-      )}
-
-      {/* Detail Modal */}
-      {detail && (
-        <div
-          className="em-modal-overlay"
-          style={{ zIndex: 99999 }}
-          onClick={() => setDetail(null)}
-        >
-          <div className="em-modal" onClick={e => e.stopPropagation()}>
-            <div className="em-modal-header">
-              <h3>Alert Details</h3>
-              <button className="em-modal-close" onClick={() => setDetail(null)}>
-                <X size={20} />
-              </button>
-            </div>
-            <div className="em-modal-body">
-              {[
-                ['Alert ID',     detail.id],
-                ['Type',         detail.alert_type?.toUpperCase()],
-                ['ML Priority',  detail.ml_priority ? PRIORITY_LABELS[detail.ml_priority] : '—'],
-                ['ML Action',    detail.ml_action || '—'],
-                ['False Alert?', detail.ml_is_false ? '⚠️ YES' : 'No'],
-                ['Confidence',   detail.ml_confidence ? `${(detail.ml_confidence * 100).toFixed(0)}%` : '—'],
-                ['Description',  detail.description || '—'],
-                ['Reporter',     detail.users?.full_name || '—'],
-                ['Role',         detail.users?.role || '—'],
-                ['Phone',        detail.users?.phone || '—'],
-                ['Bus',          detail.buses?.bus_number || '—'],
-                ['Status',       detail.status],
-                ['Time',         new Date(detail.created_at).toLocaleString()],
-              ].map(([label, value]) => (
-                <div key={label} className="em-modal-row">
-                  <span className="em-modal-label">{label}</span>
-                  <span>{value}</span>
-                </div>
-              ))}
-            </div>
-          </div>
         </div>
       )}
 
@@ -229,13 +286,17 @@ export default function Emergencies() {
       {/* Filters */}
       <div className="em-filters-bar">
         <div className="em-filters-left">
-          <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)} className="em-filter-select">
+          <select value={statusFilter}
+            onChange={e => setStatusFilter(e.target.value)}
+            className="em-filter-select">
             <option value="all">All Status</option>
             <option value="pending">Pending</option>
             <option value="acknowledged">Acknowledged</option>
             <option value="resolved">Resolved</option>
           </select>
-          <select value={typeFilter} onChange={e => setTypeFilter(e.target.value)} className="em-filter-select">
+          <select value={typeFilter}
+            onChange={e => setTypeFilter(e.target.value)}
+            className="em-filter-select">
             <option value="all">All Types</option>
             <option value="medical">Medical</option>
             <option value="criminal">Criminal</option>
@@ -267,7 +328,8 @@ export default function Emergencies() {
               : '—';
 
             return (
-              <div key={alert.id} className="em-alert-card" style={{ borderLeftColor: priColor }}>
+              <div key={alert.id} className="em-alert-card"
+                style={{ borderLeftColor: priColor }}>
                 <div className="em-alert-main">
 
                   <div style={{ fontSize: '24px', marginRight: '16px' }}>
@@ -276,7 +338,7 @@ export default function Emergencies() {
 
                   <div className="em-alert-content">
                     <div className="em-alert-row-top">
-                      {priLabel && (
+                      {priLabel ? (
                         <span style={{
                           color: priColor, background: `${priColor}18`,
                           padding: '2px 8px', borderRadius: '6px',
@@ -284,8 +346,7 @@ export default function Emergencies() {
                         }}>
                           {priLabel}
                         </span>
-                      )}
-                      {!priLabel && (
+                      ) : (
                         <span style={{
                           color: '#9ca3af', background: '#f3f4f6',
                           padding: '2px 8px', borderRadius: '6px',
@@ -294,7 +355,8 @@ export default function Emergencies() {
                           Awaiting ML
                         </span>
                       )}
-                      <span className="em-alert-type-label" style={{ color: priColor, fontWeight: 600 }}>
+                      <span className="em-alert-type-label"
+                        style={{ color: priColor, fontWeight: 600 }}>
                         {alert.alert_type?.toUpperCase()}
                       </span>
                       {alert.ml_is_false && (
@@ -320,7 +382,10 @@ export default function Emergencies() {
                     </h3>
 
                     {alert.ml_action && (
-                      <div style={{ fontSize: '12px', color: priColor, fontWeight: 600, marginBottom: '8px' }}>
+                      <div style={{
+                        fontSize: '12px', color: priColor,
+                        fontWeight: 600, marginBottom: '8px',
+                      }}>
                         ⚡ {alert.ml_action}
                       </div>
                     )}
@@ -338,13 +403,19 @@ export default function Emergencies() {
                     <div className="em-alert-actions">
                       {alert.status === 'pending' && (
                         <button className="em-action-btn warning"
-                          onClick={(e) => { e.stopPropagation(); updateStatus(alert.id, 'acknowledged'); }}>
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            updateStatus(alert.id, 'acknowledged');
+                          }}>
                           <Eye size={14} /> Acknowledge
                         </button>
                       )}
                       {alert.status !== 'resolved' && (
                         <button className="em-action-btn success"
-                          onClick={(e) => { e.stopPropagation(); updateStatus(alert.id, 'resolved'); }}>
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            updateStatus(alert.id, 'resolved');
+                          }}>
                           <CheckCircle size={14} /> Resolve
                         </button>
                       )}
@@ -374,6 +445,36 @@ export default function Emergencies() {
           })}
         </div>
       )}
+
+      {/* Pagination */}
+      {!loading && total > PAGE_SIZE && (
+        <div className="audit-pagination" style={{ marginTop: '24px' }}>
+          <span className="pagination-info">
+            Showing {alerts.length} of {total} alerts
+          </span>
+          <div className="pagination-controls">
+            <button
+              className="page-btn"
+              disabled={currentPage === 1}
+              onClick={() => setCurrentPage(p => p - 1)}
+            >←</button>
+            {Array.from({ length: Math.min(totalPages, 5) }, (_, i) => i + 1).map(p => (
+              <button
+                key={p}
+                className={`page-btn ${p === currentPage ? 'active' : ''}`}
+                onClick={() => setCurrentPage(p)}
+              >{p}</button>
+            ))}
+            {totalPages > 5 && <span className="page-dots">...</span>}
+            <button
+              className="page-btn"
+              disabled={currentPage === totalPages}
+              onClick={() => setCurrentPage(p => p + 1)}
+            >→</button>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }
