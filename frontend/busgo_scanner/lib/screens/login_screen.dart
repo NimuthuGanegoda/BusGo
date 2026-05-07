@@ -306,13 +306,6 @@ class _LoginScreenState extends State<LoginScreen>
                               ]),
                       ),
                     ),
-
-                    const SizedBox(height: 16),
-
-                    Center(child: Text('Forgot password? Contact admin',
-                      style: GoogleFonts.poppins(fontSize: 13,
-                          color: const Color(0xFF3FEFEF),
-                          fontWeight: FontWeight.w500))),
                   ])),
                 ),
               ),
