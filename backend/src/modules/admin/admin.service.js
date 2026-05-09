@@ -419,29 +419,7 @@ export async function sendServiceUpdate(driverId, adminId, title, body) {
   return data;
 }
 
-// ── Send Service Update (admin → specific driver) ─────────────────────────────
-export async function sendServiceUpdate(driverId, adminId, title, body) {
-  const { data, error } = await supabase
-    .from('notifications')
-    .insert({
-      user_id:  driverId,
-      category: 'service_update',
-      title,
-      body,
-      is_read:  false,
-    })
-    .select()
-    .single();
 
-  if (error) throw error;
-
-  await logAdminAction(adminId, 'SEND_SERVICE_UPDATE', 'notifications', data.id, {
-    target_user_id: driverId,
-    title,
-  });
-
-  return data;
-}
 
 
 
