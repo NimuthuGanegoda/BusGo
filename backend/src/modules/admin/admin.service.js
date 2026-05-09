@@ -55,27 +55,37 @@ export async function updateUser(userId, dto) {
   return data;
 }
 
-export async function deactivateUser(userId) {
-  const { data, error } = await supabase
-    .from('users')
-    .update({ is_active: false })
-    .eq('id', userId)
-    .select('id, email, is_active')
-    .single();
+export async function deactivateUser(userId, adminId = null) {
+  const { data: targetUser } = await supabase
+    .from('users').select('email, full_name, role').eq('id', userId).maybeSingle();
 
+  const { data, error } = await supabase
+    .from('users').update({ is_active: false }).eq('id', userId)
+    .select('id, email, is_active').single();
   if (error) throw error;
+
+  await logAdminAction(adminId, 'DEACTIVATE', 'users', userId, {
+    email: targetUser?.email,
+    full_name: targetUser?.full_name,
+    role: targetUser?.role,
+  });
   return data;
 }
 
-export async function reactivateUser(userId) {
-  const { data, error } = await supabase
-    .from('users')
-    .update({ is_active: true })
-    .eq('id', userId)
-    .select('id, email, is_active')
-    .single();
+export async function reactivateUser(userId, adminId = null) {
+  const { data: targetUser } = await supabase
+    .from('users').select('email, full_name, role').eq('id', userId).maybeSingle();
 
+  const { data, error } = await supabase
+    .from('users').update({ is_active: true }).eq('id', userId)
+    .select('id, email, is_active').single();
   if (error) throw error;
+
+  await logAdminAction(adminId, 'ACTIVATE', 'users', userId, {
+    email: targetUser?.email,
+    full_name: targetUser?.full_name,
+    role: targetUser?.role,
+  });
   return data;
 }
 
@@ -367,13 +377,21 @@ export async function getDriverLicenseUrl(userId) {
   return { signed_url: data.signedUrl };
 }
 
-export async function deleteUser(userId) {
-  // Delete related records first
+export async function deleteUser(userId, adminId = null) {
+  const { data: targetUser } = await supabase
+    .from('users').select('email, full_name, role').eq('id', userId).maybeSingle();
+
   await supabase.from('refresh_tokens').delete().eq('user_id', userId);
   await supabase.from('notification_preferences').delete().eq('user_id', userId);
-  
+
   const { error } = await supabase.from('users').delete().eq('id', userId);
   if (error) throw error;
+
+  await logAdminAction(adminId, 'DELETE_USER', 'users', userId, {
+    email: targetUser?.email,
+    full_name: targetUser?.full_name,
+    role: targetUser?.role,
+  });
 }
 
 
