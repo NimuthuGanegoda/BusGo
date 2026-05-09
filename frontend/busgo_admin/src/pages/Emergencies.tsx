@@ -267,20 +267,68 @@ export default function Emergencies() {
 
       {/* Stats */}
       <div className="em-stats">
-        {[
-          { value: totals.all,          label: 'Total Alerts', cls: 'total' },
-          { value: totals.pending,      label: 'Active / New', cls: 'critical' },
-          { value: totals.acknowledged, label: 'Acknowledged', cls: 'responded' },
-          { value: totals.resolved,     label: 'Resolved',     cls: 'resolved' },
-        ].map(s => (
-          <div key={s.label} className="em-stat-card">
-            <div className={`em-stat-icon ${s.cls}`}></div>
-            <div className="em-stat-info">
-              <span className="em-stat-value">{s.value}</span>
-              <span className="em-stat-label">{s.label}</span>
-            </div>
+
+        {/* Total Alerts — Bell */}
+        <div className="em-stat-card">
+          <div className="em-stat-icon total">
+            <svg viewBox="0 0 64 64" width="32" height="32" xmlns="http://www.w3.org/2000/svg">
+              <path d="M32 6C22.06 6 14 14.06 14 24v16l-4 6h44l-4-6V24C50 14.06 41.94 6 32 6z" fill="#4ECDC4" stroke="#2d3748" strokeWidth="2.5" strokeLinejoin="round"/>
+              <ellipse cx="32" cy="52" rx="12" ry="5" fill="#F6C254" stroke="#2d3748" strokeWidth="2"/>
+              <circle cx="32" cy="57" r="3.5" fill="white" stroke="#2d3748" strokeWidth="1.5"/>
+            </svg>
           </div>
-        ))}
+          <div className="em-stat-info">
+            <span className="em-stat-value">{totals.all}</span>
+            <span className="em-stat-label">Total Alerts</span>
+          </div>
+        </div>
+
+        {/* Active / New — Emergency Light */}
+        <div className="em-stat-card">
+          <div className="em-stat-icon critical">
+            <svg viewBox="0 0 64 64" width="32" height="32" xmlns="http://www.w3.org/2000/svg">
+              <line x1="32" y1="4"  x2="32" y2="12" stroke="#4DA3FF" strokeWidth="4" strokeLinecap="round"/>
+              <line x1="10" y1="12" x2="16" y2="18" stroke="#4DA3FF" strokeWidth="4" strokeLinecap="round"/>
+              <line x1="54" y1="12" x2="48" y2="18" stroke="#4DA3FF" strokeWidth="4" strokeLinecap="round"/>
+              <path d="M12 44 Q12 20 32 20 Q52 20 52 44z" fill="#FFC107"/>
+              <rect x="10" y="44" width="44" height="10" rx="5" fill="#3F51B5"/>
+            </svg>
+          </div>
+          <div className="em-stat-info">
+            <span className="em-stat-value">{totals.pending}</span>
+            <span className="em-stat-label">Active / New</span>
+          </div>
+        </div>
+
+        {/* Acknowledged — Thumbs Up */}
+        <div className="em-stat-card">
+          <div className="em-stat-icon responded">
+            <svg viewBox="0 0 64 64" width="32" height="32" xmlns="http://www.w3.org/2000/svg">
+              <rect x="8" y="30" width="12" height="26" rx="3" fill="#4ECDC4" stroke="#2d3748" strokeWidth="2"/>
+              <path d="M20 34 L28 10 Q30 6 34 8 Q38 10 36 18 L34 26 H52 Q56 26 56 30 Q56 34 53 35 Q55 36 54 40 Q53 44 50 44 Q51 47 49 49 Q47 51 44 51 H28 Q24 51 22 49 L20 46z" fill="#F6C254" stroke="#2d3748" strokeWidth="2" strokeLinejoin="round"/>
+            </svg>
+          </div>
+          <div className="em-stat-info">
+            <span className="em-stat-value">{totals.acknowledged}</span>
+            <span className="em-stat-label">Acknowledged</span>
+          </div>
+        </div>
+
+        {/* Resolved — Green Tick */}
+        <div className="em-stat-card">
+          <div className="em-stat-icon resolved">
+            <svg viewBox="0 0 64 64" width="32" height="32" xmlns="http://www.w3.org/2000/svg">
+              <path d="M32 6 A28 28 0 1 1 58 40" fill="none" stroke="#6b7280" strokeWidth="5" strokeLinecap="round"/>
+              <path d="M60 8 L46 24 L38 16" fill="none" stroke="#6b7280" strokeWidth="5" strokeLinecap="round" strokeLinejoin="round"/>
+              <path d="M16 34 L26 44 L48 22" fill="none" stroke="#22c55e" strokeWidth="5.5" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+          </div>
+          <div className="em-stat-info">
+            <span className="em-stat-value">{totals.resolved}</span>
+            <span className="em-stat-label">Resolved</span>
+          </div>
+        </div>
+
       </div>
 
       {/* Filters */}
