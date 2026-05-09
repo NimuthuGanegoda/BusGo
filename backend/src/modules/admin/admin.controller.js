@@ -3,7 +3,7 @@ import { sendSuccess, sendError } from '../../utils/response.utils.js';
 import { getRecentEvents } from '../../services/security-audit.service.js';
 import { supabase } from '../../config/supabase.js';
 
-// ── Dashboard ──────────────────────────────────────────────────────────────────
+// ── Dashboard ─────────────────────────────────────────────────────────────────
 export async function getDashboard(req, res, next) {
   try {
     const stats = await adminService.getDashboardStats();
@@ -11,7 +11,7 @@ export async function getDashboard(req, res, next) {
   } catch (err) { next(err); }
 }
 
-// ── Users ──────────────────────────────────────────────────────────────────────
+// ── Users ─────────────────────────────────────────────────────────────────────
 export async function listUsers(req, res, next) {
   try {
     const { users, pagination } = await adminService.listUsers(req.query);
@@ -39,21 +39,19 @@ export async function updateUser(req, res, next) {
 
 export async function deactivateUser(req, res, next) {
   try {
-    const user = await adminService.deactivateUser(req.params.id);
-    await adminService.logAdminAction(req.user.id, 'DEACTIVATE_USER', 'users', req.params.id, {});
+    const user = await adminService.deactivateUser(req.params.id, req.user.id);
     return sendSuccess(res, user, 'User deactivated');
   } catch (err) { next(err); }
 }
 
 export async function reactivateUser(req, res, next) {
   try {
-    const user = await adminService.reactivateUser(req.params.id);
-    await adminService.logAdminAction(req.user.id, 'REACTIVATE_USER', 'users', req.params.id, {});
+    const user = await adminService.reactivateUser(req.params.id, req.user.id);
     return sendSuccess(res, user, 'User reactivated');
   } catch (err) { next(err); }
 }
 
-// ── Buses ──────────────────────────────────────────────────────────────────────
+// ── Buses ─────────────────────────────────────────────────────────────────────
 export async function listBuses(req, res, next) {
   try {
     const { buses, pagination } = await adminService.listAllBuses(req.query);
@@ -85,7 +83,7 @@ export async function deleteBus(req, res, next) {
   } catch (err) { next(err); }
 }
 
-// ── Emergency Alerts ───────────────────────────────────────────────────────────
+// ── Emergency Alerts ──────────────────────────────────────────────────────────
 export async function listAlerts(req, res, next) {
   try {
     const { alerts, pagination } = await adminService.listAllAlerts(req.query);
@@ -100,7 +98,7 @@ export async function updateAlertStatus(req, res, next) {
   } catch (err) { next(err); }
 }
 
-// ── Fleet ──────────────────────────────────────────────────────────────────────
+// ── Fleet ─────────────────────────────────────────────────────────────────────
 export async function getStandbyBuses(req, res, next) {
   try {
     const buses = await adminService.getStandbyBuses();
@@ -122,7 +120,7 @@ export async function recallBus(req, res, next) {
   } catch (err) { next(err); }
 }
 
-// ── Audit Log ──────────────────────────────────────────────────────────────────
+// ── Audit Log ─────────────────────────────────────────────────────────────────
 export async function getAuditLogs(req, res, next) {
   try {
     const { logs, pagination } = await adminService.getAuditLogs(req.query);
@@ -130,7 +128,7 @@ export async function getAuditLogs(req, res, next) {
   } catch (err) { next(err); }
 }
 
-// ── Routes CRUD ────────────────────────────────────────────────────────────────
+// ── Routes CRUD ───────────────────────────────────────────────────────────────
 export async function createRoute(req, res, next) {
   try {
     const route = await adminService.createRoute(req.body);
@@ -155,8 +153,7 @@ export async function deleteRoute(req, res, next) {
   } catch (err) { next(err); }
 }
 
-
-// ── Driver License URL ─────────────────────────────────────────────────────────
+// ── Driver License URL ────────────────────────────────────────────────────────
 export async function getDriverLicenseUrl(req, res, next) {
   try {
     const data = await adminService.getDriverLicenseUrl(req.params.id);
@@ -165,13 +162,13 @@ export async function getDriverLicenseUrl(req, res, next) {
     if (err.statusCode) return sendError(res, err.message, err.statusCode, err.code);
     next(err);
   }
-
 }
 
+// ── Security Logs ─────────────────────────────────────────────────────────────
 export async function getSecurityLogs(req, res, next) {
   try {
     const { page = 1, page_size = 20, event_type, severity } = req.query;
-    const limit = Math.min(Number(page_size), 100);
+    const limit  = Math.min(Number(page_size), 100);
     const offset = (Number(page) - 1) * limit;
 
     let query = supabase
@@ -181,7 +178,7 @@ export async function getSecurityLogs(req, res, next) {
       .range(offset, offset + limit - 1);
 
     if (event_type && event_type !== 'all') query = query.eq('event_type', event_type);
-    if (severity && severity !== 'all') query = query.eq('severity', severity);
+    if (severity   && severity   !== 'all') query = query.eq('severity',   severity);
 
     const { data, error, count } = await query;
     if (error) throw error;
@@ -190,25 +187,24 @@ export async function getSecurityLogs(req, res, next) {
       data: data || [],
       pagination: { page: Number(page), page_size: limit, total: count || 0 },
     });
-  } catch (err) {
-    next(err);
-  }
+  } catch (err) { next(err); }
 }
 
+// ── Delete User ───────────────────────────────────────────────────────────────
 export async function deleteUser(req, res, next) {
   try {
-    await adminService.deleteUser(req.params.id);
-    await adminService.logAdminAction(req.user.id, 'DELETE_USER', 'users', req.params.id, {});
+    await adminService.deleteUser(req.params.id, req.user.id);
     return sendSuccess(res, {}, 'User deleted');
   } catch (err) { next(err); }
 }
 
-
-
-
-
-
-
-
-
-
+// ── Send Service Update ───────────────────────────────────────────────────────
+export async function sendServiceUpdate(req, res, next) {
+  try {
+    const { driver_id, title, body } = req.body;
+    const notification = await adminService.sendServiceUpdate(
+      driver_id, req.user.id, title, body
+    );
+    return sendSuccess(res, notification, 'Service update sent', 201);
+  } catch (err) { next(err); }
+}

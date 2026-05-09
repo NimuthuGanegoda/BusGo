@@ -84,6 +84,23 @@ router.get('/audit-logs',
 );
 
 router.get('/security-logs', controller.getSecurityLogs);
+router.post('/send-service-update',
+  validate(z.object({
+    driver_id: z.string().uuid(),
+    title:     z.string().min(1).max(100),
+    body:      z.string().min(1).max(1000),
+  })),
+  controller.sendServiceUpdate
+);
+
+router.post('/send-service-update',
+  validate(z.object({
+    driver_id: z.string().uuid(),
+    title:     z.string().min(1).max(100),
+    body:      z.string().min(1).max(1000),
+  })),
+  controller.sendServiceUpdate
+);
 export default router;
 
 
