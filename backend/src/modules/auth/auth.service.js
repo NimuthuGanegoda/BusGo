@@ -410,26 +410,18 @@ export async function resetPassword(dto, req = null) {
 }
 
 function validatePasswordStrength(password) {
-  if (!password || password.length < 8) {
-    const err = new Error('Password must be at least 8 characters');
+  if (!password || password.length < 12) {
+    const err = new Error('Password must be at least 12 characters');
     err.statusCode = 400; err.code = 'WEAK_PASSWORD'; throw err;
   }
-  if (!/[A-Z]/.test(password)) {
-    const err = new Error('Password must contain at least one uppercase letter');
-    err.statusCode = 400; err.code = 'WEAK_PASSWORD'; throw err;
-  }
-  if (!/[a-z]/.test(password)) {
-    const err = new Error('Password must contain at least one lowercase letter');
-    err.statusCode = 400; err.code = 'WEAK_PASSWORD'; throw err;
-  }
-  if (!/[0-9]/.test(password)) {
-    const err = new Error('Password must contain at least one number');
-    err.statusCode = 400; err.code = 'WEAK_PASSWORD'; throw err;
-  }
-  if (!/[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/.test(password)) {
-    const err = new Error('Password must contain at least one special character');
-    err.statusCode = 400; err.code = 'WEAK_PASSWORD'; throw err;
-  }
+  const lower   = (password.match(/[a-z]/g) || []).length;
+  const upper   = (password.match(/[A-Z]/g) || []).length;
+  const numbers = (password.match(/[0-9]/g) || []).length;
+  const special = (password.match(/[$%^&*!@#()\-_=+\[\]{};:'",.<>?\/\\|`~]/g) || []).length;
+  if (lower   < 3) { const err = new Error('Password must contain at least 3 lowercase letters');   err.statusCode = 400; err.code = 'WEAK_PASSWORD'; throw err; }
+  if (upper   < 3) { const err = new Error('Password must contain at least 3 uppercase letters');   err.statusCode = 400; err.code = 'WEAK_PASSWORD'; throw err; }
+  if (numbers < 3) { const err = new Error('Password must contain at least 3 numbers');             err.statusCode = 400; err.code = 'WEAK_PASSWORD'; throw err; }
+  if (special < 3) { const err = new Error('Password must contain at least 3 special characters ($%^&* etc)'); err.statusCode = 400; err.code = 'WEAK_PASSWORD'; throw err; }
 }
 
 async function issueTokenPair(userId, email) {
