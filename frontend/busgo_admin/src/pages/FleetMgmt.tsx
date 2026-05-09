@@ -298,7 +298,7 @@ export default function FleetMgmt() {
       {/* Active Buses */}
       <div className="fleet-section">
         <div className="fleet-section-header">
-          <h2>Active Buses <span className="section-count">{filtered.length} buses</span></h2>
+          <h2>Fleet Overview <span className="section-count">{filtered.length} buses</span></h2>
           <div className="fleet-section-filters">
             <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)} className="fleet-filter">
               <option value="all">All Status</option>

@@ -12,10 +12,10 @@ interface ToastData { id: number; type: ToastType; title: string; message: strin
 const toastConfig: Record<ToastType, {
   bg: string; border: string; glow: string; text: string; icon: string;
 }> = {
-  success: { bg: 'rgba(7,149,66,0.12)', border: 'rgba(36,241,6,0.46)', glow: '#259c08', text: '#0ad406', icon: '✓' },
-  error:   { bg: 'rgba(220,17,1,0.16)',  border: 'rgba(241,6,6,0.81)',  glow: '#ff0303', text: '#ff0303', icon: '✕' },
-  warning: { bg: 'rgba(220,128,1,0.16)', border: 'rgba(241,142,6,0.81)',glow: '#ffb103', text: '#ffb103', icon: '⚠' },
-  info:    { bg: 'rgba(7,73,149,0.12)',  border: 'rgba(6,44,241,0.46)', glow: '#0396ff', text: '#0396ff', icon: 'ℹ' },
+  success: { bg: 'rgba(7,149,66,0.12)',  border: 'rgba(36,241,6,0.46)',  glow: '#259c08', text: '#0ad406', icon: '✔' },
+  error:   { bg: 'rgba(220,17,1,0.16)',  border: 'rgba(241,6,6,0.81)',   glow: '#ff0303', text: '#ff0303', icon: '✕' },
+  warning: { bg: 'rgba(220,128,1,0.16)', border: 'rgba(241,142,6,0.81)', glow: '#ffb103', text: '#ffb103', icon: '⚠' },
+  info:    { bg: 'rgba(7,73,149,0.12)',  border: 'rgba(6,44,241,0.46)',  glow: '#0396ff', text: '#0396ff', icon: 'ℹ' },
 };
 
 function NeonToast({ toast, onClose }: { toast: ToastData; onClose: () => void }) {
@@ -40,15 +40,15 @@ function NeonToast({ toast, onClose }: { toast: ToastData; onClose: () => void }
 }
 
 export default function Login() {
-  const [email,              setEmail]              = useState('');
-  const [password,           setPassword]           = useState('');
-  const [rememberMe,         setRememberMe]         = useState(false);
-  const [showPassword,       setShowPassword]       = useState(false);
-  const [loading,            setLoading]            = useState(false);
-  const [toasts,             setToasts]             = useState<ToastData[]>([]);
-  const [showForgot,         setShowForgot]         = useState(false);
-  const [splashVisible,      setSplashVisible]      = useState(true);
-  const [splashFading,       setSplashFading]       = useState(false);
+  const [email,         setEmail]         = useState('');
+  const [password,      setPassword]      = useState('');
+  const [rememberMe,    setRememberMe]    = useState(false);
+  const [showPassword,  setShowPassword]  = useState(false);
+  const [loading,       setLoading]       = useState(false);
+  const [toasts,        setToasts]        = useState<ToastData[]>([]);
+  const [showForgot,    setShowForgot]    = useState(false);
+  const [splashVisible, setSplashVisible] = useState(true);
+  const [splashFading,  setSplashFading]  = useState(false);
 
   const splashRef = useRef<HTMLDivElement>(null);
   const busRef    = useRef<HTMLDivElement>(null);
@@ -62,7 +62,10 @@ export default function Login() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!email || !password) { addToast('warning', 'Missing Fields', 'Please enter email and password.'); return; }
+    if (!email || !password) {
+      addToast('warning', 'Missing Fields', 'Please enter your email and password.');
+      return;
+    }
     setLoading(true);
     for (let attempt = 1; attempt <= 2; attempt++) {
       try {
@@ -89,7 +92,7 @@ export default function Login() {
     setLoading(false);
   };
 
-  // ── Splash animation — ALL hooks must be declared before any conditional return ──
+  // Splash animation
   useEffect(() => {
     const el = splashRef.current;
     if (!el) return;
@@ -123,7 +126,8 @@ export default function Login() {
     if (!svg) return;
     svg.style.visibility = 'visible';
     bus.querySelectorAll('#rotate-left, #rotate-right').forEach(g => {
-      (g as SVGElement).style.transformBox = 'fill-box'; (g as SVGElement).style.transformOrigin = 'center';
+      (g as SVGElement).style.transformBox = 'fill-box';
+      (g as SVGElement).style.transformOrigin = 'center';
     });
     const floor = bus.querySelector('#floor') as SVGElement;
     if (floor) { floor.style.transformBox = 'fill-box'; floor.style.transformOrigin = 'center'; }
@@ -142,7 +146,6 @@ export default function Login() {
     });
   }, [splashVisible]);
 
-  // ── Conditional render AFTER all hooks ────────────────────────────────────────
   if (showForgot) {
     return <ForgotPassword onBack={() => setShowForgot(false)} />;
   }
@@ -206,24 +209,42 @@ export default function Login() {
           <form onSubmit={handleSubmit} className="login-form">
             <div className="login-field">
               <label className="login-label">Email Address</label>
-              <input type="email" placeholder="admin@busgo.lk" value={email}
-                onChange={e => setEmail(e.target.value)} className="login-input" />
+              <input
+                type="email"
+                placeholder="admin@busgo.lk"
+                value={email}
+                onChange={e => setEmail(e.target.value)}
+                className="login-input"
+              />
             </div>
             <div className="login-field">
               <label className="login-label">Password</label>
               <div className="login-password-wrap">
-                <input type={showPassword ? 'text' : 'password'} placeholder="Enter your password"
-                  value={password} onChange={e => setPassword(e.target.value)} className="login-input" />
-                <button type="button" className="login-eye-btn"
-                  onClick={() => setShowPassword(!showPassword)} tabIndex={-1}>
+                <input
+                  type={showPassword ? 'text' : 'password'}
+                  placeholder="Enter your password"
+                  value={password}
+                  onChange={e => setPassword(e.target.value)}
+                  className="login-input"
+                />
+                <button
+                  type="button"
+                  className="login-eye-btn"
+                  onClick={() => setShowPassword(!showPassword)}
+                  tabIndex={-1}
+                >
                   {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                 </button>
               </div>
             </div>
             <div className="login-remember">
               <label className="login-remember-label">
-                <input type="checkbox" checked={rememberMe}
-                  onChange={e => setRememberMe(e.target.checked)} className="login-checkbox" />
+                <input
+                  type="checkbox"
+                  checked={rememberMe}
+                  onChange={e => setRememberMe(e.target.checked)}
+                  className="login-checkbox"
+                />
                 <span className="login-checkmark"></span>
                 <span>Remember me</span>
               </label>
@@ -231,12 +252,20 @@ export default function Login() {
             <button type="submit" className="login-submit" disabled={loading}>
               {loading ? <span className="login-spinner"></span> : 'Sign In'}
             </button>
-            <p onClick={() => setShowForgot(true)} style={{
-              textAlign: 'center', marginTop: '14px', fontSize: '13px',
-              color: '#1a6cf0', cursor: 'pointer', textDecoration: 'underline', userSelect: 'none',
-            }}>
+            <div
+              onClick={() => setShowForgot(true)}
+              style={{
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                gap: '7px', marginTop: '14px', cursor: 'pointer', userSelect: 'none',
+                padding: '9px 16px', borderRadius: '8px',
+                border: '1px solid rgba(26,108,240,0.15)',
+                background: 'rgba(26,108,240,0.04)',
+                fontSize: '13px', color: '#1a6cf0', fontWeight: 500,
+              }}
+            >
+              <span style={{ fontSize: '14px' }}>🔒</span>
               Forgot Password? Request Developer Assistance
-            </p>
+            </div>
           </form>
           <div className="login-footer">
             <div className="login-secured"><span className="login-secured-dot"></span>Secured · Enterprise Grade</div>
@@ -265,5 +294,3 @@ export default function Login() {
     </div>
   );
 }
-
-
