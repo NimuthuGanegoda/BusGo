@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import {
   Plus, Search, Power, Check, X,
   UserPlus, Shield, Users, RefreshCw,
-  FileImage, Phone, Mail, Calendar, Eye, MapPin,
+  FileImage, Phone, Mail, Calendar, Eye, MapPin, Send,
 } from 'lucide-react';
 import './UserManagement.css';
 
@@ -44,6 +44,13 @@ export default function UserManagement() {
   });
   const [addLoading, setAddLoading] = useState(false);
   const [addError,   setAddError]   = useState('');
+
+  // ── Service Update state ───────────────────────────────────────────────────
+  const [showUpdateModal,  setShowUpdateModal]  = useState(false);
+  const [updateTitle,      setUpdateTitle]      = useState('');
+  const [updateBody,       setUpdateBody]       = useState('');
+  const [updateLoading,    setUpdateLoading]    = useState(false);
+  const [updateError,      setUpdateError]      = useState('');
 
   const showToast = (msg: string, type: 'success' | 'error' = 'success') => {
     setToast(msg); setToastType(type);
@@ -179,6 +186,38 @@ export default function UserManagement() {
     finally { setAddLoading(false); }
   };
 
+  // ── Send Service Update ────────────────────────────────────────────────────
+  const openUpdateModal = () => {
+    setUpdateTitle(''); setUpdateBody(''); setUpdateError('');
+    setShowUpdateModal(true);
+  };
+
+  const handleSendUpdate = async () => {
+    if (!selectedDriver) return;
+    if (!updateTitle.trim()) { setUpdateError('Title is required'); return; }
+    if (!updateBody.trim())  { setUpdateError('Message is required'); return; }
+    setUpdateLoading(true); setUpdateError('');
+    try {
+      const res = await fetch(`${API}/send-service-update`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token()}` },
+        body: JSON.stringify({
+          driver_id: selectedDriver.id,
+          title:     updateTitle.trim(),
+          body:      updateBody.trim(),
+        }),
+      });
+      if (!res.ok) {
+        const json = await res.json();
+        setUpdateError(json.message || 'Failed to send update');
+        return;
+      }
+      setShowUpdateModal(false);
+      showToast(`✅ Service update sent to ${selectedDriver.full_name}`);
+    } catch { setUpdateError('Connection failed. Try again.'); }
+    finally { setUpdateLoading(false); }
+  };
+
   const getStatusLabel = (u: User) => {
     if (u.role === 'driver' && !u.is_active) return 'pending';
     return u.is_active ? 'active' : 'inactive';
@@ -199,6 +238,7 @@ export default function UserManagement() {
         </div>
       )}
 
+      {/* ── Add User Modal ─────────────────────────────────────────────────── */}
       {showAddModal && (
         <div className="em-modal-overlay" onClick={() => setShowAddModal(false)}>
           <div className="em-modal" onClick={e => e.stopPropagation()} style={{ maxWidth: '440px' }}>
@@ -253,6 +293,91 @@ export default function UserManagement() {
         </div>
       )}
 
+      {/* ── Send Service Update Modal ──────────────────────────────────────── */}
+      {showUpdateModal && selectedDriver && (
+        <div className="em-modal-overlay" onClick={() => setShowUpdateModal(false)}>
+          <div className="em-modal" onClick={e => e.stopPropagation()} style={{ maxWidth: '480px' }}>
+            <div className="em-modal-header">
+              <h3>Send Service Update</h3>
+              <button className="em-modal-close" onClick={() => setShowUpdateModal(false)}>
+                <X size={20} />
+              </button>
+            </div>
+            <div className="em-modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+
+              {/* Recipient */}
+              <div style={{ background: '#f0f9ff', border: '1px solid #bae6fd',
+                borderRadius: '8px', padding: '10px 14px', fontSize: '13px', color: '#0369a1' }}>
+                <strong>To:</strong> {selectedDriver.full_name} ({selectedDriver.email})
+              </div>
+
+              {updateError && (
+                <div style={{ background: '#fef2f2', border: '1px solid #fca5a5',
+                  borderRadius: '8px', padding: '10px 14px', color: '#dc2626', fontSize: '13px' }}>
+                  {updateError}
+                </div>
+              )}
+
+              {/* Title */}
+              <div>
+                <label style={{ fontSize: '11px', fontWeight: 700, color: '#6b7280',
+                  letterSpacing: '0.5px', display: 'block', marginBottom: '6px' }}>
+                  TITLE
+                </label>
+                <input
+                  type="text"
+                  value={updateTitle}
+                  onChange={e => setUpdateTitle(e.target.value)}
+                  placeholder="e.g. App Update v1.2.0 Available"
+                  maxLength={100}
+                  style={{ width: '100%', padding: '10px 12px',
+                    border: '1px solid #e2e6ed', borderRadius: '8px',
+                    fontSize: '14px', boxSizing: 'border-box' }}
+                />
+                <div style={{ fontSize: '11px', color: '#9ca3af', marginTop: '4px', textAlign: 'right' }}>
+                  {updateTitle.length}/100
+                </div>
+              </div>
+
+              {/* Message */}
+              <div>
+                <label style={{ fontSize: '11px', fontWeight: 700, color: '#6b7280',
+                  letterSpacing: '0.5px', display: 'block', marginBottom: '6px' }}>
+                  MESSAGE
+                </label>
+                <textarea
+                  value={updateBody}
+                  onChange={e => setUpdateBody(e.target.value)}
+                  placeholder="Type your service update message here..."
+                  maxLength={1000}
+                  rows={5}
+                  style={{ width: '100%', padding: '10px 12px',
+                    border: '1px solid #e2e6ed', borderRadius: '8px',
+                    fontSize: '14px', resize: 'vertical', boxSizing: 'border-box',
+                    fontFamily: 'inherit' }}
+                />
+                <div style={{ fontSize: '11px', color: '#9ca3af', marginTop: '4px', textAlign: 'right' }}>
+                  {updateBody.length}/1000
+                </div>
+              </div>
+
+              <button
+                onClick={handleSendUpdate}
+                disabled={updateLoading}
+                style={{ padding: '12px', background: '#1a6cf0', color: '#fff',
+                  border: 'none', borderRadius: '8px', fontSize: '14px',
+                  fontWeight: 700, cursor: 'pointer',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
+                  opacity: updateLoading ? 0.6 : 1 }}>
+                <Send size={16} />
+                {updateLoading ? 'Sending...' : 'Send Update'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Page Header ───────────────────────────────────────────────────── */}
       <div className="users-header">
         <h1>User Management</h1>
         <div className="users-header-actions">
@@ -265,6 +390,7 @@ export default function UserManagement() {
         </div>
       </div>
 
+      {/* ── Tabs ──────────────────────────────────────────────────────────── */}
       <div className="users-tabs">
         <button className={`users-tab ${activeTab === 'passengers' ? 'active' : ''}`}
           onClick={() => { setActiveTab('passengers'); setSearchQuery(''); setStatusFilter('all'); closePanel(); }}>
@@ -283,6 +409,7 @@ export default function UserManagement() {
         </button>
       </div>
 
+      {/* ── Filters ───────────────────────────────────────────────────────── */}
       <div className="users-filters">
         <div className="users-search-wrap">
           <Search size={16} className="search-icon" />
@@ -301,9 +428,12 @@ export default function UserManagement() {
       </div>
 
       <div style={{ display: 'flex', gap: '16px', alignItems: 'flex-start' }}>
+        {/* ── Table ───────────────────────────────────────────────────────── */}
         <div style={{ flex: 1, minWidth: 0 }}>
           {loading ? (
-            <div style={{ textAlign: 'center', padding: '40px', color: '#6b7280' }}>Loading {activeTab}...</div>
+            <div style={{ textAlign: 'center', padding: '40px', color: '#6b7280' }}>
+              Loading {activeTab}...
+            </div>
           ) : (
             <div className="users-table-wrap">
               <table className="users-table">
@@ -386,7 +516,7 @@ export default function UserManagement() {
           )}
         </div>
 
-        {/* ── Driver Detail Side Panel ─────────────────────────────────────── */}
+        {/* ── Driver Detail Side Panel ───────────────────────────────────── */}
         {selectedDriver && (
           <div style={{
             width: '340px', flexShrink: 0, background: '#fff',
@@ -402,9 +532,11 @@ export default function UserManagement() {
             }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                 <div>
-                  <div style={{ fontSize: '11px', fontWeight: 700, letterSpacing: '1px', opacity: 0.8, marginBottom: '6px' }}>
+                  <div style={{ fontSize: '11px', fontWeight: 700, letterSpacing: '1px',
+                    opacity: 0.8, marginBottom: '6px' }}>
                     {selectedDriver.role === 'driver' && !selectedDriver.is_active
-                      ? '⏳ PENDING APPROVAL' : selectedDriver.role === 'driver' ? '👤 DRIVER PROFILE' : '👤 USER PROFILE'}
+                      ? '⏳ PENDING APPROVAL'
+                      : selectedDriver.role === 'driver' ? '👤 DRIVER PROFILE' : '👤 USER PROFILE'}
                   </div>
                   <div style={{ fontSize: '18px', fontWeight: 800 }}>{selectedDriver.full_name}</div>
                   <div style={{ fontSize: '12px', opacity: 0.8, marginTop: '4px' }}>{selectedDriver.email}</div>
@@ -437,14 +569,12 @@ export default function UserManagement() {
               ))}
             </div>
 
-            {/* ── Experience Areas ─────────────────────────────────────────── */}
+            {/* Experience Areas */}
             {selectedDriver.role === 'driver' && (
               <div style={{ padding: '16px', borderBottom: '1px solid #f3f4f6' }}>
-                <div style={{
-                  fontSize: '11px', fontWeight: 700, color: '#6b7280',
+                <div style={{ fontSize: '11px', fontWeight: 700, color: '#6b7280',
                   letterSpacing: '0.8px', marginBottom: '10px',
-                  display: 'flex', alignItems: 'center', gap: '6px',
-                }}>
+                  display: 'flex', alignItems: 'center', gap: '6px' }}>
                   <MapPin size={14} /> ROUTE EXPERIENCE AREAS
                 </div>
                 {selectedDriver.experience_areas && selectedDriver.experience_areas.length > 0 ? (
@@ -461,10 +591,8 @@ export default function UserManagement() {
                     ))}
                   </div>
                 ) : (
-                  <div style={{
-                    background: '#f9fafb', borderRadius: '8px',
-                    padding: '10px 14px', fontSize: '13px', color: '#9ca3af',
-                  }}>
+                  <div style={{ background: '#f9fafb', borderRadius: '8px',
+                    padding: '10px 14px', fontSize: '13px', color: '#9ca3af' }}>
                     No experience areas specified
                   </div>
                 )}
@@ -474,11 +602,9 @@ export default function UserManagement() {
             {/* License */}
             {selectedDriver.role === 'driver' && (
               <div style={{ padding: '16px', borderBottom: '1px solid #f3f4f6' }}>
-                <div style={{
-                  fontSize: '11px', fontWeight: 700, color: '#6b7280',
+                <div style={{ fontSize: '11px', fontWeight: 700, color: '#6b7280',
                   letterSpacing: '0.8px', marginBottom: '10px',
-                  display: 'flex', alignItems: 'center', gap: '6px',
-                }}>
+                  display: 'flex', alignItems: 'center', gap: '6px' }}>
                   <FileImage size={14} /> DRIVER'S LICENSE
                 </div>
                 {!selectedDriver.license_url ? (
@@ -510,6 +636,20 @@ export default function UserManagement() {
                     Failed to load license image
                   </div>
                 )}
+              </div>
+            )}
+
+            {/* ── Send Service Update button (active drivers only) ────────── */}
+            {selectedDriver.role === 'driver' && selectedDriver.is_active && (
+              <div style={{ padding: '16px', borderBottom: '1px solid #f3f4f6' }}>
+                <button
+                  onClick={openUpdateModal}
+                  style={{ width: '100%', padding: '11px', background: '#1a6cf0',
+                    color: '#fff', border: 'none', borderRadius: '10px',
+                    fontSize: '14px', fontWeight: 700, cursor: 'pointer',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
+                  <Send size={15} /> Send Service Update
+                </button>
               </div>
             )}
 
@@ -552,5 +692,3 @@ export default function UserManagement() {
     </div>
   );
 }
-
-
