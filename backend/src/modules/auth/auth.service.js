@@ -99,6 +99,7 @@ export async function registerUser(dto, req = null) {
       pending_verification: false,
       pending_approval:     true,
       email,
+      recovery_pin,
       message: 'Registration submitted. Please wait for admin approval.',
     };
   }
