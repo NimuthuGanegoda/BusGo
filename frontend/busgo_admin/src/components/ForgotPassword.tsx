@@ -191,7 +191,7 @@ export default function ForgotPassword({ onBack }: Props) {
               Your identity has been verified. A developer will review your request
               and provide a temporary password within 24 hours via a secure channel.
             </p>
-            <button onClick={onBack} style={{ ...btnStyle, marginTop: '24px' }}>
+            <button onClick={() => { window.location.href = '/admin/login'; }}>
               Back to Login
             </button>
           </div>

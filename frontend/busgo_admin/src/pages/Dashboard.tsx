@@ -103,8 +103,12 @@ export default function Dashboard() {
 
   const fetchBuses = useCallback(async () => {
     try {
-      const data = await busApi.getNearby(6.9, 79.9, 50);
-      setRealBuses(Array.isArray(data) ? data : []);
+      const res = await fetch(
+        'https://busgo-production.up.railway.app/api/admin/buses?page_size=100',
+        { headers: { Authorization: `Bearer ${localStorage.getItem('busgo_access_token') ?? ''}` } }
+      );
+      const json = await res.json();
+      setRealBuses(Array.isArray(json.data) ? json.data : []);
     } catch (_) {}
     finally { setLoadingBuses(false); }
   }, []);
@@ -154,7 +158,12 @@ export default function Dashboard() {
   });
 
   // Active buses for the driver status panel
-  const activeBuses = realBuses.filter(b => b.status === 'active');
+  const activeBuses = realBuses.filter(b => {
+    if (!b.current_lat || !b.current_lng) return false;
+    if (!b.last_location_update) return false;
+    const minutesSince = (Date.now() - new Date(b.last_location_update).getTime()) / 60000;
+    return minutesSince <= 30;
+  });
 
   return (
     <div className="dashboard">

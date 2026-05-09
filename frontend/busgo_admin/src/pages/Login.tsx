@@ -207,13 +207,13 @@ export default function Login() {
             <div className="login-field">
               <label className="login-label">Email Address</label>
               <input type="email" placeholder="admin@busgo.lk" value={email}
-                onChange={e => setEmail(e.target.value)} className="login-input" required />
+                onChange={e => setEmail(e.target.value)} className="login-input" />
             </div>
             <div className="login-field">
               <label className="login-label">Password</label>
               <div className="login-password-wrap">
                 <input type={showPassword ? 'text' : 'password'} placeholder="Enter your password"
-                  value={password} onChange={e => setPassword(e.target.value)} className="login-input" required />
+                  value={password} onChange={e => setPassword(e.target.value)} className="login-input" />
                 <button type="button" className="login-eye-btn"
                   onClick={() => setShowPassword(!showPassword)} tabIndex={-1}>
                   {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
