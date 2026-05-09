@@ -100,7 +100,9 @@ export async function listAllBuses(filters) {
     .select(
       `id, bus_number, driver_name, driver_phone, current_lat, current_lng,
        heading, speed_kmh, crowd_level, status, last_location_update, created_at,
-       bus_routes ( id, route_number, route_name, origin, destination )`,
+       bus_routes ( id, route_number, route_name, origin, destination ),
+       driver:driver_user_id ( avatar_url )`,
+       
       { count: 'exact' }
     )
     .order('created_at', { ascending: false })
@@ -135,6 +137,8 @@ export async function listAllBuses(filters) {
       ? Math.round((ratingMap[bus.id].sum / ratingMap[bus.id].count) * 10) / 10
       : null,
     total_reviews: ratingMap[bus.id]?.count ?? 0,
+    driver_avatar_url: bus.driver?.avatar_url || null,
+
   }));
 
   return { buses: busesWithRatings, pagination: buildPagination(count, page, page_size) };
