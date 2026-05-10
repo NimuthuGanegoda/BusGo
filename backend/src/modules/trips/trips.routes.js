@@ -7,17 +7,10 @@ import * as controller from './trips.controller.js';
 const router = Router();
 router.use(authenticate);
 
-router.get('/',              validate(listTripsSchema, 'query'), controller.listTrips);
-router.get('/:id',           controller.getTripById);
-router.post('/',             validate(createTripSchema),         controller.createTrip);
-router.patch('/:id/alight',  validate(alightTripSchema),         controller.alightTrip);
+router.get('/',             validate(listTripsSchema, 'query'), controller.listTrips);
+router.get('/:id',          controller.getTripById);
+router.post('/',            validate(createTripSchema),         controller.createTrip);
+router.patch('/:id/alight', validate(alightTripSchema),         controller.alightTrip);
+router.post('/:id/dispute', controller.disputeTrip);
 
 export default router;
-
-
-
-
-
-
-
-
