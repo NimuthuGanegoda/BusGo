@@ -9,6 +9,7 @@ export async function getNearbyBuses(lat, lng, radius) {
       id, bus_number, driver_name, driver_phone,
       current_lat, current_lng, heading, speed_kmh,
       crowd_level, status, last_location_update,
+      capacity,
       driver_user_id,
       bus_routes ( id, route_number, route_name, origin, destination, color ),
       users!buses_driver_user_id_fkey ( avg_rating )
@@ -18,7 +19,29 @@ export async function getNearbyBuses(lat, lng, radius) {
     .not('current_lng', 'is', null)
     .gte('last_location_update', new Date(Date.now() - 5 * 60 * 1000).toISOString());
   if (error) throw error;
-  return filterByRadius(data, lat, lng, radius, 'current_lat', 'current_lng');
+
+  const filtered = filterByRadius(data, lat, lng, radius, 'current_lat', 'current_lng');
+  if (filtered.length === 0) return filtered;
+
+  // ── Get real-time passenger count for each bus ────────────────────────────
+  const busIds = filtered.map(b => b.id);
+  const { data: ongoingTrips } = await supabase
+    .from('trips')
+    .select('bus_id')
+    .in('bus_id', busIds)
+    .eq('status', 'ongoing');
+
+  // Build a count map: { bus_id: count }
+  const countMap = {};
+  for (const trip of (ongoingTrips || [])) {
+    countMap[trip.bus_id] = (countMap[trip.bus_id] || 0) + 1;
+  }
+
+  // Merge passenger_count into each bus object
+  return filtered.map(bus => ({
+    ...bus,
+    passenger_count: countMap[bus.id] || 0,
+  }));
 }
 
 export async function getBusById(busId) {
@@ -28,6 +51,7 @@ export async function getBusById(busId) {
       id, bus_number, driver_name, driver_phone,
       current_lat, current_lng, heading, speed_kmh,
       crowd_level, status, last_location_update, created_at,
+      capacity,
       driver_user_id,
       bus_routes ( id, route_number, route_name, origin, destination, color, waypoints ),
       users!buses_driver_user_id_fkey ( avg_rating )
@@ -40,7 +64,15 @@ export async function getBusById(busId) {
     err.code = 'BUS_NOT_FOUND';
     throw err;
   }
-  return data;
+
+  // Also get passenger count for single bus
+  const { count } = await supabase
+    .from('trips')
+    .select('id', { count: 'exact', head: true })
+    .eq('bus_id', busId)
+    .eq('status', 'ongoing');
+
+  return { ...data, passenger_count: count || 0 };
 }
 
 export async function updateBusLocation(busId, dto) {
@@ -80,7 +112,6 @@ export async function updateBusCrowd(busId, crowd_level) {
   return data;
 }
 
-
 export async function recallBus(busId, adminUserId) {
   const { data: bus } = await supabase
     .from('buses').select('id, bus_number, status').eq('id', busId).maybeSingle();
@@ -99,7 +130,6 @@ export async function recallBus(busId, adminUserId) {
     .single();
   if (error) throw error;
 
-  // Audit log
   await supabase.from('admin_audit_log').insert({
     admin_user_id: adminUserId,
     action:        'RECALL_BUS',
