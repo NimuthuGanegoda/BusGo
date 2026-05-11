@@ -70,6 +70,12 @@ export async function getBusETA(busId, targetStopId, context = {}) {
     const err = new Error('Stop not found'); err.statusCode = 404; err.code = 'STOP_NOT_FOUND'; throw err;
   }
 
+    // 4. Calculate straight-line distance (haversine)
+  const dist_km = haversineKm(
+    bus.current_lat, bus.current_lng,
+    stop.latitude, stop.longitude
+  );
+
   // 3. Count remaining stops between bus current pos and target
   const { data: routeStops } = await supabase
     .from('bus_stop_routes')
@@ -99,11 +105,7 @@ export async function getBusETA(busId, targetStopId, context = {}) {
     }
   }
 
-  // 4. Calculate straight-line distance (haversine)
-  const dist_km = haversineKm(
-    bus.current_lat, bus.current_lng,
-    stop.latitude, stop.longitude
-  );
+
 
   const hour            = new Date().getHours();
   const is_raining      = await checkIsRaining(bus.current_lat, bus.current_lng);
