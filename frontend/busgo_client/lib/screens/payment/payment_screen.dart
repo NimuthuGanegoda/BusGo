@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import 'package:http/http.dart' as http;
 import 'package:provider/provider.dart';
@@ -24,7 +25,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
   List<dynamic> _myTickets = [];
   bool _loadingRoutes  = true;
   bool _loadingStops   = false;
-  bool _loadingTickets = true; // ← track ticket loading
+  bool _loadingTickets = true;
 
   Map<String, dynamic>? _selectedRoute;
   Map<String, dynamic>? _boardingStop;
@@ -33,6 +34,19 @@ class _PaymentScreenState extends State<PaymentScreen> {
   Map<String, dynamic>? _activeTicket;
 
   int _tab = 0;
+
+  // ── Payment details state ─────────────────────────────────────────────────
+  bool _showingPaymentDetails = false;
+  final _cardNameCtrl    = TextEditingController();
+  final _cardNumberCtrl  = TextEditingController();
+  final _expiryCtrl      = TextEditingController();
+  final _cvvCtrl         = TextEditingController();
+  final _address1Ctrl    = TextEditingController();
+  final _address2Ctrl    = TextEditingController();
+  final _cityCtrl        = TextEditingController();
+  final _zipCtrl         = TextEditingController();
+  final _detailsFormKey  = GlobalKey<FormState>();
+  bool _obscureCvv = true;
 
   String get _token => context.read<AuthProvider>().accessToken ?? '';
   Map<String, String> get _headers => {
@@ -45,6 +59,19 @@ class _PaymentScreenState extends State<PaymentScreen> {
     super.initState();
     _loadRoutes();
     _loadMyTickets();
+  }
+
+  @override
+  void dispose() {
+    _cardNameCtrl.dispose();
+    _cardNumberCtrl.dispose();
+    _expiryCtrl.dispose();
+    _cvvCtrl.dispose();
+    _address1Ctrl.dispose();
+    _address2Ctrl.dispose();
+    _cityCtrl.dispose();
+    _zipCtrl.dispose();
+    super.dispose();
   }
 
   Future<void> _loadRoutes() async {
@@ -99,7 +126,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
       if (body['success'] == true) {
         final data = body['data'];
         if (data['is_sandbox'] == true) {
-          if (mounted) setState(() { _activeTicket = data['ticket']; _tab = 1; });
+          if (mounted) setState(() { _activeTicket = data['ticket']; _tab = 1; _showingPaymentDetails = false; });
           _loadMyTickets();
           if (mounted) BusgoAlert.show(context, type: BusgoAlertType.success,
               title: 'Payment Successful!',
@@ -139,20 +166,30 @@ class _PaymentScreenState extends State<PaymentScreen> {
       appBar: AppBar(
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_ios, size: 18),
-          onPressed: () => context.pop(),
+          onPressed: () {
+            if (_showingPaymentDetails) {
+              setState(() => _showingPaymentDetails = false);
+            } else {
+              context.pop();
+            }
+          },
         ),
-        title: const Text('Payment', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 17)),
+        title: Text(
+          _showingPaymentDetails ? 'Payment Details' : 'Payment',
+          style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 17)),
         backgroundColor: AppColors.primary,
         foregroundColor: Colors.white,
         elevation: 0,
       ),
       body: Column(children: [
-        // Tab bar
-        Container(
-          color: AppColors.primary,
-          child: Row(children: [_buildTab('Buy Ticket', 0), _buildTab('My Tickets', 1)]),
-        ),
-        Expanded(child: _tab == 0 ? _buildBuyTab() : _buildTicketsTab()),
+        if (!_showingPaymentDetails)
+          Container(
+            color: AppColors.primary,
+            child: Row(children: [_buildTab('Buy Ticket', 0), _buildTab('My Tickets', 1)]),
+          ),
+        Expanded(child: _showingPaymentDetails
+            ? _buildPaymentDetailsForm()
+            : _tab == 0 ? _buildBuyTab() : _buildTicketsTab()),
       ]),
     );
   }
@@ -177,7 +214,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
     );
   }
 
-  // ── BUY TAB ──────────────────────────────────────────────────────────────
+  // ── BUY TAB ───────────────────────────────────────────────────────────────
   Widget _buildBuyTab() {
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
@@ -190,7 +227,6 @@ class _PaymentScreenState extends State<PaymentScreen> {
             boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.06),
                 blurRadius: 20, offset: const Offset(0, 4))]),
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            // Header
             Row(children: [
               Container(
                 padding: const EdgeInsets.all(8),
@@ -217,7 +253,6 @@ class _PaymentScreenState extends State<PaymentScreen> {
             Divider(color: Colors.white.withOpacity(0.1)),
             const SizedBox(height: 16),
 
-            // Step 1: Route
             _buildFieldLabel('SELECT ROUTE', 'Choose your bus route'),
             const SizedBox(height: 8),
             _buildRouteSelector(),
@@ -282,7 +317,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
         child: DropdownButton<Map<String, dynamic>>(
           isExpanded: true,
           value: _selectedRoute,
-          dropdownColor: const Color(0xFF0D1F35),   // ← dark dropdown background
+          dropdownColor: const Color(0xFF0D1F35),
           iconEnabledColor: Colors.white54,
           icon: const Icon(Icons.keyboard_arrow_down, color: Colors.white54),
           hint: const Text('Choose a route...',
@@ -302,9 +337,8 @@ class _PaymentScreenState extends State<PaymentScreen> {
                       style: const TextStyle(color: Colors.white,
                           fontSize: 11, fontWeight: FontWeight.w700))),
                 const SizedBox(width: 10),
-                // ← white text for route name
                 Expanded(child: Text(
-                  '${route['origin']} → ${route['destination']}',
+                  '${route['origin']} \u2192 ${route['destination']}',
                   style: const TextStyle(fontSize: 13, color: Colors.white),
                   overflow: TextOverflow.ellipsis)),
               ]),
@@ -339,9 +373,8 @@ class _PaymentScreenState extends State<PaymentScreen> {
         child: DropdownButton<Map<String, dynamic>>(
           isExpanded: true,
           value: value,
-          dropdownColor: const Color(0xFF0D1F35),   // ← dark dropdown background
+          dropdownColor: const Color(0xFF0D1F35),
           icon: const Icon(Icons.keyboard_arrow_down, color: Colors.white54),
-          // ← white hint text
           hint: Text(hint, style: const TextStyle(fontSize: 14, color: Colors.white54)),
           items: filtered.map<DropdownMenuItem<Map<String, dynamic>>>((s) {
             final stop = s as Map<String, dynamic>;
@@ -358,7 +391,6 @@ class _PaymentScreenState extends State<PaymentScreen> {
                       style: const TextStyle(fontSize: 9,
                           fontWeight: FontWeight.w700, color: AppColors.secondary))),
                 const SizedBox(width: 10),
-                // ← white stop name text
                 Expanded(child: Text(stop['stop_name'] ?? '',
                     style: const TextStyle(fontSize: 13, color: Colors.white))),
               ]),
@@ -428,7 +460,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
 
   Widget _buildPayButton() {
     return GestureDetector(
-      onTap: _initiatePayment,
+      onTap: () => setState(() => _showingPaymentDetails = true),
       child: Container(
         width: double.infinity, height: 56,
         decoration: BoxDecoration(
@@ -448,13 +480,282 @@ class _PaymentScreenState extends State<PaymentScreen> {
     );
   }
 
+  // ── PAYMENT DETAILS FORM ──────────────────────────────────────────────────
+  Widget _buildPaymentDetailsForm() {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(16),
+      child: Form(
+        key: _detailsFormKey,
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+
+          // Amount summary banner
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+            decoration: BoxDecoration(
+              color: const Color(0xFF0A1628),
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: const Color(0xFF22C55E).withOpacity(0.3))),
+            child: Row(children: [
+              const Icon(Icons.receipt_long_rounded, color: Color(0xFF22C55E), size: 20),
+              const SizedBox(width: 12),
+              Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text('${_boardingStop?['stop_name']} \u2192 ${_alightingStop?['stop_name']}',
+                    style: TextStyle(fontSize: 12, color: Colors.white.withOpacity(0.6))),
+                const SizedBox(height: 2),
+                Text('LKR ${_fareResult?['amount']?.toStringAsFixed(2) ?? '0.00'}',
+                    style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800,
+                        color: Color(0xFF22C55E))),
+              ])),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(color: const Color(0xFF16A34A).withOpacity(0.15),
+                    borderRadius: BorderRadius.circular(6)),
+                child: const Text('SANDBOX', style: TextStyle(fontSize: 9,
+                    fontWeight: FontWeight.w700, color: Color(0xFF16A34A)))),
+            ]),
+          ),
+
+          const SizedBox(height: 20),
+
+          // ── Card Information ──────────────────────────────────────────────
+          _sectionHeader(Icons.credit_card_rounded, 'Card Information'),
+          const SizedBox(height: 12),
+
+          _paymentField(
+            controller: _cardNameCtrl,
+            label: 'Cardholder Name',
+            hint: 'e.g. Nimal Perera',
+            icon: Icons.person_outline_rounded,
+            validator: (v) => (v == null || v.trim().isEmpty) ? 'Name is required' : null,
+          ),
+          const SizedBox(height: 12),
+
+          _paymentField(
+            controller: _cardNumberCtrl,
+            label: 'Card Number',
+            hint: '0000  0000  0000  0000',
+            icon: Icons.credit_card_rounded,
+            keyboardType: TextInputType.number,
+            inputFormatters: [
+              FilteringTextInputFormatter.digitsOnly,
+              _CardNumberFormatter(),
+            ],
+            validator: (v) {
+              final digits = v?.replaceAll(' ', '') ?? '';
+              if (digits.length != 16) return 'Enter a valid 16-digit card number';
+              return null;
+            },
+          ),
+          const SizedBox(height: 12),
+
+          Row(children: [
+            Expanded(child: _paymentField(
+              controller: _expiryCtrl,
+              label: 'Expiry Date',
+              hint: 'MM/YY',
+              icon: Icons.calendar_today_rounded,
+              keyboardType: TextInputType.number,
+              inputFormatters: [
+                FilteringTextInputFormatter.digitsOnly,
+                _ExpiryFormatter(),
+              ],
+              validator: (v) {
+                if (v == null || v.length < 5) return 'Invalid expiry';
+                return null;
+              },
+            )),
+            const SizedBox(width: 12),
+            Expanded(child: StatefulBuilder(builder: (ctx, setS) => _paymentField(
+              controller: _cvvCtrl,
+              label: 'CVV / CVC',
+              hint: '•••',
+              icon: Icons.lock_outline_rounded,
+              obscureText: _obscureCvv,
+              keyboardType: TextInputType.number,
+              inputFormatters: [
+                FilteringTextInputFormatter.digitsOnly,
+                LengthLimitingTextInputFormatter(3),
+              ],
+              suffixIcon: IconButton(
+                icon: Icon(_obscureCvv ? Icons.visibility_off_outlined : Icons.visibility_outlined,
+                    size: 16, color: Colors.white38),
+                onPressed: () => setState(() => _obscureCvv = !_obscureCvv),
+              ),
+              validator: (v) {
+                if (v == null || v.length < 3) return 'Invalid CVV';
+                return null;
+              },
+            ))),
+          ]),
+
+          const SizedBox(height: 20),
+
+          // ── Billing Address ───────────────────────────────────────────────
+          _sectionHeader(Icons.location_on_outlined, 'Billing Address'),
+          const SizedBox(height: 12),
+
+          _paymentField(
+            controller: _address1Ctrl,
+            label: 'Address Line 1',
+            hint: 'Street address',
+            icon: Icons.home_outlined,
+            validator: (v) => (v == null || v.trim().isEmpty) ? 'Address is required' : null,
+          ),
+          const SizedBox(height: 12),
+
+          _paymentField(
+            controller: _address2Ctrl,
+            label: 'Address Line 2 (optional)',
+            hint: 'Apartment, suite, etc.',
+            icon: Icons.apartment_rounded,
+          ),
+          const SizedBox(height: 12),
+
+          Row(children: [
+            Expanded(child: _paymentField(
+              controller: _cityCtrl,
+              label: 'City',
+              hint: 'Colombo',
+              icon: Icons.location_city_rounded,
+              validator: (v) => (v == null || v.trim().isEmpty) ? 'City required' : null,
+            )),
+            const SizedBox(width: 12),
+            Expanded(child: _paymentField(
+              controller: _zipCtrl,
+              label: 'Zip / Postal Code',
+              hint: '00100',
+              icon: Icons.pin_outlined,
+              keyboardType: TextInputType.number,
+              inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+              validator: (v) => (v == null || v.trim().isEmpty) ? 'Zip required' : null,
+            )),
+          ]),
+
+          const SizedBox(height: 28),
+
+          // Security note
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: Colors.white.withOpacity(0.04),
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: Colors.white.withOpacity(0.08))),
+            child: Row(children: [
+              const Icon(Icons.shield_outlined, size: 16, color: Color(0xFF22C55E)),
+              const SizedBox(width: 10),
+              Expanded(child: Text(
+                'Your payment is processed securely. Card details are not stored.',
+                style: TextStyle(fontSize: 11, color: Colors.white.withOpacity(0.5), height: 1.4))),
+            ]),
+          ),
+
+          const SizedBox(height: 16),
+
+          // Confirm & Pay button
+          GestureDetector(
+            onTap: () {
+              if (_detailsFormKey.currentState!.validate()) {
+                _initiatePayment();
+              }
+            },
+            child: Container(
+              width: double.infinity, height: 56,
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(
+                    colors: [Color(0xFF16A34A), Color(0xFF22C55E)]),
+                borderRadius: BorderRadius.circular(14),
+                boxShadow: [BoxShadow(
+                    color: const Color(0xFF16A34A).withOpacity(0.35),
+                    blurRadius: 16, offset: const Offset(0, 6))]),
+              alignment: Alignment.center,
+              child: Row(mainAxisSize: MainAxisSize.min, children: [
+                const Icon(Icons.lock_rounded, color: Colors.white, size: 18),
+                const SizedBox(width: 8),
+                Text(
+                  'Confirm & Pay LKR ${_fareResult?['amount']?.toStringAsFixed(2) ?? '0.00'}',
+                  style: const TextStyle(color: Colors.white,
+                      fontSize: 15, fontWeight: FontWeight.w700)),
+              ]),
+            ),
+          ),
+          const SizedBox(height: 8),
+
+          // Cancel button
+          GestureDetector(
+            onTap: () => setState(() => _showingPaymentDetails = false),
+            child: Container(
+              width: double.infinity, height: 44,
+              alignment: Alignment.center,
+              child: Text('Cancel', style: TextStyle(
+                  fontSize: 14, color: Colors.white.withOpacity(0.4),
+                  fontWeight: FontWeight.w500)),
+            ),
+          ),
+          const SizedBox(height: 20),
+        ]),
+      ),
+    );
+  }
+
+  Widget _sectionHeader(IconData icon, String title) {
+    return Row(children: [
+      Icon(icon, size: 16, color: AppColors.secondary),
+      const SizedBox(width: 8),
+      Text(title, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700,
+          color: AppColors.secondary, letterSpacing: 0.5)),
+      const SizedBox(width: 8),
+      Expanded(child: Divider(color: Colors.white.withOpacity(0.1))),
+    ]);
+  }
+
+  Widget _paymentField({
+    required TextEditingController controller,
+    required String label,
+    required String hint,
+    required IconData icon,
+    bool obscureText = false,
+    TextInputType? keyboardType,
+    List<TextInputFormatter>? inputFormatters,
+    String? Function(String?)? validator,
+    Widget? suffixIcon,
+  }) {
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Text(label, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600,
+          color: Colors.white.withOpacity(0.5), letterSpacing: 0.5)),
+      const SizedBox(height: 6),
+      TextFormField(
+        controller: controller,
+        obscureText: obscureText,
+        keyboardType: keyboardType,
+        inputFormatters: inputFormatters,
+        validator: validator,
+        style: const TextStyle(fontSize: 14, color: Colors.white),
+        decoration: InputDecoration(
+          hintText: hint,
+          hintStyle: TextStyle(fontSize: 13, color: Colors.white.withOpacity(0.25)),
+          prefixIcon: Icon(icon, size: 18, color: Colors.white38),
+          suffixIcon: suffixIcon,
+          filled: true,
+          fillColor: const Color(0xFF0A1628),
+          contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+          border: OutlineInputBorder(borderRadius: BorderRadius.circular(10),
+              borderSide: BorderSide(color: Colors.white.withOpacity(0.12))),
+          enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10),
+              borderSide: BorderSide(color: Colors.white.withOpacity(0.12))),
+          focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10),
+              borderSide: const BorderSide(color: AppColors.secondary, width: 1.5)),
+          errorBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10),
+              borderSide: const BorderSide(color: Color(0xFFEF4444))),
+          errorStyle: const TextStyle(fontSize: 10, color: Color(0xFFEF4444)),
+        ),
+      ),
+    ]);
+  }
+
   // ── TICKETS TAB ───────────────────────────────────────────────────────────
   Widget _buildTicketsTab() {
     if (_activeTicket != null) return _buildTicketDetail(_activeTicket!);
-
-    // ← Show skeleton loader while loading
     if (_loadingTickets) return _buildTicketsSkeleton();
-
     if (_myTickets.isEmpty) {
       return Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
         Icon(Icons.confirmation_number_outlined, size: 48,
@@ -467,7 +768,6 @@ class _PaymentScreenState extends State<PaymentScreen> {
             style: TextStyle(fontSize: 13, color: Colors.white.withOpacity(0.4))),
       ]));
     }
-
     return RefreshIndicator(
       onRefresh: _loadMyTickets,
       child: ListView.builder(
@@ -503,12 +803,12 @@ class _PaymentScreenState extends State<PaymentScreen> {
                           fontSize: 14, fontWeight: FontWeight.w700))),
                 const SizedBox(width: 12),
                 Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Text('${ticket['boarding_stop_name']} → ${ticket['alighting_stop_name']}',
+                  Text('${ticket['boarding_stop_name']} \u2192 ${ticket['alighting_stop_name']}',
                       style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600,
                           color: Colors.white),
                       overflow: TextOverflow.ellipsis),
                   const SizedBox(height: 3),
-                  Text('LKR ${ticket['amount']} · ${ticket['stop_count']} stops',
+                  Text('LKR ${ticket['amount']} \u00B7 ${ticket['stop_count']} stops',
                       style: TextStyle(fontSize: 11, color: Colors.white.withOpacity(0.45))),
                 ])),
                 Container(
@@ -531,7 +831,6 @@ class _PaymentScreenState extends State<PaymentScreen> {
     );
   }
 
-  // ← Skeleton loader for tickets
   Widget _buildTicketsSkeleton() {
     return ListView.builder(
       padding: const EdgeInsets.all(16),
@@ -581,7 +880,6 @@ class _PaymentScreenState extends State<PaymentScreen> {
           ),
         ),
         const SizedBox(height: 16),
-
         Container(
           padding: const EdgeInsets.all(24),
           decoration: BoxDecoration(
@@ -598,13 +896,12 @@ class _PaymentScreenState extends State<PaymentScreen> {
                     : const Color(0xFFF59E0B).withOpacity(0.15),
                 borderRadius: BorderRadius.circular(20)),
               child: Text(
-                ticket['payment_status'] == 'paid' ? '✅ PAID – VALID' : '⏳ PENDING',
+                ticket['payment_status'] == 'paid' ? '\u2705 PAID \u2013 VALID' : '\u23F3 PENDING',
                 style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700,
                     color: ticket['payment_status'] == 'paid'
                         ? const Color(0xFF22C55E)
                         : const Color(0xFFF59E0B)))),
             const SizedBox(height: 24),
-
             Container(
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
@@ -616,13 +913,9 @@ class _PaymentScreenState extends State<PaymentScreen> {
                   version: QrVersions.auto,
                   size: 180,
                   backgroundColor: Colors.white)),
-            const SizedBox(height: 16),
-
             const SizedBox(height: 20),
-
             Divider(color: Colors.white.withOpacity(0.1)),
             const SizedBox(height: 12),
-
             _ticketRow('Route',      ticket['bus_routes']?['route_number'] ?? '?'),
             _ticketRow('From',       ticket['boarding_stop_name'] ?? ''),
             _ticketRow('To',         ticket['alighting_stop_name'] ?? ''),
@@ -631,7 +924,6 @@ class _PaymentScreenState extends State<PaymentScreen> {
             _ticketRow('Valid Until', _formatDate(ticket['valid_until'])),
           ]),
         ),
-
         const SizedBox(height: 16),
         Text('Show this QR code to the scanner when boarding',
             textAlign: TextAlign.center,
@@ -664,4 +956,39 @@ class _PaymentScreenState extends State<PaymentScreen> {
   }
 }
 
+// ── Input formatters ──────────────────────────────────────────────────────────
+class _CardNumberFormatter extends TextInputFormatter {
+  @override
+  TextEditingValue formatEditUpdate(
+      TextEditingValue oldValue, TextEditingValue newValue) {
+    final digits = newValue.text.replaceAll(' ', '');
+    if (digits.length > 16) return oldValue;
+    final buffer = StringBuffer();
+    for (int i = 0; i < digits.length; i++) {
+      if (i > 0 && i % 4 == 0) buffer.write('  ');
+      buffer.write(digits[i]);
+    }
+    final str = buffer.toString();
+    return TextEditingValue(
+      text: str,
+      selection: TextSelection.collapsed(offset: str.length),
+    );
+  }
+}
 
+class _ExpiryFormatter extends TextInputFormatter {
+  @override
+  TextEditingValue formatEditUpdate(
+      TextEditingValue oldValue, TextEditingValue newValue) {
+    final digits = newValue.text.replaceAll('/', '');
+    if (digits.length > 4) return oldValue;
+    String formatted = digits;
+    if (digits.length >= 3) {
+      formatted = '${digits.substring(0, 2)}/${digits.substring(2)}';
+    }
+    return TextEditingValue(
+      text: formatted,
+      selection: TextSelection.collapsed(offset: formatted.length),
+    );
+  }
+}

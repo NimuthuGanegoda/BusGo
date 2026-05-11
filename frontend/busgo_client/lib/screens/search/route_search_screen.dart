@@ -39,7 +39,10 @@ class _RouteSearchScreenState extends State<RouteSearchScreen> {
   double? _userLng;
   bool _locating = true;
 
-  // Auto-refresh timer — cancelled in dispose
+  // ── Nearby landmarks ───────────────────────────────────────────────────────
+  List<Map<String, dynamic>> _landmarks = [];
+  bool _loadingLandmarks = false;
+
   Timer? _stopRefreshTimer;
 
   @override
@@ -72,7 +75,7 @@ class _RouteSearchScreenState extends State<RouteSearchScreen> {
     super.dispose();
   }
 
-  // ── Location & nearest stop ──────────────────────────────────────────────
+  // ── Location & nearest stop ───────────────────────────────────────────────
 
   Future<void> _initLocation() async {
     if (!mounted) return;
@@ -108,6 +111,9 @@ class _RouteSearchScreenState extends State<RouteSearchScreen> {
     await _loadAllData();
     if (!mounted) return;
     setState(() => _locating = false);
+
+    // Fetch landmarks after location is known
+    _fetchNearbyLandmarks();
   }
 
   void _fallbackLocation() {
@@ -126,7 +132,7 @@ class _RouteSearchScreenState extends State<RouteSearchScreen> {
   }
 
   Future<void> _refreshNearestStop() async {
-    if (!mounted) return;                          // ← GUARD #1
+    if (!mounted) return;
     final lat = _userLat ?? 6.9344;
     final lng = _userLng ?? 79.8428;
 
@@ -134,24 +140,235 @@ class _RouteSearchScreenState extends State<RouteSearchScreen> {
       final position = await Geolocator.getCurrentPosition(
         desiredAccuracy: LocationAccuracy.medium,
       ).timeout(const Duration(seconds: 5));
-      if (!mounted) return;                        // ← GUARD #2 after await
+      if (!mounted) return;
       _userLat = position.latitude;
       _userLng = position.longitude;
-    } catch (_) {
-      // use last known
-    }
+    } catch (_) {}
 
-    if (!mounted) return;                          // ← GUARD #3
+    if (!mounted) return;
     final busProvider = context.read<BusProvider>();
     await busProvider.loadNearbyStops(_userLat ?? lat, _userLng ?? lng);
 
-    if (!mounted) return;                          // ← GUARD #4 after await
+    if (!mounted) return;
     if (busProvider.nearbyStops.isNotEmpty) {
       setState(() => _nearestStop = busProvider.nearbyStops.first);
     }
   }
 
-  // ── Search logic ─────────────────────────────────────────────────────────
+  // ── Nearby landmarks — Sri Lankan POIs sorted by distance ────────────────
+  Future<void> _fetchNearbyLandmarks() async {
+    if (!mounted) return;
+    final lat = _userLat ?? 6.9344;
+    final lng = _userLng ?? 79.8428;
+
+    setState(() => _loadingLandmarks = true);
+
+    const allLandmarks = [
+      // Hospitals
+      {'name': 'National Hospital Colombo',       'amenity': 'hospital',      'lat': 6.9225,  'lng': 79.8617},
+      {'name': 'Colombo General Hospital',        'amenity': 'hospital',      'lat': 6.9219,  'lng': 79.8611},
+      {'name': 'Lady Ridgeway Hospital',          'amenity': 'hospital',      'lat': 6.9158,  'lng': 79.8644},
+      {'name': 'De Soysa Maternity Hospital',     'amenity': 'hospital',      'lat': 6.9167,  'lng': 79.8633},
+      {'name': 'Colombo South Hospital',          'amenity': 'hospital',      'lat': 6.8553,  'lng': 79.8703},
+      {'name': 'Nawaloka Hospital',               'amenity': 'hospital',      'lat': 6.9139,  'lng': 79.8583},
+      {'name': 'Asiri Hospital',                  'amenity': 'hospital',      'lat': 6.8967,  'lng': 79.8603},
+      {'name': 'Lanka Hospitals',                 'amenity': 'hospital',      'lat': 6.8961,  'lng': 79.8569},
+      {'name': 'Durdans Hospital',                'amenity': 'hospital',      'lat': 6.8933,  'lng': 79.8567},
+      {'name': 'Hemas Hospital Wattala',          'amenity': 'hospital',      'lat': 7.0494,  'lng': 79.8936},
+      {'name': 'Hemas Hospital Thalawathugoda',   'amenity': 'hospital',      'lat': 6.8714,  'lng': 79.9361},
+      {'name': 'Sri Jayawardenepura Hospital',    'amenity': 'hospital',      'lat': 6.8883,  'lng': 79.9003},
+      {'name': 'Kalubowila Hospital',             'amenity': 'hospital',      'lat': 6.8542,  'lng': 79.8742},
+      {'name': 'Negombo Hospital',                'amenity': 'hospital',      'lat': 7.2094,  'lng': 79.8383},
+      {'name': 'Kandy Hospital',                  'amenity': 'hospital',      'lat': 7.2953,  'lng': 80.6350},
+      {'name': 'Galle Hospital',                  'amenity': 'hospital',      'lat': 6.0328,  'lng': 80.2169},
+      {'name': 'Ratnapura Hospital',              'amenity': 'hospital',      'lat': 6.6806,  'lng': 80.3992},
+      {'name': 'Kurunegala Hospital',             'amenity': 'hospital',      'lat': 7.4833,  'lng': 80.3644},
+      {'name': 'Anuradhapura Hospital',           'amenity': 'hospital',      'lat': 8.3114,  'lng': 80.4037},
+      {'name': 'Jaffna Hospital',                 'amenity': 'hospital',      'lat': 9.6615,  'lng': 80.0255},
+      {'name': 'Matara Hospital',                 'amenity': 'hospital',      'lat': 5.9483,  'lng': 80.5353},
+      {'name': 'Badulla Hospital',                'amenity': 'hospital',      'lat': 6.9894,  'lng': 81.0561},
+      {'name': 'Hambantota Hospital',             'amenity': 'hospital',      'lat': 6.1244,  'lng': 81.1185},
+      {'name': 'Batticaloa Hospital',             'amenity': 'hospital',      'lat': 7.7167,  'lng': 81.6994},
+      {'name': 'Trincomalee Hospital',            'amenity': 'hospital',      'lat': 8.5711,  'lng': 81.2336},
+      // Universities & Schools
+      {'name': 'University of Colombo',           'amenity': 'university',    'lat': 6.9020,  'lng': 79.8607},
+      {'name': 'University of Moratuwa',          'amenity': 'university',    'lat': 6.7953,  'lng': 79.9010},
+      {'name': 'University of Sri Jayewardenepura','amenity': 'university',   'lat': 6.8897,  'lng': 79.9022},
+      {'name': 'University of Kelaniya',          'amenity': 'university',    'lat': 7.0011,  'lng': 79.9197},
+      {'name': 'University of Peradeniya',        'amenity': 'university',    'lat': 7.2544,  'lng': 80.5944},
+      {'name': 'University of Jaffna',            'amenity': 'university',    'lat': 9.6678,  'lng': 80.0228},
+      {'name': 'SLIIT Malabe',                    'amenity': 'university',    'lat': 6.9150,  'lng': 79.9753},
+      {'name': 'IIT Colombo',                     'amenity': 'university',    'lat': 6.9122,  'lng': 79.8756},
+      {'name': 'NSBM Green University',           'amenity': 'university',    'lat': 6.8231,  'lng': 80.0364},
+      {'name': 'Royal College Colombo',           'amenity': 'school',        'lat': 6.9178,  'lng': 79.8614},
+      {'name': 'S. Thomas College Mt Lavinia',    'amenity': 'school',        'lat': 6.8331,  'lng': 79.8667},
+      {'name': 'Visakha Vidyalaya',               'amenity': 'school',        'lat': 6.9028,  'lng': 79.8628},
+      {'name': 'Ananda College',                  'amenity': 'school',        'lat': 6.9119,  'lng': 79.8650},
+      {'name': 'Nalanda College',                 'amenity': 'school',        'lat': 6.9083,  'lng': 79.8789},
+      {'name': 'Thurstan College',                'amenity': 'school',        'lat': 6.9028,  'lng': 79.8567},
+      {'name': 'Dharmaraja College Kandy',        'amenity': 'school',        'lat': 7.2961,  'lng': 80.6361},
+      // Railway Stations
+      {'name': 'Colombo Fort Station',            'amenity': 'station',       'lat': 6.9344,  'lng': 79.8503},
+      {'name': 'Maradana Station',                'amenity': 'station',       'lat': 6.9264,  'lng': 79.8553},
+      {'name': 'Borella Station',                 'amenity': 'station',       'lat': 6.9101,  'lng': 79.8739},
+      {'name': 'Nugegoda Station',                'amenity': 'station',       'lat': 6.8728,  'lng': 79.8895},
+      {'name': 'Dehiwala Station',                'amenity': 'station',       'lat': 6.8516,  'lng': 79.8653},
+      {'name': 'Mount Lavinia Station',           'amenity': 'station',       'lat': 6.8317,  'lng': 79.8653},
+      {'name': 'Bambalapitiya Station',           'amenity': 'station',       'lat': 6.8894,  'lng': 79.8553},
+      {'name': 'Wellawatte Station',              'amenity': 'station',       'lat': 6.8728,  'lng': 79.8553},
+      {'name': 'Kollupitiya Station',             'amenity': 'station',       'lat': 6.9028,  'lng': 79.8483},
+      {'name': 'Kandy Station',                   'amenity': 'station',       'lat': 7.2906,  'lng': 80.6344},
+      {'name': 'Galle Station',                   'amenity': 'station',       'lat': 6.0328,  'lng': 80.2194},
+      {'name': 'Negombo Station',                 'amenity': 'station',       'lat': 7.2094,  'lng': 79.8394},
+      {'name': 'Ragama Station',                  'amenity': 'station',       'lat': 7.0294,  'lng': 79.9203},
+      {'name': 'Kelaniya Station',                'amenity': 'station',       'lat': 7.0011,  'lng': 79.9197},
+      {'name': 'Panadura Station',                'amenity': 'station',       'lat': 6.7133,  'lng': 79.9044},
+      {'name': 'Moratuwa Station',                'amenity': 'station',       'lat': 6.7953,  'lng': 79.8894},
+      {'name': 'Matara Station',                  'amenity': 'station',       'lat': 5.9483,  'lng': 80.5394},
+      {'name': 'Anuradhapura Station',            'amenity': 'station',       'lat': 8.3114,  'lng': 80.4044},
+      {'name': 'Kurunegala Station',              'amenity': 'station',       'lat': 7.4833,  'lng': 80.3653},
+      {'name': 'Vavuniya Station',                'amenity': 'station',       'lat': 8.7511,  'lng': 80.4978},
+      {'name': 'Batticaloa Station',              'amenity': 'station',       'lat': 7.7167,  'lng': 81.6994},
+      {'name': 'Trincomalee Station',             'amenity': 'station',       'lat': 8.5711,  'lng': 81.2344},
+      // Bus Terminals
+      {'name': 'Colombo Central Bus Stand',       'amenity': 'bus_station',   'lat': 6.9344,  'lng': 79.8516},
+      {'name': 'Pettah Bus Terminal',             'amenity': 'bus_station',   'lat': 6.9361,  'lng': 79.8503},
+      {'name': 'Bastian Mawatha Bus Terminal',    'amenity': 'bus_station',   'lat': 6.9378,  'lng': 79.8489},
+      {'name': 'Maharagama Bus Terminal',         'amenity': 'bus_station',   'lat': 6.8483,  'lng': 79.9264},
+      {'name': 'Nugegoda Bus Terminal',           'amenity': 'bus_station',   'lat': 6.8742,  'lng': 79.8897},
+      {'name': 'Kaduwela Bus Terminal',           'amenity': 'bus_station',   'lat': 6.9281,  'lng': 79.9744},
+      {'name': 'Kandy Bus Terminal',              'amenity': 'bus_station',   'lat': 7.2933,  'lng': 80.6333},
+      {'name': 'Negombo Bus Terminal',            'amenity': 'bus_station',   'lat': 7.2111,  'lng': 79.8378},
+      {'name': 'Galle Bus Terminal',              'amenity': 'bus_station',   'lat': 6.0319,  'lng': 80.2178},
+      {'name': 'Kurunegala Bus Terminal',         'amenity': 'bus_station',   'lat': 7.4844,  'lng': 80.3639},
+      {'name': 'Ratnapura Bus Terminal',          'amenity': 'bus_station',   'lat': 6.6817,  'lng': 80.3983},
+      // Shopping
+      {'name': 'Pettah Market',                   'amenity': 'marketplace',   'lat': 6.9355,  'lng': 79.8516},
+      {'name': 'Manning Market',                  'amenity': 'marketplace',   'lat': 6.9389,  'lng': 79.8539},
+      {'name': 'Majestic City',                   'amenity': 'shopping_mall', 'lat': 6.8883,  'lng': 79.8561},
+      {'name': 'Liberty Plaza',                   'amenity': 'shopping_mall', 'lat': 6.9028,  'lng': 79.8561},
+      {'name': 'One Galle Face Mall',             'amenity': 'shopping_mall', 'lat': 6.9169,  'lng': 79.8450},
+      {'name': 'Colombo City Centre',             'amenity': 'shopping_mall', 'lat': 6.9211,  'lng': 79.8489},
+      {'name': 'Odel Colombo',                    'amenity': 'shopping_mall', 'lat': 6.9083,  'lng': 79.8586},
+      {'name': 'House of Fashion',                'amenity': 'shopping_mall', 'lat': 6.9344,  'lng': 79.8528},
+      {'name': 'Kandy City Centre',               'amenity': 'shopping_mall', 'lat': 7.2906,  'lng': 80.6337},
+      {'name': 'Crescat Boulevard',               'amenity': 'shopping_mall', 'lat': 6.9139,  'lng': 79.8478},
+      {'name': 'Marino Mall',                     'amenity': 'shopping_mall', 'lat': 6.9211,  'lng': 79.8483},
+      // Attractions
+      {'name': 'Galle Face Green',                'amenity': 'park',          'lat': 6.9217,  'lng': 79.8444},
+      {'name': 'Viharamahadevi Park',             'amenity': 'park',          'lat': 6.9150,  'lng': 79.8606},
+      {'name': 'Beira Lake',                      'amenity': 'park',          'lat': 6.9183,  'lng': 79.8561},
+      {'name': 'National Museum Colombo',         'amenity': 'museum',        'lat': 6.9133,  'lng': 79.8608},
+      {'name': 'Gangaramaya Temple',              'amenity': 'place_of_worship','lat': 6.9167, 'lng': 79.8572},
+      {'name': 'Kelaniya Raja Maha Vihara',       'amenity': 'place_of_worship','lat': 7.0028, 'lng': 79.9208},
+      {'name': 'Sri Dalada Maligawa',             'amenity': 'place_of_worship','lat': 7.2936, 'lng': 80.6414},
+      {'name': 'Galle Fort',                      'amenity': 'park',          'lat': 6.0269,  'lng': 80.2170},
+      {'name': 'Dutch Hospital Colombo',          'amenity': 'attraction',    'lat': 6.9361,  'lng': 79.8489},
+      {'name': 'Independence Memorial Hall',      'amenity': 'museum',        'lat': 6.9050,  'lng': 79.8614},
+      {'name': 'Colombo Racecourse',              'amenity': 'stadium',       'lat': 6.9094,  'lng': 79.8650},
+      {'name': 'SSC Cricket Ground',              'amenity': 'stadium',       'lat': 6.9161,  'lng': 79.8617},
+      {'name': 'R Premadasa Stadium',             'amenity': 'stadium',       'lat': 6.9483,  'lng': 79.8728},
+      {'name': 'Sugathadasa Stadium',             'amenity': 'stadium',       'lat': 6.9294,  'lng': 79.8669},
+      {'name': 'Dehiwala Zoo',                    'amenity': 'park',          'lat': 6.8500,  'lng': 79.8667},
+      {'name': 'Lotus Tower',                     'amenity': 'attraction',    'lat': 6.9294,  'lng': 79.8667},
+      // Key Areas
+      {'name': 'Colombo Fort',                    'amenity': 'station',       'lat': 6.9344,  'lng': 79.8428},
+      {'name': 'Pettah',                          'amenity': 'marketplace',   'lat': 6.9361,  'lng': 79.8503},
+      {'name': 'Rajagiriya',                      'amenity': 'station',       'lat': 6.9067,  'lng': 79.8983},
+      {'name': 'Battaramulla',                    'amenity': 'station',       'lat': 6.9028,  'lng': 79.9214},
+      {'name': 'Malabe',                          'amenity': 'station',       'lat': 6.9083,  'lng': 79.9703},
+      {'name': 'Kaduwela',                        'amenity': 'station',       'lat': 6.9281,  'lng': 79.9744},
+      {'name': 'Nugegoda',                        'amenity': 'station',       'lat': 6.8728,  'lng': 79.8895},
+      {'name': 'Maharagama',                      'amenity': 'station',       'lat': 6.8483,  'lng': 79.9264},
+      {'name': 'Dehiwala',                        'amenity': 'station',       'lat': 6.8516,  'lng': 79.8653},
+      {'name': 'Mount Lavinia',                   'amenity': 'park',          'lat': 6.8317,  'lng': 79.8653},
+      {'name': 'Moratuwa',                        'amenity': 'station',       'lat': 6.7953,  'lng': 79.8894},
+      {'name': 'Panadura',                        'amenity': 'station',       'lat': 6.7133,  'lng': 79.9044},
+      {'name': 'Piliyandala',                     'amenity': 'station',       'lat': 6.8019,  'lng': 79.9297},
+      {'name': 'Homagama',                        'amenity': 'station',       'lat': 6.8458,  'lng': 80.0019},
+      {'name': 'Kottawa',                         'amenity': 'station',       'lat': 6.8383,  'lng': 79.9744},
+      {'name': 'Athurugiriya',                    'amenity': 'station',       'lat': 6.8883,  'lng': 79.9783},
+      {'name': 'Thalawathugoda',                  'amenity': 'station',       'lat': 6.8714,  'lng': 79.9361},
+      {'name': 'Kesbewa',                         'amenity': 'station',       'lat': 6.8203,  'lng': 79.9492},
+      {'name': 'Bandaragama',                     'amenity': 'station',       'lat': 6.7194,  'lng': 79.9839},
+      {'name': 'Wattala',                         'amenity': 'station',       'lat': 7.0494,  'lng': 79.8936},
+      {'name': 'Ja-Ela',                          'amenity': 'station',       'lat': 7.0742,  'lng': 79.8914},
+      {'name': 'Negombo',                         'amenity': 'station',       'lat': 7.2094,  'lng': 79.8383},
+      {'name': 'Gampaha',                         'amenity': 'station',       'lat': 7.0894,  'lng': 79.9994},
+      {'name': 'Minuwangoda',                     'amenity': 'station',       'lat': 7.1644,  'lng': 79.9544},
+      {'name': 'Katunayake',                      'amenity': 'station',       'lat': 7.1694,  'lng': 79.8836},
+      {'name': 'Bandaranaike Airport',            'amenity': 'station',       'lat': 7.1808,  'lng': 79.8841},
+      {'name': 'Kiribathgoda',                    'amenity': 'station',       'lat': 6.9783,  'lng': 79.9356},
+      {'name': 'Kelaniya',                        'amenity': 'station',       'lat': 7.0011,  'lng': 79.9197},
+      {'name': 'Peliyagoda',                      'amenity': 'station',       'lat': 6.9594,  'lng': 79.8894},
+      {'name': 'Grandpass',                       'amenity': 'station',       'lat': 6.9444,  'lng': 79.8614},
+      {'name': 'Dematagoda',                      'amenity': 'station',       'lat': 6.9297,  'lng': 79.8792},
+      {'name': 'Narahenpita',                     'amenity': 'station',       'lat': 6.8994,  'lng': 79.8714},
+      {'name': 'Kirulapone',                      'amenity': 'station',       'lat': 6.8728,  'lng': 79.8742},
+      {'name': 'Havelock Town',                   'amenity': 'station',       'lat': 6.8894,  'lng': 79.8614},
+      {'name': 'Slave Island',                    'amenity': 'station',       'lat': 6.9169,  'lng': 79.8503},
+      {'name': 'Union Place',                     'amenity': 'station',       'lat': 6.9194,  'lng': 79.8544},
+      {'name': 'Hyde Park Corner',                'amenity': 'station',       'lat': 6.9111,  'lng': 79.8578},
+      {'name': 'Wellawatte',                      'amenity': 'station',       'lat': 6.8728,  'lng': 79.8553},
+      {'name': 'Ratmalana',                       'amenity': 'station',       'lat': 6.8217,  'lng': 79.8819},
+      {'name': 'Angulana',                        'amenity': 'station',       'lat': 6.8094,  'lng': 79.8761},
+    ];
+
+    double haversine(double lat1, double lng1, double lat2, double lng2) {
+      const R = 6371.0;
+      final dLat = (lat2 - lat1) * 3.14159265 / 180;
+      final dLng = (lng2 - lng1) * 3.14159265 / 180;
+      final a = sin(dLat / 2) * sin(dLat / 2) +
+          cos(lat1 * 3.14159265 / 180) * cos(lat2 * 3.14159265 / 180) *
+          sin(dLng / 2) * sin(dLng / 2);
+      return R * 2 * asin(sqrt(a.clamp(0, 1)));
+    }
+
+    final withDistance = allLandmarks.map((lm) {
+      final lmLat = (lm['lat'] as num).toDouble();
+      final lmLng = (lm['lng'] as num).toDouble();
+      return <String, dynamic>{
+        ...lm,
+        '_dist': haversine(lat, lng, lmLat, lmLng),
+      };
+    }).toList();
+
+    withDistance.sort((a, b) =>
+        (a['_dist'] as double).compareTo(b['_dist'] as double));
+
+    if (mounted) {
+      setState(() {
+        _landmarks = withDistance.take(10).map((lm) => <String, dynamic>{
+          'name':    lm['name'] as String,
+          'amenity': lm['amenity'] as String,
+          'lat':     (lm['lat'] as num).toDouble(),
+          'lng':     (lm['lng'] as num).toDouble(),
+        }).toList();
+        _loadingLandmarks = false;
+      });
+    }
+  }
+
+  // ── Icon for amenity type ─────────────────────────────────────────────────
+  IconData _amenityIcon(String amenity) {
+    switch (amenity) {
+      case 'hospital':      return Icons.local_hospital_rounded;
+      case 'school':        return Icons.school_rounded;
+      case 'university':    return Icons.account_balance_rounded;
+      case 'shopping_mall': return Icons.shopping_bag_rounded;
+      case 'park':          return Icons.park_rounded;
+      case 'cinema':        return Icons.movie_rounded;
+      case 'stadium':       return Icons.sports_rounded;
+      case 'museum':        return Icons.museum_rounded;
+      case 'library':       return Icons.local_library_rounded;
+      case 'pharmacy':      return Icons.local_pharmacy_rounded;
+      case 'bank':          return Icons.account_balance_wallet_rounded;
+      case 'supermarket':   return Icons.local_grocery_store_rounded;
+      default:              return Icons.place_rounded;
+    }
+  }
+
+  // ── Search logic ──────────────────────────────────────────────────────────
 
   void _onSearchChanged() {
     if (!mounted) return;
@@ -295,7 +512,7 @@ class _RouteSearchScreenState extends State<RouteSearchScreen> {
         content: Row(children: [
           const Icon(Icons.directions_bus_rounded, color: Colors.white, size: 16),
           const SizedBox(width: 8),
-          Expanded(child: Text('Now tracking Bus $busNumber · You will be notified when it arrives')),
+          Expanded(child: Text('Now tracking Bus $busNumber \u00B7 You will be notified when it arrives')),
         ]),
         backgroundColor: const Color(0xFF16A34A),
         duration: const Duration(seconds: 3),
@@ -360,6 +577,9 @@ class _RouteSearchScreenState extends State<RouteSearchScreen> {
                     if (_showSuggestions) _buildSuggestions(),
                     _buildNearestStopBadge(),
                     const SizedBox(height: 12),
+                    // Show landmarks only when search is empty
+                    if (_destinationController.text.isEmpty)
+                      _buildNearbyLandmarks(),
                     _buildNearbyStops(),
                     const SizedBox(height: 8),
                     _buildRecentTrips(),
@@ -370,6 +590,103 @@ class _RouteSearchScreenState extends State<RouteSearchScreen> {
                   ]),
                 ),
         ),
+      ]),
+    );
+  }
+
+  // ── Nearby landmarks section ──────────────────────────────────────────────
+  Widget _buildNearbyLandmarks() {
+    if (_loadingLandmarks) {
+      return Padding(
+        padding: const EdgeInsets.only(bottom: 16),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          _buildSectionHeader('Nearby Landmarks', Icons.place_rounded),
+          const SizedBox(height: 8),
+          SizedBox(
+            height: 80,
+            child: ListView.separated(
+              scrollDirection: Axis.horizontal,
+              itemCount: 4,
+              separatorBuilder: (_, __) => const SizedBox(width: 10),
+              itemBuilder: (_, __) => Container(
+                width: 110,
+                decoration: BoxDecoration(
+                  color: const Color(0xFF0A1628),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: AppColors.border)),
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
+        ]),
+      );
+    }
+
+    if (_landmarks.isEmpty) return const SizedBox.shrink();
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 16),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          _buildSectionHeader('Nearby Landmarks', Icons.place_rounded),
+          const Spacer(),
+          Text('Within 3 km',
+              style: TextStyle(fontSize: 11,
+                  color: AppColors.textMuted.withOpacity(0.6))),
+        ]),
+        const SizedBox(height: 10),
+        SizedBox(
+          height: 88,
+          child: ListView.separated(
+            scrollDirection: Axis.horizontal,
+            itemCount: _landmarks.length,
+            separatorBuilder: (_, __) => const SizedBox(width: 10),
+            itemBuilder: (context, index) {
+              final lm      = _landmarks[index];
+              final name    = lm['name'] as String;
+              final amenity = lm['amenity'] as String;
+              final icon    = _amenityIcon(amenity);
+              return GestureDetector(
+                onTap: () => _selectDestination(name),
+                child: Container(
+                  width: 110,
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF0A1628),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                        color: AppColors.secondary.withOpacity(0.2))),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Container(
+                        width: 32, height: 32,
+                        decoration: BoxDecoration(
+                          color: AppColors.secondary.withOpacity(0.12),
+                          borderRadius: BorderRadius.circular(8)),
+                        child: Icon(icon, size: 16,
+                            color: AppColors.secondary)),
+                      const SizedBox(height: 6),
+                      Text(name,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.w600,
+                              color: Colors.white)),
+                    ],
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+        const SizedBox(height: 4),
+        Text('Tap a landmark to search routes there',
+            style: TextStyle(fontSize: 10,
+                color: AppColors.textMuted.withOpacity(0.5))),
+        const SizedBox(height: 12),
       ]),
     );
   }
@@ -609,7 +926,7 @@ class _RouteSearchScreenState extends State<RouteSearchScreen> {
         ...tripProvider.recentTrips.map((trip) => _buildStopItem(
           icon: Icons.schedule_rounded,
           title: trip.from,
-          subtitle: 'Route ${trip.routeNumber} · ${trip.date}',
+          subtitle: 'Route ${trip.routeNumber} \u00B7 ${trip.date}',
           onTap: () => _selectDestination(trip.from),
         )),
       ]);
@@ -893,7 +1210,7 @@ class _RouteSearchScreenState extends State<RouteSearchScreen> {
             child: const Icon(Icons.directions_bus_rounded, size: 18, color: AppColors.secondary)),
           const SizedBox(width: 10),
           Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text('Bus $busNumber · $driverName',
+            Text('Bus $busNumber \u00B7 $driverName',
                 style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Colors.white)),
             const SizedBox(height: 3),
             Row(children: [
@@ -962,6 +1279,3 @@ class _StopRouteEntry {
   final BusRoute route;
   const _StopRouteEntry({required this.stop, required this.route});
 }
-
-
-

@@ -15,7 +15,7 @@ class Driver {
   final String vehiclePlate;
   final String vehicleModel;
 
-  // ── Assigned bus & route (loaded after login) ──────────────────────────────
+  // ── Assigned bus & route (loaded after login) ─────────────────────────────
   final String? busId;
   final String? busNumber;
   final String? assignedRouteId;
@@ -32,20 +32,20 @@ class Driver {
     required this.phone,
     required this.licenseNumber,
     required this.licenseExpiry,
-    this.photoUrl            = '',
-    this.rating              = 0.0,
-    this.tripsCompleted      = 0,
-    this.hoursLogged         = 0,
-    this.status              = 'active',
-    this.vehicleId           = '',
-    this.vehiclePlate        = '',
-    this.vehicleModel        = '',
-    this.busId               = null,
-    this.busNumber           = null,
-    this.assignedRouteId     = null,
-    this.assignedRouteNumber = null,
-    this.assignedRouteName   = null,
-    this.assignedRouteOrigin = null,
+    this.photoUrl             = '',
+    this.rating               = 0.0,
+    this.tripsCompleted       = 0,
+    this.hoursLogged          = 0,
+    this.status               = 'active',
+    this.vehicleId            = '',
+    this.vehiclePlate         = '',
+    this.vehicleModel         = '',
+    this.busId                = null,
+    this.busNumber            = null,
+    this.assignedRouteId      = null,
+    this.assignedRouteNumber  = null,
+    this.assignedRouteName    = null,
+    this.assignedRouteOrigin  = null,
     this.assignedRouteDestination = null,
   });
 
@@ -56,10 +56,12 @@ class Driver {
   }
 
   String get ratingDisplay => rating.toStringAsFixed(1);
-
-  bool get hasBusAssigned => busId != null;
+  bool   get hasBusAssigned => busId != null;
 
   Driver copyWith({
+    String? name,
+    String? phone,
+    String? photoUrl,
     String? busId,
     String? busNumber,
     String? assignedRouteId,
@@ -67,34 +69,29 @@ class Driver {
     String? assignedRouteName,
     String? assignedRouteOrigin,
     String? assignedRouteDestination,
-  }) => Driver(
-    id:                    id,
-    employeeId:            employeeId,
-    name:                  name,
-    email:                 email,
-    phone:                 phone,
-    licenseNumber:         licenseNumber,
-    licenseExpiry:         licenseExpiry,
-    photoUrl:              photoUrl,
-    rating:                rating,
-    tripsCompleted:        tripsCompleted,
-    hoursLogged:           hoursLogged,
-    status:                status,
-    vehicleId:             vehicleId,
-    vehiclePlate:          vehiclePlate,
-    vehicleModel:          vehicleModel,
-    busId:                 busId               ?? this.busId,
-    busNumber:             busNumber           ?? this.busNumber,
-    assignedRouteId:       assignedRouteId     ?? this.assignedRouteId,
-    assignedRouteNumber:   assignedRouteNumber ?? this.assignedRouteNumber,
-    assignedRouteName:     assignedRouteName   ?? this.assignedRouteName,
-    assignedRouteOrigin:   assignedRouteOrigin ?? this.assignedRouteOrigin,
-    assignedRouteDestination: assignedRouteDestination ?? this.assignedRouteDestination,
-  );
+  }) =>
+      Driver(
+        id:                       id,
+        employeeId:               employeeId,
+        name:                     name                     ?? this.name,
+        email:                    email,
+        phone:                    phone                    ?? this.phone,
+        licenseNumber:            licenseNumber,
+        licenseExpiry:            licenseExpiry,
+        photoUrl:                 photoUrl                 ?? this.photoUrl,
+        rating:                   rating,
+        tripsCompleted:           tripsCompleted,
+        hoursLogged:              hoursLogged,
+        status:                   status,
+        vehicleId:                vehicleId,
+        vehiclePlate:             vehiclePlate,
+        vehicleModel:             vehicleModel,
+        busId:                    busId                    ?? this.busId,
+        busNumber:                busNumber                ?? this.busNumber,
+        assignedRouteId:          assignedRouteId          ?? this.assignedRouteId,
+        assignedRouteNumber:      assignedRouteNumber      ?? this.assignedRouteNumber,
+        assignedRouteName:        assignedRouteName        ?? this.assignedRouteName,
+        assignedRouteOrigin:      assignedRouteOrigin      ?? this.assignedRouteOrigin,
+        assignedRouteDestination: assignedRouteDestination ?? this.assignedRouteDestination,
+      );
 }
-
-
-
-
-
-

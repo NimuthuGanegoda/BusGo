@@ -2,6 +2,40 @@ import { supabase } from '../../config/supabase.js';
 import { haversineKm } from '../../utils/haversine.utils.js';
 import { predictETA } from '../../utils/ml.client.js';
 
+
+// ── Open-Meteo weather check (free, no API key) ───────────────────────────────
+// Returns 1 if raining, 0 if dry or if API is unavailable.
+async function checkIsRaining(lat, lng) {
+  try {
+    const resp = await fetch(
+      `https://api.open-meteo.com/v1/forecast` +
+      `?latitude=${lat}&longitude=${lng}` +
+      `&current=precipitation&timezone=Asia%2FColombo`,
+      { signal: AbortSignal.timeout(3000) }
+    );
+    if (!resp.ok) return 0;
+    const data   = await resp.json();
+    const precip = data?.current?.precipitation ?? 0;
+    return precip > 0 ? 1 : 0;
+  } catch (_) {
+    return 0;
+  }
+}
+
+// ── Sri Lanka Public Holidays 2026 ────────────────────────────────────────────
+const SL_PUBLIC_HOLIDAYS_2026 = new Set([
+  '2026-01-14', '2026-01-15', '2026-02-04', '2026-02-13',
+  '2026-02-14', '2026-03-15', '2026-04-03', '2026-04-13',
+  '2026-04-14', '2026-05-01', '2026-05-12', '2026-05-13',
+  '2026-06-11', '2026-07-10', '2026-08-09', '2026-09-08',
+  '2026-10-07', '2026-10-20', '2026-11-06', '2026-12-05',
+  '2026-12-25',
+]);
+
+function checkIsPublicHoliday() {
+  const today = new Date().toISOString().slice(0, 10);
+  return SL_PUBLIC_HOLIDAYS_2026.has(today) ? 1 : 0;
+}
 /**
  * Predict ETA for a bus to reach a specific stop.
  *
@@ -43,8 +77,27 @@ export async function getBusETA(busId, targetStopId, context = {}) {
     .eq('route_id', bus.route_id)
     .order('stop_order');
 
-  const targetStopIndex = routeStops?.findIndex(s => s.bus_stops?.id === targetStopId) ?? -1;
-  let stops_remaining = Math.max(targetStopIndex, 0);
+  let stops_remaining = 3; // safe default
+  if (routeStops && routeStops.length > 0) {
+    // Find which stop the bus is currently closest to
+    let busStopIdx = 0;
+    let minDist    = Infinity;
+    for (let i = 0; i < routeStops.length; i++) {
+      const s = routeStops[i].bus_stops;
+      if (!s?.latitude || !s?.longitude) continue;
+      const d = haversineKm(bus.current_lat, bus.current_lng, s.latitude, s.longitude);
+      if (d < minDist) { minDist = d; busStopIdx = i; }
+    }
+    // Count stops from bus position to target
+    const targetStopIndex = routeStops.findIndex(s => s.bus_stops?.id === targetStopId);
+    if (targetStopIndex > busStopIdx) {
+      stops_remaining = targetStopIndex - busStopIdx;
+    } else if (targetStopIndex === -1) {
+      stops_remaining = Math.max(Math.round(dist_km / 0.5), 1);
+    } else {
+      stops_remaining = Math.max(routeStops.length - busStopIdx, 1);
+    }
+  }
 
   // 4. Calculate straight-line distance (haversine)
   const dist_km = haversineKm(
@@ -52,15 +105,18 @@ export async function getBusETA(busId, targetStopId, context = {}) {
     stop.latitude, stop.longitude
   );
 
-  const hour = new Date().getHours();
+  const hour            = new Date().getHours();
+  const is_raining      = await checkIsRaining(bus.current_lat, bus.current_lng);
+  const is_public_holiday = checkIsPublicHoliday();
 
   // 5. Call ML service
   const mlResult = await predictETA({
-    bus_number:      bus.bus_number,
+    bus_number:        bus.bus_number,
     dist_km,
     stops_remaining,
-    speed_kmh:       bus.speed_kmh || 20,
-    is_raining:      context.is_raining || false,
+    speed_kmh:         bus.speed_kmh || 20,
+    is_raining,
+    is_public_holiday,
     hour,
   });
 

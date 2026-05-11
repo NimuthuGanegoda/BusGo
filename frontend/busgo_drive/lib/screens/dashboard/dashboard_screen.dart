@@ -23,7 +23,6 @@ class _DashboardScreenState extends State<DashboardScreen>
     with SingleTickerProviderStateMixin {
   bool _isOnline = false;
 
-  // Express mode banner animation
   late AnimationController _expressAnimCtrl;
   late Animation<double>   _expressPulse;
 
@@ -42,7 +41,7 @@ class _DashboardScreenState extends State<DashboardScreen>
       final auth = context.read<AuthProvider>();
 
       if (rp.routes.isEmpty) {
-        await rp.loadRoutes();  // â† wait for routes to load first
+        await rp.loadRoutes();
       }
 
       if (auth.driver?.id != null) {
@@ -97,12 +96,12 @@ class _DashboardScreenState extends State<DashboardScreen>
       await _setBusStatus('active',
           lat: tp.currentLocation.latitude,
           lng: tp.currentLocation.longitude);
-      tp.startOnlineSession(); // start duration + distance tracking
+      tp.startOnlineSession();
       setState(() => _isOnline = true);
     } else {
       final tpOff = context.read<TripProvider>();
       tpOff.stopGpsStream();
-      tpOff.stopOnlineSession(); // stop duration + distance tracking
+      tpOff.stopOnlineSession();
       await _setBusStatus('inactive');
       setState(() => _isOnline = false);
     }
@@ -132,10 +131,7 @@ class _DashboardScreenState extends State<DashboardScreen>
           backgroundColor: AppColors.background,
           body: Column(children: [
             _buildTopBar(trip),
-
-            // â”€â”€ FR-34: Express Mode persistent banner â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
             if (trip.isExpressMode) _buildExpressBanner(trip),
-
             Expanded(
               child: SingleChildScrollView(
                 padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
@@ -170,7 +166,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                                   color: AppColors.textPrimary)),
                             Text(
                               _isOnline
-                                  ? 'GPS active â€” passengers can see your bus'
+                                  ? 'GPS active \u2014 passengers can see your bus'
                                   : 'Toggle ON to share your location',
                               style: GoogleFonts.inter(fontSize: 11,
                                   color: AppColors.textSecondary)),
@@ -216,10 +212,10 @@ class _DashboardScreenState extends State<DashboardScreen>
                         const Icon(Icons.gps_fixed, color: AppColors.success, size: 16),
                         const SizedBox(width: 8),
                         Expanded(child: Text(
-                          'GPS Active â€” '
+                          'GPS Active \u2014 '
                           '${trip.currentLocation.latitude.toStringAsFixed(5)}, '
                           '${trip.currentLocation.longitude.toStringAsFixed(5)}'
-                          '  â€¢  ${trip.currentSpeed.toStringAsFixed(0)} km/h',
+                          '  \u2022  ${trip.currentSpeed.toStringAsFixed(0)} km/h',
                           style: GoogleFonts.inter(fontSize: 11,
                               color: AppColors.success, fontWeight: FontWeight.w600))),
                       ])),
@@ -254,7 +250,6 @@ class _DashboardScreenState extends State<DashboardScreen>
         );
       });
 
-  // â”€â”€ FR-34: Express Mode Banner â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   Widget _buildExpressBanner(TripProvider trip) {
     return AnimatedBuilder(
       animation: _expressPulse,
@@ -290,14 +285,11 @@ class _DashboardScreenState extends State<DashboardScreen>
                 color: Colors.white.withOpacity(0.2),
                 borderRadius: BorderRadius.circular(6)),
               child: Row(mainAxisSize: MainAxisSize.min, children: [
-                const Icon(Icons.flash_on_rounded,
-                    size: 14, color: Colors.white),
+                const Icon(Icons.flash_on_rounded, size: 14, color: Colors.white),
                 const SizedBox(width: 4),
                 Text('EXPRESS MODE',
-                    style: GoogleFonts.inter(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w900,
-                        color: Colors.white,
+                    style: GoogleFonts.inter(fontSize: 11,
+                        fontWeight: FontWeight.w900, color: Colors.white,
                         letterSpacing: 1.2)),
               ])),
             const Spacer(),
@@ -308,19 +300,15 @@ class _DashboardScreenState extends State<DashboardScreen>
                 borderRadius: BorderRadius.circular(20)),
               child: Text(
                 '${trip.currentPassengers}/${trip.busCapacity} seats',
-                style: GoogleFonts.inter(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w700,
-                    color: Colors.white)),
+                style: GoogleFonts.inter(fontSize: 11,
+                    fontWeight: FontWeight.w700, color: Colors.white)),
             ),
           ]),
           const SizedBox(height: 8),
           Text(
             'Bus is at full capacity. Skipping stops with no passengers.',
-            style: GoogleFonts.inter(
-                fontSize: 12,
-                color: Colors.white.withOpacity(0.9),
-                height: 1.4)),
+            style: GoogleFonts.inter(fontSize: 12,
+                color: Colors.white.withOpacity(0.9), height: 1.4)),
           if (trip.mustStopCount > 0) ...[
             const SizedBox(height: 8),
             Container(
@@ -329,50 +317,39 @@ class _DashboardScreenState extends State<DashboardScreen>
               decoration: BoxDecoration(
                 color: Colors.white.withOpacity(0.12),
                 borderRadius: BorderRadius.circular(8)),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(children: [
-                    const Icon(Icons.location_on_rounded,
-                        size: 13, color: Colors.white70),
-                    const SizedBox(width: 4),
-                    Text(
-                      'Must stop at ${trip.mustStopCount} '
-                      '${trip.mustStopCount == 1 ? 'stop' : 'stops'}:',
-                      style: GoogleFonts.inter(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w600,
-                          color: Colors.white70)),
-                  ]),
-                  const SizedBox(height: 4),
-                  Wrap(
-                    spacing: 6,
-                    runSpacing: 4,
-                    children: trip.mustStopAt.map((stop) {
-                      final name = stop['name'] as String? ?? 'Stop';
-                      return Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 8, vertical: 3),
-                        decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(0.2),
-                          borderRadius: BorderRadius.circular(12)),
-                        child: Text(name,
-                            style: GoogleFonts.inter(
-                                fontSize: 10,
-                                fontWeight: FontWeight.w600,
-                                color: Colors.white)),
-                      );
-                    }).toList(),
-                  ),
-                ],
-              ),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Row(children: [
+                  const Icon(Icons.location_on_rounded, size: 13, color: Colors.white70),
+                  const SizedBox(width: 4),
+                  Text(
+                    'Must stop at ${trip.mustStopCount} '
+                    '${trip.mustStopCount == 1 ? 'stop' : 'stops'}:',
+                    style: GoogleFonts.inter(fontSize: 11,
+                        fontWeight: FontWeight.w600, color: Colors.white70)),
+                ]),
+                const SizedBox(height: 4),
+                Wrap(
+                  spacing: 6, runSpacing: 4,
+                  children: trip.mustStopAt.map((stop) {
+                    final name = stop['name'] as String? ?? 'Stop';
+                    return Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.2),
+                        borderRadius: BorderRadius.circular(12)),
+                      child: Text(name, style: GoogleFonts.inter(
+                          fontSize: 10, fontWeight: FontWeight.w600,
+                          color: Colors.white)),
+                    );
+                  }).toList(),
+                ),
+              ]),
             ),
           ],
           const SizedBox(height: 6),
           Text(
             'Express mode disables automatically when passengers alight.',
-            style: GoogleFonts.inter(
-                fontSize: 10,
+            style: GoogleFonts.inter(fontSize: 10,
                 color: Colors.white.withOpacity(0.6),
                 fontStyle: FontStyle.italic)),
         ]),
@@ -382,9 +359,9 @@ class _DashboardScreenState extends State<DashboardScreen>
 
   Widget _buildTopBar(TripProvider trip) {
     final routeNumber = trip.currentRoute?.routeNumber ?? '138';
-    final routeName   = trip.currentRoute?.routeDirection ?? 'Kaduwela â†’ Colombo Fort';
-    final now     = TimeOfDay.now();
-    final timeStr = '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}';
+    final routeName   = trip.currentRoute?.routeDirection ?? 'Kaduwela \u2192 Colombo Fort';
+    final now         = TimeOfDay.now();
+    final timeStr     = '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}';
 
     return Container(
       decoration: BoxDecoration(
@@ -395,11 +372,12 @@ class _DashboardScreenState extends State<DashboardScreen>
           left: 20, right: 20, bottom: 14),
       child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
         Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text('On Duty â€” Route $routeNumber',
+          Text('On Duty \u2014 Route $routeNumber',
               style: GoogleFonts.inter(fontSize: 15, fontWeight: FontWeight.w700,
                   color: Colors.white)),
           const SizedBox(height: 3),
-          Text(routeName, style: GoogleFonts.inter(fontSize: 12, color: AppColors.accent)),
+          Text(routeName, style: GoogleFonts.inter(
+              fontSize: 12, color: AppColors.accent)),
         ])),
         Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
           Container(
@@ -469,7 +447,7 @@ class _DashboardScreenState extends State<DashboardScreen>
 
   Widget _buildMapPreview(TripProvider trip) {
     final routeProvider = context.read<RouteProvider>();
-    final route = trip.currentRoute ?? routeProvider.assignedRoute ?? MockDataService.routes.first;
+    final route       = trip.currentRoute ?? routeProvider.assignedRoute ?? MockDataService.routes.first;
     final busLocation = trip.currentLocation;
     final traveledPath= trip.traveledPath;
 
@@ -581,9 +559,9 @@ class _DashboardScreenState extends State<DashboardScreen>
 
   Widget _buildTripStats(TripProvider trip) {
     final speed       = trip.currentSpeed;
-    final distance    = trip.onlineDistance;        // live from toggle ON
-    final durationMin = trip.onlineDurationMinutes; // live from toggle ON
-    final boarded     = trip.totalBoarded;          // increments from QR scans
+    final distance    = trip.onlineDistance;
+    final durationMin = trip.onlineDurationMinutes;
+    final boarded     = trip.totalBoarded;
 
     return Row(children: [
       Expanded(child: _statTile(icon: Icons.speed_rounded,
@@ -654,13 +632,3 @@ class _GaugeRingPainter extends CustomPainter {
   bool shouldRepaint(covariant _GaugeRingPainter old) =>
       old.fillPercent != fillPercent || old.fillColor != fillColor;
 }
-
-
-
-
-
-
-
-
-
-

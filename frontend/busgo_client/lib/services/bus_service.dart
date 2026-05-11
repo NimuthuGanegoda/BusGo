@@ -41,6 +41,11 @@ class BusService {
     final data = await _api.get(ApiEndpoints.routeBuses(routeId));
     return (data as List).map((e) => BusModel.fromJson(e as Map<String, dynamic>)).toList();
   }
+
+  Future<Map<String, dynamic>> getRouteById(String routeId) async {
+    final data = await _api.get(ApiEndpoints.routeById(routeId));
+    return data as Map<String, dynamic>;
+}
 }
 
 
