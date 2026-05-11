@@ -1,4 +1,4 @@
-﻿import 'dart:ui';
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -86,30 +86,72 @@ class _RegisterScreenState extends State<RegisterScreen>
     return n / 9;
   }
 
+  // ── Password strength: requires 3x lowercase, uppercase, numbers, special ─
   int _strengthScore(String pass) {
+    if (pass.isEmpty) return 0;
+    if (_isCommonPassword(pass)) return 0;
     int score = 0;
-    if (pass.length >= 8)  score++;
+    if (pass.length >= 10) score++;
     if (pass.length >= 12) score++;
-    if (RegExp(r'[A-Z]').hasMatch(pass)) score++;
-    if (RegExp(r'[0-9]').hasMatch(pass)) score++;
-    if (RegExp(r'[!@#\$%^&*]').hasMatch(pass)) score++;
+    final lower   = RegExp(r'[a-z]').allMatches(pass).length;
+    final upper   = RegExp(r'[A-Z]').allMatches(pass).length;
+    final numbers = RegExp(r'[0-9]').allMatches(pass).length;
+    final special = RegExp(r'[$%^&*!@#()\-_=+\[\]{};:,.<>?]').allMatches(pass).length;
+    if (lower   >= 3) score++;
+    if (upper   >= 3) score++;
+    if (numbers >= 3) score++;
+    if (special >= 3) score++;
     return score;
+  }
+
+  // ── Password validation: returns error string or null ─────────────────────
+  String? _validatePassword(String pass) {
+    if (pass.isEmpty)     return 'Password is required';
+    if (pass.length < 10) return 'Minimum 10 characters required';
+    if (_isCommonPassword(pass))
+      return 'This password is too common. Choose something unique.';
+    final lower   = RegExp(r'[a-z]').allMatches(pass).length;
+    final upper   = RegExp(r'[A-Z]').allMatches(pass).length;
+    final numbers = RegExp(r'[0-9]').allMatches(pass).length;
+    final special = RegExp(r'[$%^&*!@#()\-_=+\[\]{};:,.<>?]').allMatches(pass).length;
+    if (lower   < 3) return 'Need at least 3 lowercase letters';
+    if (upper   < 3) return 'Need at least 3 uppercase letters';
+    if (numbers < 3) return 'Need at least 3 numbers';
+    if (special < 3) return 'Need at least 3 special characters (\$%^&*)';
+    return null;
   }
 
   Widget _buildPasswordStrength(String pass) {
     if (pass.isEmpty) return const SizedBox.shrink();
     final isCommon = _isCommonPassword(pass);
     final score    = _strengthScore(pass);
-    final label    = isCommon
-        ? 'Too Common'
-        : score <= 1 ? 'Weak'
-        : score <= 3 ? 'Fair'
+    final label    = isCommon ? 'Too Common'
+        : score <= 2 ? 'Weak'
+        : score <= 4 ? 'Fair'
         : 'Strong';
-    final color    = (isCommon || score <= 1)
+    final color = (isCommon || score <= 2)
         ? const Color(0xFFEF4444)
-        : score <= 3
+        : score <= 4
             ? const Color(0xFFF59E0B)
             : const Color(0xFF22C55E);
+
+    // Show specific hint for what is still missing
+    String? hint;
+    if (!isCommon && pass.isNotEmpty) {
+      if (pass.length < 10) {
+        hint = 'Need at least 10 characters';
+      } else {
+        final lower   = RegExp(r'[a-z]').allMatches(pass).length;
+        final upper   = RegExp(r'[A-Z]').allMatches(pass).length;
+        final numbers = RegExp(r'[0-9]').allMatches(pass).length;
+        final special = RegExp(r'[$%^&*!@#()\-_=+\[\]{};:,.<>?]').allMatches(pass).length;
+        if (lower   < 3) hint = 'Need ${3 - lower} more lowercase letter${3 - lower == 1 ? '' : 's'}';
+        else if (upper   < 3) hint = 'Need ${3 - upper} more uppercase letter${3 - upper == 1 ? '' : 's'}';
+        else if (numbers < 3) hint = 'Need ${3 - numbers} more number${3 - numbers == 1 ? '' : 's'}';
+        else if (special < 3) hint = 'Need ${3 - special} more special characters (\$%^&*)';
+      }
+    }
+
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
       child: Column(
@@ -119,7 +161,7 @@ class _RegisterScreenState extends State<RegisterScreen>
             Expanded(child: ClipRRect(
               borderRadius: BorderRadius.circular(2),
               child: LinearProgressIndicator(
-                value: isCommon ? 0.2 : score / 5,
+                value: isCommon ? 0.1 : score / 7,
                 backgroundColor: Colors.white.withOpacity(0.08),
                 valueColor: AlwaysStoppedAnimation<Color>(color),
                 minHeight: 3))),
@@ -134,8 +176,13 @@ class _RegisterScreenState extends State<RegisterScreen>
               child: Text(
                 'This password is too common. Choose something unique.',
                 style: GoogleFonts.poppins(
-                    fontSize: 10,
-                    color: const Color(0xFFFF9999)))),
+                    fontSize: 10, color: const Color(0xFFFF9999)))),
+          if (!isCommon && hint != null)
+            Padding(
+              padding: const EdgeInsets.only(top: 4),
+              child: Text(hint,
+                style: GoogleFonts.poppins(
+                    fontSize: 10, color: color.withOpacity(0.85)))),
         ]));
   }
 
@@ -155,13 +202,11 @@ class _RegisterScreenState extends State<RegisterScreen>
       _errors['username'] = 'Min 3 characters';
     if (_phoneCtrl.text.trim().isEmpty)
       _errors['phone'] = 'Phone is required';
-    if (_passCtrl.text.isEmpty) {
-      _errors['pass'] = 'Password is required';
-    } else if (_passCtrl.text.length < 8) {
-      _errors['pass'] = 'Min 8 characters';
-    } else if (_isCommonPassword(_passCtrl.text)) {
-      _errors['pass'] = 'Password is too common. Choose something unique.';
-    }
+
+    // ── Password validation with 3x criteria ─────────────────────────────
+    final passError = _validatePassword(_passCtrl.text);
+    if (passError != null) _errors['pass'] = passError;
+
     if (_confirmCtrl.text.isEmpty)
       _errors['confirm'] = 'Please confirm your password';
     else if (_confirmCtrl.text != _passCtrl.text)
@@ -227,10 +272,8 @@ class _RegisterScreenState extends State<RegisterScreen>
                     child: Stack(alignment: Alignment.center, children: [
                       CircularProgressIndicator(
                         value: _progress,
-                        backgroundColor:
-                            Colors.white.withOpacity(0.08),
-                        valueColor:
-                            AlwaysStoppedAnimation<Color>(_teal),
+                        backgroundColor: Colors.white.withOpacity(0.08),
+                        valueColor: AlwaysStoppedAnimation<Color>(_teal),
                         strokeWidth: 3),
                       Text('${(_progress * 100).round()}%',
                         style: GoogleFonts.poppins(
@@ -259,10 +302,8 @@ class _RegisterScreenState extends State<RegisterScreen>
                       borderRadius: BorderRadius.circular(4),
                       child: LinearProgressIndicator(
                         value: _progress,
-                        backgroundColor:
-                            Colors.white.withOpacity(0.06),
-                        valueColor:
-                            AlwaysStoppedAnimation<Color>(_teal),
+                        backgroundColor: Colors.white.withOpacity(0.06),
+                        valueColor: AlwaysStoppedAnimation<Color>(_teal),
                         minHeight: 3)),
                     const SizedBox(height: 4),
                     Row(children: [
@@ -298,7 +339,41 @@ class _RegisterScreenState extends State<RegisterScreen>
 
                     const SizedBox(height: 8),
                     _section('Security'),
-                    _field('Password', 'Min. 8 characters',
+
+                    // ── Password requirements box ─────────────────────────
+                    Container(
+                      margin: const EdgeInsets.only(bottom: 14),
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: _teal.withOpacity(0.06),
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: _teal.withOpacity(0.2))),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(children: [
+                            Icon(Icons.lock_outline_rounded,
+                                size: 14, color: _teal.withOpacity(0.8)),
+                            const SizedBox(width: 8),
+                            Text('Password Requirements',
+                                style: GoogleFonts.poppins(
+                                    fontSize: 10, fontWeight: FontWeight.w700,
+                                    color: _teal.withOpacity(0.9))),
+                          ]),
+                          const SizedBox(height: 6),
+                          Text(
+                            '\u2022 At least 10 characters\n'
+                            '\u2022 3 or more lowercase letters\n'
+                            '\u2022 3 or more uppercase letters\n'
+                            '\u2022 3 or more numbers (1\u20139)\n'
+                            '\u2022 3 or more special characters (\$%^&*)',
+                            style: GoogleFonts.poppins(
+                                fontSize: 10,
+                                color: _teal.withOpacity(0.75),
+                                height: 1.7)),
+                        ])),
+
+                    _field('Password', 'Min. 10 characters',
                         Icons.lock_outline_rounded, _passCtrl,
                         error: _errors['pass'],
                         obscure: _obscurePass,
@@ -321,15 +396,14 @@ class _RegisterScreenState extends State<RegisterScreen>
                       decoration: BoxDecoration(
                         color: _teal.withOpacity(0.07),
                         borderRadius: BorderRadius.circular(10),
-                        border: Border.all(
-                            color: _teal.withOpacity(0.2))),
+                        border: Border.all(color: _teal.withOpacity(0.2))),
                       child: Row(children: [
                         Icon(Icons.shield_outlined,
                             size: 16, color: _teal.withOpacity(0.8)),
                         const SizedBox(width: 10),
                         Expanded(child: Text(
                           'These answers + a recovery PIN will be '
-                          'shown after registration. Save them — '
+                          'shown after registration. Save them \u2014 '
                           'you\'ll need them to reset your password.',
                           style: GoogleFonts.poppins(
                               fontSize: 10,
@@ -361,12 +435,10 @@ class _RegisterScreenState extends State<RegisterScreen>
                       Container(
                         padding: const EdgeInsets.all(12),
                         decoration: BoxDecoration(
-                          color: const Color(0xFFFF6B6B)
-                              .withOpacity(0.1),
+                          color: const Color(0xFFFF6B6B).withOpacity(0.1),
                           borderRadius: BorderRadius.circular(10),
                           border: Border.all(
-                              color: const Color(0xFFFF6B6B)
-                                  .withOpacity(0.3))),
+                              color: const Color(0xFFFF6B6B).withOpacity(0.3))),
                         child: Row(children: [
                           const Icon(Icons.warning_amber_rounded,
                               size: 14, color: Color(0xFFFF9999)),
@@ -403,8 +475,7 @@ class _RegisterScreenState extends State<RegisterScreen>
                             if (_dobCtrl.text.trim().isNotEmpty &&
                                 !RegExp(r'^\d{4}-\d{2}-\d{2}$')
                                     .hasMatch(_dobCtrl.text.trim())) {
-                              setState(() =>
-                                  _errors['dob'] = 'Use YYYY-MM-DD');
+                              setState(() => _errors['dob'] = 'Use YYYY-MM-DD');
                               return;
                             }
                             final ok = await auth.register(
@@ -422,8 +493,7 @@ class _RegisterScreenState extends State<RegisterScreen>
                             if (ok && mounted) {
                               final pin = auth.recoveryPin;
                               if (pin != null) {
-                                context.push('/recovery-pin',
-                                    extra: pin);
+                                context.push('/recovery-pin', extra: pin);
                               } else {
                                 context.go('/login');
                               }
@@ -433,8 +503,7 @@ class _RegisterScreenState extends State<RegisterScreen>
                             backgroundColor: Colors.transparent,
                             shadowColor: Colors.transparent,
                             shape: RoundedRectangleBorder(
-                                borderRadius:
-                                    BorderRadius.circular(14))),
+                                borderRadius: BorderRadius.circular(14))),
                           child: auth.isLoading
                               ? const SizedBox(width: 22, height: 22,
                                   child: CircularProgressIndicator(
@@ -508,8 +577,7 @@ class _RegisterScreenState extends State<RegisterScreen>
                     ? _teal.withOpacity(0.35)
                     : Colors.white.withOpacity(0.08),
             width: 1.2)),
-        padding: const EdgeInsets.symmetric(
-            horizontal: 14, vertical: 2),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 2),
         child: Row(children: [
           Icon(icon, size: 16,
               color: ctrl.text.isNotEmpty
@@ -525,8 +593,7 @@ class _RegisterScreenState extends State<RegisterScreen>
               hintText: hint,
               border: InputBorder.none,
               isDense: true,
-              contentPadding:
-                  const EdgeInsets.symmetric(vertical: 12),
+              contentPadding: const EdgeInsets.symmetric(vertical: 12),
               hintStyle: GoogleFonts.poppins(
                   fontSize: 12,
                   color: Colors.white.withOpacity(0.20))))),

@@ -18,7 +18,7 @@ class AuthProvider extends ChangeNotifier {
 
   Future<String?> getToken() => _tokenService.getAccessToken();
 
-  // ── Fetch assigned bus and store route info in Driver model ────────────────
+  // ── Fetch assigned bus and store route info in Driver model ───────────────
   Future<void> _fetchAssignedBus() async {
     try {
       final token = await _tokenService.getAccessToken();
@@ -55,6 +55,35 @@ class AuthProvider extends ChangeNotifier {
       }
     } catch (e) {
       debugPrint('[AuthProvider] Failed to fetch assigned bus: $e');
+    }
+  }
+
+  // ── Refresh profile from /users/me ────────────────────────────────────────
+  Future<void> refreshProfile() async {
+    try {
+      final token = await _tokenService.getAccessToken();
+      if (token == null || _driver == null) return;
+
+      final res = await http.get(
+        Uri.parse('${ApiConfig.baseUrl}/users/me'),
+        headers: {'Authorization': 'Bearer $token'},
+      ).timeout(const Duration(seconds: 10));
+
+      if (res.statusCode == 200) {
+        final body = jsonDecode(res.body) as Map<String, dynamic>;
+        final data = body['data'] as Map<String, dynamic>?;
+        if (data == null) return;
+
+        _driver = _driver!.copyWith(
+          name:     data['full_name']  as String?,
+          phone:    data['phone']      as String?,
+          photoUrl: data['avatar_url'] as String?,
+        );
+        notifyListeners();
+        debugPrint('[AuthProvider] Profile refreshed');
+      }
+    } catch (e) {
+      debugPrint('[AuthProvider] refreshProfile error: $e');
     }
   }
 
@@ -107,6 +136,7 @@ class AuthProvider extends ChangeNotifier {
           name:          user['full_name'] as String,
           email:         user['email']     as String,
           phone:         user['phone']     as String? ?? '',
+          photoUrl:      user['avatar_url'] as String? ?? '',
           licenseNumber: 'B-0000000',
           licenseExpiry: '2027-01-01',
           rating:        0.0,
@@ -114,7 +144,7 @@ class AuthProvider extends ChangeNotifier {
           hoursLogged:   0,
         );
 
-        // ── Reset bus to inactive on login via backend ─────────────────────
+        // ── Reset bus to inactive on login ────────────────────────────────
         try {
           final token = data['access_token'] as String;
           await http.patch(
@@ -125,7 +155,7 @@ class AuthProvider extends ChangeNotifier {
             },
             body: jsonEncode({'status': 'inactive'}),
           ).timeout(const Duration(seconds: 5));
-          debugPrint('[Login] Bus reset to inactive via backend ✅');
+          debugPrint('[Login] Bus reset to inactive ✅');
         } catch (e) {
           debugPrint('[Login] Bus reset error: $e');
         }
@@ -133,8 +163,7 @@ class AuthProvider extends ChangeNotifier {
         _isLoading = false;
         notifyListeners();
 
-        // ── Fetch assigned bus & route in background ───────────────────────
-        // Non-blocking — driver can use the app while this loads
+        // Fetch assigned bus & route in background
         _fetchAssignedBus();
 
         return true;
@@ -167,7 +196,6 @@ class AuthProvider extends ChangeNotifier {
   }
 
   Future<void> logout() async {
-    // Reset bus to inactive via backend
     try {
       final token = await _tokenService.getAccessToken();
       if (token != null) {
@@ -204,9 +232,3 @@ class AuthProvider extends ChangeNotifier {
     notifyListeners();
   }
 }
-
-
-
-
-
-

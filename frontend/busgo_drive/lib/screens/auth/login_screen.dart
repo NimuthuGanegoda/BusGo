@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
@@ -54,7 +54,7 @@ class _LoginScreenState extends State<LoginScreen> {
       backgroundColor: const Color(0xFF111B29),
       body: Stack(children: [
 
-        // â”€â”€ 1. FIXED PARALLAX BACKGROUND â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        // ── FIXED PARALLAX BACKGROUND ──────────────────────────────────────
         Positioned.fill(
           child: FittedBox(
             fit: BoxFit.cover,
@@ -66,7 +66,6 @@ class _LoginScreenState extends State<LoginScreen> {
                 _layer('assets/images/scene/mountMg.png', 0.40),
                 _layer('assets/images/scene/cloud2.png',  0.50),
 
-                // "DRIVE WITH US" fades out on scroll
                 _sceneText('DRIVE WITH US', Colors.white,
                   opacity: (1.0 - scrollPercent * 2.5).clamp(0.0, 1.0),
                   yOffset: -50 * scrollPercent),
@@ -75,13 +74,11 @@ class _LoginScreenState extends State<LoginScreen> {
                 _layer('assets/images/scene/cloud1.png',  0.80),
                 _layer('assets/images/scene/cloud3.png',  0.65),
 
-                // Dark plug (navy to match card)
                 Transform.translate(
                   offset: Offset(0, 800 - (_offset * 0.70)),
                   child: Container(width: 1200, height: 1200,
                       color: const Color(0xFF0A2342))),
 
-                // Fog gradient
                 Transform.translate(
                   offset: Offset(0, 600 - (_offset * 0.70)),
                   child: Container(
@@ -92,12 +89,10 @@ class _LoginScreenState extends State<LoginScreen> {
                                const Color(0xFF0A2342)]))),
                 ),
 
-                // "DRIVER PORTAL" revealed through fog
                 _sceneText('DRIVER PORTAL', const Color(0xFF64B5F6),
                   opacity: ((scrollPercent - 0.4) * 2.5).clamp(0.0, 1.0),
                   yOffset: 20 * (1 - scrollPercent), size: 36),
 
-                // Down arrow
                 Positioned(
                   top: 320, left: 0, right: 0,
                   child: Opacity(
@@ -117,7 +112,7 @@ class _LoginScreenState extends State<LoginScreen> {
           ),
         ),
 
-        // â”€â”€ 2. SCROLLABLE LOGIN CONTENT â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        // ── SCROLLABLE LOGIN CONTENT ────────────────────────────────────────
         SingleChildScrollView(
           controller: _scrollController,
           child: Column(children: [
@@ -135,7 +130,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 Form(key: _formKey, child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start, children: [
 
-                  // Handle
+                  // Handle bar
                   Center(child: Container(
                     width: 40, height: 4,
                     margin: const EdgeInsets.only(bottom: 24),
@@ -143,14 +138,22 @@ class _LoginScreenState extends State<LoginScreen> {
                       color: Colors.white.withOpacity(0.15),
                       borderRadius: BorderRadius.circular(2)))),
 
-                  // Logo row
+                  // ── Logo row — official BUSGO logo ──────────────────────
                   Row(children: [
-                    Container(width: 44, height: 44,
-                      decoration: BoxDecoration(
-                        color: AppColors.primaryLight,
-                        borderRadius: BorderRadius.circular(12)),
-                      child: const Icon(Icons.directions_bus_rounded,
-                          size: 22, color: Colors.white)),
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(12),
+                      child: Image.asset(
+                        'assets/images/busgo-logo-new.jpeg',
+                        width: 44, height: 44, fit: BoxFit.cover,
+                        errorBuilder: (_, __, ___) => Container(
+                          width: 44, height: 44,
+                          decoration: BoxDecoration(
+                            color: AppColors.primaryLight,
+                            borderRadius: BorderRadius.circular(12)),
+                          child: const Icon(Icons.directions_bus_rounded,
+                              size: 22, color: Colors.white)),
+                      ),
+                    ),
                     const SizedBox(width: 12),
                     Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                       Text('BUSGO', style: GoogleFonts.inter(
@@ -188,13 +191,13 @@ class _LoginScreenState extends State<LoginScreen> {
                           fontSize: 12, color: Colors.redAccent))),
                     ])),
 
-                  // Email
+                  // Email field
                   _field(ctrl: _employeeIdController, hint: 'driver@busgo.lk',
                     icon: Icons.person_outline,
                     validator: (v) => v == null || v.isEmpty ? 'Email is required' : null),
                   const SizedBox(height: 14),
 
-                  // Password
+                  // Password field
                   _field(ctrl: _passwordController, hint: 'Password',
                     icon: Icons.lock_outline, obscure: _obscurePassword,
                     suffix: _obscurePassword
@@ -209,7 +212,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
                   const SizedBox(height: 22),
 
-                  // Login button
+                  // ── Sign In button ────────────────────────────────────────
                   SizedBox(width: double.infinity, height: 52,
                     child: DecoratedBox(
                       decoration: BoxDecoration(
@@ -234,25 +237,35 @@ class _LoginScreenState extends State<LoginScreen> {
                             ? const SizedBox(width: 22, height: 22,
                                 child: CircularProgressIndicator(
                                     strokeWidth: 2.5, color: Colors.white))
-                            : Text('Login', style: GoogleFonts.inter(
+                            : Text('Sign In', style: GoogleFonts.inter(
                                 fontSize: 15, fontWeight: FontWeight.w700,
                                 color: Colors.white))))),
 
-                  const SizedBox(height: 16),
+                  const SizedBox(height: 14),
 
-                  // Register link
-                  Center(child: GestureDetector(
-                    onTap: () => context.push('/register'),
-                    child: RichText(text: TextSpan(children: [
-                      TextSpan(text: 'New driver? ', style: GoogleFonts.inter(
-                          fontSize: 12, color: const Color(0xFF90CAF9))),
-                      TextSpan(text: 'Register here â†’', style: GoogleFonts.inter(
-                          fontSize: 12, fontWeight: FontWeight.w700,
-                          color: const Color(0xFFFFD54F))),
-                    ])))),
+                  // ── Register — proper button widget ───────────────────────
+                  SizedBox(
+                    width: double.infinity,
+                    height: 52,
+                    child: OutlinedButton.icon(
+                      onPressed: () => context.push('/register'),
+                      icon: const Icon(Icons.person_add_rounded, size: 18),
+                      label: Text('New Driver? Register Here',
+                        style: GoogleFonts.inter(
+                            fontSize: 14, fontWeight: FontWeight.w600)),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: const Color(0xFFFFD54F),
+                        side: const BorderSide(
+                            color: Color(0xFFFFD54F), width: 1.5),
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(14)),
+                      ),
+                    ),
+                  ),
 
-                  const SizedBox(height: 10),
+                  const SizedBox(height: 14),
 
+                  // Forgot password
                   Center(child: GestureDetector(
                     onTap: () => context.push('/forgot-password'),
                     child: Text('Forgot password?',
@@ -269,7 +282,6 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 
-
   Widget _layer(String asset, double speed) => Transform.translate(
     offset: Offset(0, -(_offset * speed)),
     child: Image.asset(asset, width: 1200, height: 800,
@@ -284,15 +296,10 @@ class _LoginScreenState extends State<LoginScreen> {
           offset: Offset(0, yOffset),
           child: Text(text,
             style: GoogleFonts.montserrat(
-              color: color,
-              fontSize: size,
-              fontWeight: FontWeight.w900,
-              letterSpacing: 1,
-              shadows: const [
-                Shadow(color: Color(0x44000000),
-                    blurRadius: 12, offset: Offset(0, 2)),
-              ],
-            ),
+              color: color, fontSize: size,
+              fontWeight: FontWeight.w900, letterSpacing: 1,
+              shadows: const [Shadow(color: Color(0x44000000),
+                  blurRadius: 12, offset: Offset(0, 2))]),
           ),
         ),
       ),
@@ -340,8 +347,7 @@ class _LoginScreenState extends State<LoginScreen> {
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
-          borderSide:
-              const BorderSide(color: Color(0xFF64B5F6), width: 1.5),
+          borderSide: const BorderSide(color: Color(0xFF64B5F6), width: 1.5),
         ),
         errorBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
@@ -357,7 +363,3 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 }
-
-
-
-

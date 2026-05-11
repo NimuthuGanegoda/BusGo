@@ -33,13 +33,11 @@ class _NotificationsScreenState extends State<NotificationsScreen>
       duration: const Duration(milliseconds: 1400),
     )..forward();
 
-    // Load token first, then fetch
     TokenService().getAccessToken().then((t) {
       _token = t;
       _fetchFromBackend();
     });
 
-    // Poll every 10 s for new alerts
     _pollTimer = Timer.periodic(const Duration(seconds: 10), (_) {
       _fetchFromBackend(silent: true);
     });
@@ -52,9 +50,6 @@ class _NotificationsScreenState extends State<NotificationsScreen>
     super.dispose();
   }
 
-  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-  // FETCH â€” GET /api/notifications?category=bus_alert
-  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
   Future<void> _fetchFromBackend({bool silent = false}) async {
     if (!silent) setState(() => _loadingData = true);
 
@@ -120,9 +115,6 @@ class _NotificationsScreenState extends State<NotificationsScreen>
     }
   }
 
-  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-  // MARK ALL READ
-  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
   Future<void> _markAllRead() async {
     setState(() {
       for (final n in _notifications) n['isRead'] = true;
@@ -142,9 +134,6 @@ class _NotificationsScreenState extends State<NotificationsScreen>
     }
   }
 
-  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-  // MARK ONE READ
-  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
   Future<void> _markOneRead(Map<String, dynamic> n) async {
     if (n['isRead'] == true) return;
     setState(() => n['isRead'] = true);
@@ -163,9 +152,6 @@ class _NotificationsScreenState extends State<NotificationsScreen>
     }
   }
 
-  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-  // DELETE
-  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
   Future<void> _deleteFromBackend(String id) async {
     final token = _token;
     if (token == null) return;
@@ -184,7 +170,7 @@ class _NotificationsScreenState extends State<NotificationsScreen>
 
   Future<void> _onRefresh() async => _fetchFromBackend();
 
-  // â”€â”€ Helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── Helpers ───────────────────────────────────────────────────────────────
   String _formatTime(DateTime dt) {
     final h    = dt.hour % 12 == 0 ? 12 : dt.hour % 12;
     final m    = dt.minute.toString().padLeft(2, '0');
@@ -241,9 +227,102 @@ class _NotificationsScreenState extends State<NotificationsScreen>
         ),
       );
 
-  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-  // BUILD
-  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+  // ── Boarding confirmation helpers ─────────────────────────────────────────
+  bool _isBoardingNotification(Map<String, dynamic> n) {
+    final title = n['title'] as String? ?? '';
+    final meta  = n['meta']  as Map<String, dynamic>? ?? {};
+    return title.contains('Boarded') && meta.containsKey('trip_id');
+  }
+
+  Widget _buildBoardingConfirmButtons(Map<String, dynamic> n) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(14, 0, 14, 14),
+      child: Row(children: [
+        Expanded(child: GestureDetector(
+          onTap: () {
+            _markOneRead(n);
+            ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+              content: Text('Boarding confirmed. Have a safe trip!',
+                  style: _inter(size: 13)),
+              backgroundColor: const Color(0xFF16A34A),
+              behavior: SnackBarBehavior.floating,
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10)),
+              margin: const EdgeInsets.all(12),
+            ));
+          },
+          child: Container(
+            height: 36,
+            decoration: BoxDecoration(
+                color: const Color(0xFF16A34A).withValues(alpha: 0.15),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(
+                    color: const Color(0xFF22C55E).withValues(alpha: 0.4))),
+            alignment: Alignment.center,
+            child: Row(mainAxisSize: MainAxisSize.min, children: [
+              const Icon(Icons.check_circle_outline_rounded,
+                  size: 15, color: Color(0xFF22C55E)),
+              const SizedBox(width: 6),
+              Text('Yes, I boarded',
+                  style: _inter(size: 12,
+                      weight: FontWeight.w700,
+                      color: const Color(0xFF22C55E))),
+            ]),
+          ),
+        )),
+        const SizedBox(width: 10),
+        Expanded(child: GestureDetector(
+          onTap: () async {
+            _markOneRead(n);
+            // Call dispute API using trip_id from notification meta
+            final tripId = (n['meta'] as Map<String, dynamic>?)?['trip_id'] as String?;
+            if (tripId != null && _token != null) {
+              try {
+                await http.post(
+                  Uri.parse('$kBaseUrlDev/trips/$tripId/dispute'),
+                  headers: {
+                    'Authorization': 'Bearer $_token',
+                    'Content-Type':  'application/json',
+                  },
+                ).timeout(const Duration(seconds: 10));
+              } catch (e) {
+                debugPrint('[NotificationsScreen] dispute error: $e');
+              }
+            }
+            if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+              content: Text('Flagged and logged. Our team will review it.',
+                  style: _inter(size: 13)),
+              backgroundColor: const Color(0xFFDC2626),
+              behavior: SnackBarBehavior.floating,
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10)),
+              margin: const EdgeInsets.all(12),
+            ));
+          },
+          child: Container(
+            height: 36,
+            decoration: BoxDecoration(
+                color: const Color(0xFFDC2626).withValues(alpha: 0.10),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(
+                    color: const Color(0xFFEF4444).withValues(alpha: 0.4))),
+            alignment: Alignment.center,
+            child: Row(mainAxisSize: MainAxisSize.min, children: [
+              const Icon(Icons.cancel_outlined,
+                  size: 15, color: Color(0xFFEF4444)),
+              const SizedBox(width: 6),
+              Text('No, wrong scan',
+                  style: _inter(size: 12,
+                      weight: FontWeight.w700,
+                      color: const Color(0xFFEF4444))),
+            ]),
+          ),
+        )),
+      ]),
+    );
+  }
+
+  // ── BUILD ─────────────────────────────────────────────────────────────────
   @override
   Widget build(BuildContext context) {
     final List<dynamic> items = [];
@@ -274,28 +353,24 @@ class _NotificationsScreenState extends State<NotificationsScreen>
                       onRefresh:       _onRefresh,
                       child: _notifications.isEmpty
                           ? CustomScrollView(
-                              physics:
-                                  const AlwaysScrollableScrollPhysics(),
+                              physics: const AlwaysScrollableScrollPhysics(),
                               slivers: [
                                 SliverFillRemaining(
                                     child: _buildEmptyState()),
                               ],
                             )
                           : ListView.builder(
-                              physics:
-                                  const AlwaysScrollableScrollPhysics(),
+                              physics: const AlwaysScrollableScrollPhysics(),
                               padding: const EdgeInsets.symmetric(
                                   horizontal: 16),
                               itemCount: items.length,
                               itemBuilder: (context, index) {
                                 final item = items[index];
                                 if (item is String) {
-                                  return _anim(
-                                      1 + index,
+                                  return _anim(1 + index,
                                       _buildGroupHeader(item));
                                 }
-                                return _anim(
-                                    1 + index,
+                                return _anim(1 + index,
                                     _buildNotificationCard(
                                         item as Map<String, dynamic>));
                               },
@@ -308,9 +383,7 @@ class _NotificationsScreenState extends State<NotificationsScreen>
     );
   }
 
-  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-  // HEADER
-  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+  // ── HEADER ────────────────────────────────────────────────────────────────
   Widget _buildHeader() {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
@@ -337,8 +410,7 @@ class _NotificationsScreenState extends State<NotificationsScreen>
           if (_unreadCount > 0) ...[
             const SizedBox(width: 8),
             Container(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
               decoration: BoxDecoration(
                   color: const Color(0xFFE53935),
                   borderRadius: BorderRadius.circular(10)),
@@ -351,9 +423,7 @@ class _NotificationsScreenState extends State<NotificationsScreen>
             GestureDetector(
               onTap: _markAllRead,
               child: Text('Mark all read',
-                  style: _inter(
-                      size: 11,
-                      weight: FontWeight.w600,
+                  style: _inter(size: 11, weight: FontWeight.w600,
                       color: const Color(0xFF5BB8F5))),
             ),
         ],
@@ -361,26 +431,21 @@ class _NotificationsScreenState extends State<NotificationsScreen>
     );
   }
 
-  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-  // GROUP HEADER
-  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+  // ── GROUP HEADER ──────────────────────────────────────────────────────────
   Widget _buildGroupHeader(String group) {
     return Padding(
       padding: const EdgeInsets.only(top: 8, bottom: 4),
       child: Text(group,
-          style: _inter(
-              size: 11,
-              weight: FontWeight.w700,
+          style: _inter(size: 11, weight: FontWeight.w700,
               color: const Color(0xFF5BB8F5).withValues(alpha: 0.6),
               letterSpacing: 0.6)),
     );
   }
 
-  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-  // NOTIFICATION CARD
-  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+  // ── NOTIFICATION CARD ─────────────────────────────────────────────────────
   Widget _buildNotificationCard(Map<String, dynamic> n) {
-    final isRead = n['isRead'] as bool;
+    final isRead      = n['isRead'] as bool;
+    final isBoarding  = _isBoardingNotification(n);
 
     return Dismissible(
       key: Key(n['id'].toString()),
@@ -393,8 +458,7 @@ class _NotificationsScreenState extends State<NotificationsScreen>
           color: const Color(0xFFE53935).withValues(alpha: 0.8),
           borderRadius: BorderRadius.circular(16),
         ),
-        child: const Icon(Icons.delete_rounded,
-            color: Colors.white, size: 24),
+        child: const Icon(Icons.delete_rounded, color: Colors.white, size: 24),
       ),
       onDismissed: (_) {
         final id    = n['id'] as String;
@@ -418,22 +482,20 @@ class _NotificationsScreenState extends State<NotificationsScreen>
                       _lastDismissedIndex!, _lastDismissed!));
                   final token = _token;
                   if (token != null) {
-                    http
-                        .post(
-                          Uri.parse('$kBaseUrlDev/notifications'),
-                          headers: {
-                            'Authorization': 'Bearer $token',
-                            'Content-Type':  'application/json',
-                          },
-                          body: jsonEncode({
-                            'category': 'bus_alert',
-                            'title':    _lastDismissed!['title'],
-                            'body':     _lastDismissed!['body'],
-                            'meta':     _lastDismissed!['meta'] ?? {},
-                          }),
-                        )
-                        .catchError((e) =>
-                            debugPrint('[NotificationsScreen] undo: $e'));
+                    http.post(
+                      Uri.parse('$kBaseUrlDev/notifications'),
+                      headers: {
+                        'Authorization': 'Bearer $token',
+                        'Content-Type':  'application/json',
+                      },
+                      body: jsonEncode({
+                        'category': 'bus_alert',
+                        'title':    _lastDismissed!['title'],
+                        'body':     _lastDismissed!['body'],
+                        'meta':     _lastDismissed!['meta'] ?? {},
+                      }),
+                    ).catchError((e) =>
+                        debugPrint('[NotificationsScreen] undo: $e'));
                   }
                 }
               },
@@ -453,7 +515,9 @@ class _NotificationsScreenState extends State<NotificationsScreen>
             border: Border.all(
               color: isRead
                   ? const Color(0xFF1A6FA8).withValues(alpha: 0.15)
-                  : const Color(0xFF1A6FA8).withValues(alpha: 0.4),
+                  : isBoarding
+                      ? const Color(0xFF22C55E).withValues(alpha: 0.4)
+                      : const Color(0xFF1A6FA8).withValues(alpha: 0.4),
             ),
             boxShadow: isRead
                 ? []
@@ -465,92 +529,107 @@ class _NotificationsScreenState extends State<NotificationsScreen>
                     ),
                   ],
           ),
-          child: IntrinsicHeight(
-            child: Row(
-              children: [
-                if (!isRead)
-                  Container(
-                    width: 3,
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF1A6FA8),
-                      borderRadius: const BorderRadius.only(
-                        topLeft:    Radius.circular(16),
-                        bottomLeft: Radius.circular(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              IntrinsicHeight(
+                child: Row(
+                  children: [
+                    if (!isRead)
+                      Container(
+                        width: 3,
+                        decoration: BoxDecoration(
+                          color: isBoarding
+                              ? const Color(0xFF22C55E)
+                              : const Color(0xFF1A6FA8),
+                          borderRadius: const BorderRadius.only(
+                            topLeft:    Radius.circular(16),
+                            bottomLeft: Radius.circular(16),
+                          ),
+                        ),
+                      ),
+                    Expanded(
+                      child: Padding(
+                        padding: const EdgeInsets.all(14),
+                        child: Row(
+                          children: [
+                            Container(
+                              width: 46, height: 46,
+                              decoration: BoxDecoration(
+                                color: isBoarding
+                                    ? const Color(0xFF16A34A).withValues(alpha: 0.2)
+                                    : const Color(0xFF1A6FA8).withValues(alpha: 0.2),
+                                borderRadius: BorderRadius.circular(14),
+                              ),
+                              alignment: Alignment.center,
+                              child: Icon(
+                                isBoarding
+                                    ? Icons.directions_bus_filled
+                                    : Icons.directions_bus_rounded,
+                                size: 22,
+                                color: isBoarding
+                                    ? const Color(0xFF22C55E)
+                                    : const Color(0xFF1A6FA8)),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(n['title'] as String,
+                                      style: _inter(
+                                          size: 13,
+                                          weight: FontWeight.w700,
+                                          color: isRead
+                                              ? const Color(0xFF8AAFD4)
+                                              : Colors.white)),
+                                  const SizedBox(height: 3),
+                                  Text(n['body'] as String,
+                                      maxLines: 2,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: _inter(
+                                          size: 12,
+                                          color: isRead
+                                              ? const Color(0xFF5BB8F5)
+                                                  .withValues(alpha: 0.6)
+                                              : const Color(0xFF8AAFD4))),
+                                  const SizedBox(height: 6),
+                                  Text(n['time'] as String,
+                                      style: _inter(
+                                          size: 10,
+                                          color: const Color(0xFF5BB8F5)
+                                              .withValues(alpha: 0.5))),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            if (!isRead)
+                              Container(
+                                width: 8, height: 8,
+                                decoration: BoxDecoration(
+                                    color: isBoarding
+                                        ? const Color(0xFF22C55E)
+                                        : const Color(0xFFF0C040),
+                                    borderRadius: BorderRadius.circular(4)),
+                              ),
+                          ],
+                        ),
                       ),
                     ),
-                  ),
-                Expanded(
-                  child: Padding(
-                    padding: const EdgeInsets.all(14),
-                    child: Row(
-                      children: [
-                        Container(
-                          width: 46, height: 46,
-                          decoration: BoxDecoration(
-                            color: const Color(0xFF1A6FA8)
-                                .withValues(alpha: 0.2),
-                            borderRadius: BorderRadius.circular(14),
-                          ),
-                          alignment: Alignment.center,
-                          child: const Icon(
-                              Icons.directions_bus_rounded,
-                              size: 22,
-                              color: Color(0xFF1A6FA8)),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(n['title'] as String,
-                                  style: _inter(
-                                      size: 13,
-                                      weight: FontWeight.w700,
-                                      color: isRead
-                                          ? const Color(0xFF8AAFD4)
-                                          : Colors.white)),
-                              const SizedBox(height: 3),
-                              Text(n['body'] as String,
-                                  maxLines: 2,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: _inter(
-                                      size: 12,
-                                      color: isRead
-                                          ? const Color(0xFF5BB8F5)
-                                              .withValues(alpha: 0.6)
-                                          : const Color(0xFF8AAFD4))),
-                              const SizedBox(height: 6),
-                              Text(n['time'] as String,
-                                  style: _inter(
-                                      size: 10,
-                                      color: const Color(0xFF5BB8F5)
-                                          .withValues(alpha: 0.5))),
-                            ],
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        if (!isRead)
-                          Container(
-                            width: 8, height: 8,
-                            decoration: BoxDecoration(
-                                color: const Color(0xFFF0C040),
-                                borderRadius: BorderRadius.circular(4)),
-                          ),
-                      ],
-                    ),
-                  ),
+                  ],
                 ),
-              ],
-            ),
+              ),
+              // ── Boarding approve / disapprove buttons ──────────────────
+              if (isBoarding && !isRead)
+                _buildBoardingConfirmButtons(n),
+            ],
           ),
         ),
       ),
     );
   }
 
-  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-  // EMPTY STATE
-  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+  // ── EMPTY STATE ───────────────────────────────────────────────────────────
   Widget _buildEmptyState() {
     return Center(
       child: Column(
@@ -560,19 +639,15 @@ class _NotificationsScreenState extends State<NotificationsScreen>
               size: 64, color: Color(0xFF1A3A5C)),
           const SizedBox(height: 16),
           Text('No bus alerts yet',
-              style: _inter(
-                  size: 16,
-                  weight: FontWeight.w600,
+              style: _inter(size: 16, weight: FontWeight.w600,
                   color: const Color(0xFF5BB8F5))),
           const SizedBox(height: 6),
           Text("You'll be notified when your bus is near.",
-              style: _inter(
-                  size: 13,
+              style: _inter(size: 13,
                   color: const Color(0xFF5BB8F5).withValues(alpha: 0.6))),
           const SizedBox(height: 12),
           Text('Pull down to refresh',
-              style: _inter(
-                  size: 11,
+              style: _inter(size: 11,
                   color: const Color(0xFF5BB8F5).withValues(alpha: 0.4))),
         ],
       ),

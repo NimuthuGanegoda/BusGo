@@ -11,11 +11,11 @@ class BusModel {
   final double? currentLng;
   final double? heading;
   final double? speedKmh;
-  final String? busStatus;         // 'active' | 'inactive' | 'breakdown'
+  final String? busStatus;
   final String? lastLocationUpdate;
-  final double? distanceKm;        // Haversine distance from user
+  final double? distanceKm;
 
-  // ── UI fields (kept for zero screen changes) ───────────────────────────────
+  // ── UI fields ──────────────────────────────────────────────────────────────
   final String routeNumber;
   final String routeName;
   final String from;
@@ -54,76 +54,75 @@ class BusModel {
     required this.etaMinutes,
     required this.crowdLevel,
     required this.routeColor,
-    this.driverName = 'Kamal Perera',
+    this.driverName = 'Driver',
     this.driverId = 'DRV-0000',
-    this.driverRating = 4.0,
-    this.passengerCount = 15,
+    this.driverRating = 0.0,
+    this.passengerCount = 0,
     this.capacity = 40,
   });
 
   String get displayRoute => '$from → $to';
-  String get stopInfo => '$stopName · ${distance.toStringAsFixed(1)} km';
+  String get stopInfo     => '$stopName · ${distance.toStringAsFixed(1)} km';
   String get passengerLoad => '$passengerCount/$capacity';
 
-  // ── Serialization ──────────────────────────────────────────────────────────
-
   factory BusModel.fromJson(Map<String, dynamic> json) {
-    // Nested route data
-    final route = json['bus_routes'] as Map<String, dynamic>?;
+    final route     = json['bus_routes'] as Map<String, dynamic>?;
     final routeNum  = route?['route_number'] as String? ?? json['route_number'] as String? ?? '---';
     final routeName = route?['route_name']   as String? ?? json['route_name']   as String? ?? '';
     final origin    = route?['origin']       as String? ?? json['origin']       as String? ?? '';
     final dest      = route?['destination']  as String? ?? json['destination']  as String? ?? '';
     final colorHex  = route?['color']        as String? ?? json['color']        as String? ?? '#1565C0';
 
-    final distKm    = (json['distance_km'] as num?)?.toDouble() ?? 0.0;
-    final speed     = (json['speed_kmh']   as num?)?.toDouble() ?? 0.0;
+    final distKm = (json['distance_km'] as num?)?.toDouble() ?? 0.0;
+    final speed  = (json['speed_kmh']   as num?)?.toDouble() ?? 0.0;
 
-    // Compute ETA: distance / speed in minutes, fall back to distance-based estimate.
     int eta;
     if (speed > 0) {
       eta = (distKm / speed * 60).round().clamp(1, 999);
     } else {
-      eta = (distKm * 5).round().clamp(1, 999); // rough: 12 km/h avg
+      eta = (distKm * 5).round().clamp(1, 999);
     }
 
-    final crowd = _parseCrowd(json['crowd_level'] as String? ?? 'low');
-    final color = _parseColor(colorHex);
-
+    final crowd    = _parseCrowd(json['crowd_level'] as String? ?? 'low');
+    final color    = _parseColor(colorHex);
     final driverId = json['id'] as String? ?? json['bus_id'] as String? ?? 'DRV-0000';
 
+    // ── Real capacity from backend, fallback 40 ────────────────────────────
+    final cap = (json['capacity'] as num?)?.toInt() ?? 40;
+
+    // ── Real passenger count from backend, fallback to crowd estimate ───────
+    final passengerCount = (json['passenger_count'] as num?)?.toInt()
+        ?? _crowdToPassengers(crowd);
+
     return BusModel(
-      busId:               json['id']                    as String?,
-      routeId:             json['route_id']              as String?,
-      busNumber:           json['bus_number']            as String?,
-      driverPhone:         json['driver_phone']          as String?,
+      busId:               json['id']                   as String?,
+      routeId: route?['id'] as String? ?? json['route_id'] as String?,
+      busNumber:           json['bus_number']           as String?,
+      driverPhone:         json['driver_phone']         as String?,
       currentLat:          (json['current_lat']  as num?)?.toDouble(),
       currentLng:          (json['current_lng']  as num?)?.toDouble(),
       heading:             (json['heading']       as num?)?.toDouble(),
       speedKmh:            (json['speed_kmh']    as num?)?.toDouble(),
-      busStatus:           json['status']                as String?,
-      lastLocationUpdate:  json['last_location_update']  as String?,
+      busStatus:           json['status']               as String?,
+      lastLocationUpdate:  json['last_location_update'] as String?,
       distanceKm:          distKm,
-      // UI fields
-      routeNumber:   routeNum,
-      routeName:     routeName,
-      from:          origin,
-      to:            dest,
-      stopId:        json['id'] as String? ?? driverId,
-      stopName:      origin.isNotEmpty ? '$origin Stop' : 'Nearby Stop',
-      distance:      distKm,
-      etaMinutes:    eta,
-      crowdLevel:    crowd,
-      routeColor:    color,
-      driverName:    json['driver_name'] as String? ?? 'Driver',
-      driverId:      driverId,
-      driverRating:  (json['users']?['avg_rating'] as num?)?.toDouble() ?? 4.0,
-      passengerCount: _crowdToPassengers(crowd),
-      capacity:       40,
+      routeNumber:    routeNum,
+      routeName:      routeName,
+      from:           origin,
+      to:             dest,
+      stopId:         json['id'] as String? ?? driverId,
+      stopName:       origin.isNotEmpty ? '$origin Stop' : 'Nearby Stop',
+      distance:       distKm,
+      etaMinutes:     eta,
+      crowdLevel:     crowd,
+      routeColor:     color,
+      driverName:     json['driver_name'] as String? ?? 'Driver',
+      driverId:       driverId,
+      driverRating:   (json['users']?['avg_rating'] as num?)?.toDouble() ?? 0.0,
+      passengerCount: passengerCount,
+      capacity:       cap,
     );
   }
-
-  // ── Helpers ────────────────────────────────────────────────────────────────
 
   static CrowdLevel _parseCrowd(String raw) {
     switch (raw.toLowerCase()) {
@@ -151,7 +150,6 @@ class BusModel {
     }
   }
 
-  /// Copy with updated real-time location from Supabase Realtime.
   BusModel copyWithLocation({
     required double lat,
     required double lng,
@@ -164,7 +162,8 @@ class BusModel {
         currentLat: lat, currentLng: lng,
         heading: heading ?? this.heading,
         speedKmh: speedKmh ?? this.speedKmh,
-        busStatus: busStatus, lastLocationUpdate: DateTime.now().toIso8601String(),
+        busStatus: busStatus,
+        lastLocationUpdate: DateTime.now().toIso8601String(),
         distanceKm: distanceKm,
         routeNumber: routeNumber, routeName: routeName,
         from: from, to: to, stopId: stopId, stopName: stopName,
@@ -172,16 +171,7 @@ class BusModel {
         crowdLevel: crowdLevel, routeColor: routeColor,
         driverName: driverName, driverId: driverId,
         driverRating: driverRating,
-        passengerCount: passengerCount, capacity: capacity,
+        passengerCount: passengerCount,
+        capacity: capacity,
       );
 }
-
-
-
-
-
-
-
-
-
-

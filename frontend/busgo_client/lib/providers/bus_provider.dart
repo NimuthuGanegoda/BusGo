@@ -94,9 +94,14 @@ class BusProvider extends ChangeNotifier {
 
     try {
       _nearbyBuses = await _busService.getNearbyBuses(lat, lng, radius: radius);
-      if (_selectedBus == null && _nearbyBuses.isNotEmpty) {
-        _selectedBus = _nearbyBuses.first;
+      // Refresh selected bus with latest data from new fetch
+      if (_selectedBus != null) {
+        final updated = _nearbyBuses.where(
+          (b) => (b.busId ?? b.stopId) == (_selectedBus!.busId ?? _selectedBus!.stopId)
+        ).firstOrNull;
+        if (updated != null) _selectedBus = updated;
       }
+      
 
       // ── Check arrival notifications via polling ──────────────────────────
       for (final bus in _nearbyBuses) {
@@ -275,16 +280,22 @@ class BusProvider extends ChangeNotifier {
   }
 
   // ── Selection ──────────────────────────────────────────────────────────────
-
+  
   void selectBus(BusModel bus) {
     _selectedBus = bus;
     notifyListeners();
   }
 
+  Future<List<StopModel>> fetchRouteStops(String routeId) =>
+    _busService.getRouteStops(routeId);
+
   void clearSelection() {
     _selectedBus = null;
     notifyListeners();
   }
+
+  Future<Map<String, dynamic>> fetchRouteById(String routeId) =>
+    _busService.getRouteById(routeId);
 
   // ── Supabase Realtime — live bus location + arrival notifications ──────────
 
