@@ -20,8 +20,8 @@ class _RouteMapScreenState extends State<RouteMapScreen>
     with SingleTickerProviderStateMixin {
   late final MapController _mapController;
   late AnimationController _pulseController;
-  double _currentZoom  = 15.0;
-  bool   _followDriver = true;
+  double _currentZoom  = 12.0;                // FIX: lower default zoom to show more route
+  bool   _followDriver = false;               // FIX: start false so full route is visible
   bool   _mapReady     = false;
 
   @override
@@ -34,8 +34,13 @@ class _RouteMapScreenState extends State<RouteMapScreen>
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final trip = context.read<TripProvider>();
+      final rp   = context.read<RouteProvider>();
       if (!trip.gpsReady) trip.initGps();
       trip.addListener(_onLocationUpdate);
+      // Load route if not yet loaded
+      if (rp.assignedRoute == null && !rp.isLoading) {
+        rp.loadDriverAssignedRoute();
+      }
     });
   }
 
@@ -43,6 +48,47 @@ class _RouteMapScreenState extends State<RouteMapScreen>
     if (!mounted || !_followDriver || !_mapReady) return;
     final trip = context.read<TripProvider>();
     _mapController.move(trip.currentLocation, _currentZoom);
+  }
+
+  // FIX: Fit camera to show the entire assigned route
+  void _fitRouteBounds() {
+    final routeProvider = context.read<RouteProvider>();
+    final trip          = context.read<TripProvider>();
+    final route         = trip.currentRoute ?? routeProvider.assignedRoute;
+    if (route == null) return;
+
+    // Use waypoints if available, otherwise fall back to stop locations
+    final allPoints = route.polyline.isNotEmpty
+        ? route.polyline
+        : route.stops.map((s) => s.location).toList();
+
+    if (allPoints.length < 2) {
+      // If only one point, just center on it
+      if (allPoints.length == 1) {
+        _mapController.move(allPoints.first, 14);
+      }
+      return;
+    }
+
+    final minLat = allPoints.map((p) => p.latitude).reduce(min);
+    final maxLat = allPoints.map((p) => p.latitude).reduce(max);
+    final minLng = allPoints.map((p) => p.longitude).reduce(min);
+    final maxLng = allPoints.map((p) => p.longitude).reduce(max);
+
+    try {
+      _mapController.fitCamera(
+        CameraFit.bounds(
+          bounds: LatLngBounds(
+            LatLng(minLat, minLng),
+            LatLng(maxLat, maxLng),
+          ),
+          padding: const EdgeInsets.fromLTRB(48, 100, 48, 220),
+        ),
+      );
+      setState(() => _followDriver = false);
+    } catch (e) {
+      debugPrint('[RouteMap] fitCamera error: $e');
+    }
   }
 
   @override
@@ -85,7 +131,6 @@ class _RouteMapScreenState extends State<RouteMapScreen>
         final busLocation  = trip.currentLocation;
         final nextStop     = trip.nextStop ?? (route.stops.isNotEmpty ? route.stops.first : null);
         final traveledPath = trip.traveledPath;
-
         final remainingPath = route.polyline;
 
         final origin       = route.stops.isNotEmpty ? route.stops.first : null;
@@ -101,7 +146,11 @@ class _RouteMapScreenState extends State<RouteMapScreen>
             options: MapOptions(
               initialCenter: busLocation,
               initialZoom:   _currentZoom,
-              onMapReady:    () => setState(() => _mapReady = true),
+              // FIX: fit route bounds as soon as the map is ready
+              onMapReady: () {
+                setState(() => _mapReady = true);
+                _fitRouteBounds();
+              },
               interactionOptions: const InteractionOptions(
                   flags: InteractiveFlag.all & ~InteractiveFlag.rotate),
               onMapEvent: (event) {
@@ -111,7 +160,7 @@ class _RouteMapScreenState extends State<RouteMapScreen>
                 if (event is MapEventScrollWheelZoom ||
                     event is MapEventMove &&
                         event.source == MapEventSource.dragStart) {
-                  _followDriver = false;
+                  setState(() => _followDriver = false);
                 }
               },
             ),
@@ -122,16 +171,25 @@ class _RouteMapScreenState extends State<RouteMapScreen>
                     '?key=${ApiConfig.mapTilerKey}',
                 userAgentPackageName: 'com.busgo.drive',
               ),
+
+              // FIX: increased opacity from 0.4 → 0.85 and strokeWidth from 5 → 6
               if (remainingPath.length >= 2)
                 PolylineLayer(polylines: [
-                  Polyline(points: remainingPath, strokeWidth: 5,
-                      color: AppColors.primaryLight.withValues(alpha: 0.4)),
+                  Polyline(
+                    points: remainingPath,
+                    strokeWidth: 6,
+                    color: AppColors.primaryLight.withValues(alpha: 0.85),
+                  ),
                 ]),
+
+              // Traveled path — unchanged
               if (traveledPath.length >= 2)
                 PolylineLayer(polylines: [
                   Polyline(points: traveledPath, strokeWidth: 6,
                       color: const Color(0xFF00C853)),
                 ]),
+
+              // Stop markers — unchanged
               if (route.stops.isNotEmpty)
                 MarkerLayer(markers: List.generate(route.stops.length, (i) {
                   final stop        = route.stops[i];
@@ -154,6 +212,8 @@ class _RouteMapScreenState extends State<RouteMapScreen>
                                   : isCurrent    ? AppColors.warning
                                   : AppColors.primaryLight)))));
                 })),
+
+              // Bus marker with pulse — unchanged
               MarkerLayer(markers: [
                 Marker(point: busLocation, width: 48, height: 48,
                   child: AnimatedBuilder(
@@ -179,6 +239,7 @@ class _RouteMapScreenState extends State<RouteMapScreen>
             ],
           ),
 
+          // GPS error banner — unchanged
           if (trip.gpsError != null)
             Positioned(
               top: MediaQuery.of(context).padding.top + 60,
@@ -196,6 +257,7 @@ class _RouteMapScreenState extends State<RouteMapScreen>
                 ]),
               )),
 
+          // Route + GPS status pill — unchanged
           Positioned(
             top: MediaQuery.of(context).padding.top + 14,
             left: 0, right: 0,
@@ -217,6 +279,7 @@ class _RouteMapScreenState extends State<RouteMapScreen>
                       fontWeight: FontWeight.w700, color: Colors.white)),
               ])))),
 
+          // FIX: added route overview button above existing controls
           Positioned(
             right: 12,
             top: MediaQuery.of(context).padding.top + 56,
@@ -231,12 +294,18 @@ class _RouteMapScreenState extends State<RouteMapScreen>
                 _mapController.move(_mapController.camera.center, _currentZoom);
               }),
               const SizedBox(height: 6),
+              // Follow driver button
               _mapCtrlBtn(Icons.my_location, () {
                 setState(() => _followDriver = true);
                 _mapController.move(busLocation, 15);
+                _currentZoom = 15;
               }),
+              const SizedBox(height: 6),
+              // FIX: new "view full route" button
+              _mapCtrlBtn(Icons.route_rounded, _fitRouteBounds),
             ])),
 
+          // "Tap to follow" banner when not following — unchanged
           if (!_followDriver)
             Positioned(
               top: MediaQuery.of(context).padding.top + 56,
@@ -245,6 +314,7 @@ class _RouteMapScreenState extends State<RouteMapScreen>
                 onTap: () {
                   setState(() => _followDriver = true);
                   _mapController.move(busLocation, 15);
+                  _currentZoom = 15;
                 },
                 child: Container(
                   padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
@@ -259,6 +329,7 @@ class _RouteMapScreenState extends State<RouteMapScreen>
                         color: Colors.white)),
                   ])))),
 
+          // Emergency button — unchanged
           Positioned(
             right: 14, bottom: 190,
             child: GestureDetector(
@@ -274,6 +345,7 @@ class _RouteMapScreenState extends State<RouteMapScreen>
                 child: const Icon(Icons.emergency_rounded,
                     size: 24, color: Colors.white)))),
 
+          // Bottom info panel — unchanged
           Positioned(
             left: 0, right: 0, bottom: 0,
             child: Container(
