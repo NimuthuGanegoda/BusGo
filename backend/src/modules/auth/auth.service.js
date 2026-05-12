@@ -185,7 +185,7 @@ export async function verifyPassengerIdentity(email, recoveryPin, answer1, answe
     err.statusCode = 401; err.code = 'VERIFICATION_FAILED'; throw err;
   };
 
-  if (!user || user.role !== 'passenger') FAIL();
+  if (!user || !['passenger', 'driver'].includes(user.role)) FAIL();
   if (!user.recovery_pin_hash || !user.security_answer_1_hash) FAIL();
 
   const pinOk = await verifyPin(recoveryPin, user.recovery_pin_hash);
