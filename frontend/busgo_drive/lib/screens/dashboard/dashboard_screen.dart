@@ -40,9 +40,7 @@ class _DashboardScreenState extends State<DashboardScreen>
       final tp   = context.read<TripProvider>();
       final auth = context.read<AuthProvider>();
 
-      if (rp.routes.isEmpty) {
-        await rp.loadRoutes();
-      }
+      await rp.loadRoutes();
 
       if (auth.driver?.id != null) {
         tp.initPassengerTracking(auth.driver!.id);
