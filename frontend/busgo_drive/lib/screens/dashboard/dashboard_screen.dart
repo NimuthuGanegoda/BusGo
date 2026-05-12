@@ -48,9 +48,10 @@ class _DashboardScreenState extends State<DashboardScreen>
         tp.initPassengerTracking(auth.driver!.id);
       }
 
-      if (tp.currentTrip == null && rp.routes.isNotEmpty) {
-        final assignedRoute = rp.assignedRoute ?? rp.routes.first;
-        tp.startTrip(assignedRoute);
+      if (rp.assignedRoute != null) {
+        tp.startTrip(rp.assignedRoute!);
+      } else if (tp.currentTrip == null && rp.routes.isNotEmpty) {
+        tp.startTrip(rp.routes.first);
       }
 
       await _setBusStatus('inactive');
