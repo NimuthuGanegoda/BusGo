@@ -408,9 +408,7 @@ export async function scanExit(driverUserId, dto = {}) {
   if (!passenger) {
     const e = new Error('Invalid QR code'); e.statusCode = 404; e.code = 'INVALID_QR_TOKEN'; throw e;
   }
-  if (new Date(passenger.qr_expires_at) <= new Date()) {
-    const e = new Error('QR expired'); e.statusCode = 410; e.code = 'QR_EXPIRED'; throw e;
-  }
+ 
 
   const { data: trip } = await supabase
     .from('trips').select('id, bus_id, alighting_stop_id')
