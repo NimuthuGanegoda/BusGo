@@ -1,3 +1,5 @@
+// AFTER
+import 'package:flutter/foundation.dart';
 import 'api_service.dart';
 import 'token_service.dart';
 
@@ -15,9 +17,11 @@ class AuthService {
     if (user['role'] != 'driver') {
       throw Exception('This app is for drivers only.');
     }
-    await _tokens.save(
-        data['access_token']  as String,
-        data['refresh_token'] as String);
+    final accessToken  = data['access_token']  as String;
+    final refreshToken = data['refresh_token'] as String;
+    await _tokens.save(accessToken, refreshToken);
+    debugPrint('[AUTH] ✅ JWT token generated for driver: ${user['email']}');
+    debugPrint('[AUTH] 🔑 Access Token: $accessToken');
     return user;
   }
 
