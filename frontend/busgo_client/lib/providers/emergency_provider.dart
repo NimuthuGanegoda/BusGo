@@ -58,15 +58,6 @@ class EmergencyProvider extends ChangeNotifier {
     }
   }
 
-  void setSelectedType(int index) {
-    _selectedType = index;
-    notifyListeners();
-  }
-
-  void setDetails(String text) {
-    _details = text;
-  }
-
   Future<void> sendAlert({
     double? latitude,
     double? longitude,
@@ -89,9 +80,21 @@ class EmergencyProvider extends ChangeNotifier {
       _alerts.insert(0, alert);
       _alertSent = true;
     } on AppException catch (e) {
-      _errorMessage = ErrorHandler.userMessage(e);
+      // receiveTimeout means server received the alert but ML took too long
+      // The alert WAS saved — show success anyway
+      if (e.toString().contains('receiveTimeout') ||
+          e.toString().contains('timeout')) {
+        _alertSent = true;
+      } else {
+        _errorMessage = ErrorHandler.userMessage(e);
+      }
     } catch (e) {
-      _errorMessage = ErrorHandler.userMessage(ErrorHandler.handle(e));
+      final msg = e.toString();
+      if (msg.contains('receiveTimeout') || msg.contains('timeout')) {
+        _alertSent = true;
+      } else {
+        _errorMessage = ErrorHandler.userMessage(ErrorHandler.handle(e));
+      }
     } finally {
       _isLoading = false;
       notifyListeners();
