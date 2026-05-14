@@ -268,6 +268,18 @@ export async function scanIn(scannedToken, driverUserId, context = {}, req = nul
     const e = new Error('Account deactivated'); e.statusCode = 403; e.code = 'ACCOUNT_INACTIVE'; throw e;
   }
   if (new Date(passenger.qr_expires_at) <= new Date()) {
+    // Check for ongoing trip BEFORE recording expired attempt
+    // If passenger is already on board, return 409 so scanner auto-switches to exit
+    const { data: ongoingCheck } = await supabase
+      .from('trips')
+      .select('id')
+      .eq('user_id', passenger.id)
+      .eq('status', 'ongoing')
+      .maybeSingle();
+    if (ongoingCheck) {
+      const e = new Error('Passenger already has an ongoing trip');
+      e.statusCode = 409; e.code = 'TRIP_ALREADY_ONGOING'; throw e;
+    }
     await checkQrScanLock(passenger.id);
     await recordQrExpiredAttempt(passenger.id, passenger.full_name, driverUserId, req);
   }
@@ -408,9 +420,7 @@ export async function scanExit(driverUserId, dto = {}) {
   if (!passenger) {
     const e = new Error('Invalid QR code'); e.statusCode = 404; e.code = 'INVALID_QR_TOKEN'; throw e;
   }
-  if (new Date(passenger.qr_expires_at) <= new Date()) {
-    const e = new Error('QR expired'); e.statusCode = 410; e.code = 'QR_EXPIRED'; throw e;
-  }
+ 
 
   const { data: trip } = await supabase
     .from('trips').select('id, bus_id, alighting_stop_id')

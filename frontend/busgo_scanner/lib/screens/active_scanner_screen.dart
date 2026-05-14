@@ -449,7 +449,7 @@ class _ActiveScannerScreenState extends State<ActiveScannerScreen>
               child: Row(mainAxisSize: MainAxisSize.min, children: [
                 Icon(Icons.auto_awesome, size: 14, color: _cyan),
                 const SizedBox(width: 8),
-                Text('Auto: 1st scan boards Â· 2nd scan alights',
+                Text('Auto: 1st scan boards  •  2nd scan alights',
                     style: GoogleFonts.inter(
                         fontSize: 12,
                         fontWeight: FontWeight.w600,
