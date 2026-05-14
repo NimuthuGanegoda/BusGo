@@ -229,9 +229,42 @@ class _ActiveScannerScreenState extends State<ActiveScannerScreen>
             await _restartCamera();
           }
         } catch (exitErr) {
-          await _navigateError(
-              'Passenger already on board but exit scan also failed.\n'
-              'Please check the system.');
+          // Parse exit error — if 410 it means QR expired and passenger
+          // must refresh their QR card before alighting
+          final exitRaw = exitErr.toString()
+              .replaceFirst('Exception: ', '')
+              .replaceFirst('DioException: ', '');
+          final exitSep  = exitRaw.indexOf('::');
+          final exitCode = exitSep > 0
+              ? int.tryParse(exitRaw.substring(0, exitSep)) ?? 0 : 0;
+
+          if (exitCode == 410) {
+            _tokenScanHistory.remove(scannedToken);
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                content: const Row(children: [
+                  Icon(Icons.refresh_rounded, color: Colors.white, size: 18),
+                  SizedBox(width: 10),
+                  Expanded(child: Text(
+                    'QR expired. Ask passenger to refresh their QR card to alight.',
+                    style: TextStyle(
+                        color: Colors.white, fontSize: 13, height: 1.4))),
+                ]),
+                backgroundColor: const Color(0xFF1A6FA8),
+                behavior: SnackBarBehavior.floating,
+                margin:   const EdgeInsets.fromLTRB(16, 0, 16, 24),
+                duration: const Duration(seconds: 5),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10)),
+              ));
+              setState(() { _isScanning = false; _lastScannedValue = null; });
+              await _restartCamera();
+            }
+          } else {
+            await _navigateError(
+                'Passenger already on board but exit scan also failed.\n'
+                'Please check the system.');
+          }
         }
         return;
       }
