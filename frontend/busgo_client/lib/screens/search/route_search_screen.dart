@@ -34,12 +34,18 @@ class _RouteSearchScreenState extends State<RouteSearchScreen> {
   final Map<String, bool> _busEtaLoading = {};
   String? _trackingBusId;
 
+  // ── Stop selection state ──────────────────────────────────────────────────
+  StopModel? _selectedBoardingStop;
+  StopModel? _selectedAlightingStop;
+  List<StopModel> _routeStops       = [];
+  bool            _loadingRouteStops = false;
+
   StopModel? _nearestStop;
   double? _userLat;
   double? _userLng;
   bool _locating = true;
 
-  // ── Nearby landmarks ───────────────────────────────────────────────────────
+  // ── Nearby landmarks ──────────────────────────────────────────────────────
   List<Map<String, dynamic>> _landmarks = [];
   bool _loadingLandmarks = false;
 
@@ -112,7 +118,6 @@ class _RouteSearchScreenState extends State<RouteSearchScreen> {
     if (!mounted) return;
     setState(() => _locating = false);
 
-    // Fetch landmarks after location is known
     _fetchNearbyLandmarks();
   }
 
@@ -155,7 +160,7 @@ class _RouteSearchScreenState extends State<RouteSearchScreen> {
     }
   }
 
-  // ── Nearby landmarks — Sri Lankan POIs sorted by distance ────────────────
+  // ── Nearby landmarks ──────────────────────────────────────────────────────
   Future<void> _fetchNearbyLandmarks() async {
     if (!mounted) return;
     final lat = _userLat ?? 6.9344;
@@ -164,7 +169,6 @@ class _RouteSearchScreenState extends State<RouteSearchScreen> {
     setState(() => _loadingLandmarks = true);
 
     const allLandmarks = [
-      // Hospitals
       {'name': 'National Hospital Colombo',       'amenity': 'hospital',      'lat': 6.9225,  'lng': 79.8617},
       {'name': 'Colombo General Hospital',        'amenity': 'hospital',      'lat': 6.9219,  'lng': 79.8611},
       {'name': 'Lady Ridgeway Hospital',          'amenity': 'hospital',      'lat': 6.9158,  'lng': 79.8644},
@@ -190,7 +194,6 @@ class _RouteSearchScreenState extends State<RouteSearchScreen> {
       {'name': 'Hambantota Hospital',             'amenity': 'hospital',      'lat': 6.1244,  'lng': 81.1185},
       {'name': 'Batticaloa Hospital',             'amenity': 'hospital',      'lat': 7.7167,  'lng': 81.6994},
       {'name': 'Trincomalee Hospital',            'amenity': 'hospital',      'lat': 8.5711,  'lng': 81.2336},
-      // Universities & Schools
       {'name': 'University of Colombo',           'amenity': 'university',    'lat': 6.9020,  'lng': 79.8607},
       {'name': 'University of Moratuwa',          'amenity': 'university',    'lat': 6.7953,  'lng': 79.9010},
       {'name': 'University of Sri Jayewardenepura','amenity': 'university',   'lat': 6.8897,  'lng': 79.9022},
@@ -207,7 +210,6 @@ class _RouteSearchScreenState extends State<RouteSearchScreen> {
       {'name': 'Nalanda College',                 'amenity': 'school',        'lat': 6.9083,  'lng': 79.8789},
       {'name': 'Thurstan College',                'amenity': 'school',        'lat': 6.9028,  'lng': 79.8567},
       {'name': 'Dharmaraja College Kandy',        'amenity': 'school',        'lat': 7.2961,  'lng': 80.6361},
-      // Railway Stations
       {'name': 'Colombo Fort Station',            'amenity': 'station',       'lat': 6.9344,  'lng': 79.8503},
       {'name': 'Maradana Station',                'amenity': 'station',       'lat': 6.9264,  'lng': 79.8553},
       {'name': 'Borella Station',                 'amenity': 'station',       'lat': 6.9101,  'lng': 79.8739},
@@ -230,7 +232,6 @@ class _RouteSearchScreenState extends State<RouteSearchScreen> {
       {'name': 'Vavuniya Station',                'amenity': 'station',       'lat': 8.7511,  'lng': 80.4978},
       {'name': 'Batticaloa Station',              'amenity': 'station',       'lat': 7.7167,  'lng': 81.6994},
       {'name': 'Trincomalee Station',             'amenity': 'station',       'lat': 8.5711,  'lng': 81.2344},
-      // Bus Terminals
       {'name': 'Colombo Central Bus Stand',       'amenity': 'bus_station',   'lat': 6.9344,  'lng': 79.8516},
       {'name': 'Pettah Bus Terminal',             'amenity': 'bus_station',   'lat': 6.9361,  'lng': 79.8503},
       {'name': 'Bastian Mawatha Bus Terminal',    'amenity': 'bus_station',   'lat': 6.9378,  'lng': 79.8489},
@@ -242,7 +243,6 @@ class _RouteSearchScreenState extends State<RouteSearchScreen> {
       {'name': 'Galle Bus Terminal',              'amenity': 'bus_station',   'lat': 6.0319,  'lng': 80.2178},
       {'name': 'Kurunegala Bus Terminal',         'amenity': 'bus_station',   'lat': 7.4844,  'lng': 80.3639},
       {'name': 'Ratnapura Bus Terminal',          'amenity': 'bus_station',   'lat': 6.6817,  'lng': 80.3983},
-      // Shopping
       {'name': 'Pettah Market',                   'amenity': 'marketplace',   'lat': 6.9355,  'lng': 79.8516},
       {'name': 'Manning Market',                  'amenity': 'marketplace',   'lat': 6.9389,  'lng': 79.8539},
       {'name': 'Majestic City',                   'amenity': 'shopping_mall', 'lat': 6.8883,  'lng': 79.8561},
@@ -254,7 +254,6 @@ class _RouteSearchScreenState extends State<RouteSearchScreen> {
       {'name': 'Kandy City Centre',               'amenity': 'shopping_mall', 'lat': 7.2906,  'lng': 80.6337},
       {'name': 'Crescat Boulevard',               'amenity': 'shopping_mall', 'lat': 6.9139,  'lng': 79.8478},
       {'name': 'Marino Mall',                     'amenity': 'shopping_mall', 'lat': 6.9211,  'lng': 79.8483},
-      // Attractions
       {'name': 'Galle Face Green',                'amenity': 'park',          'lat': 6.9217,  'lng': 79.8444},
       {'name': 'Viharamahadevi Park',             'amenity': 'park',          'lat': 6.9150,  'lng': 79.8606},
       {'name': 'Beira Lake',                      'amenity': 'park',          'lat': 6.9183,  'lng': 79.8561},
@@ -271,7 +270,6 @@ class _RouteSearchScreenState extends State<RouteSearchScreen> {
       {'name': 'Sugathadasa Stadium',             'amenity': 'stadium',       'lat': 6.9294,  'lng': 79.8669},
       {'name': 'Dehiwala Zoo',                    'amenity': 'park',          'lat': 6.8500,  'lng': 79.8667},
       {'name': 'Lotus Tower',                     'amenity': 'attraction',    'lat': 6.9294,  'lng': 79.8667},
-      // Key Areas
       {'name': 'Colombo Fort',                    'amenity': 'station',       'lat': 6.9344,  'lng': 79.8428},
       {'name': 'Pettah',                          'amenity': 'marketplace',   'lat': 6.9361,  'lng': 79.8503},
       {'name': 'Rajagiriya',                      'amenity': 'station',       'lat': 6.9067,  'lng': 79.8983},
@@ -349,7 +347,6 @@ class _RouteSearchScreenState extends State<RouteSearchScreen> {
     }
   }
 
-  // ── Icon for amenity type ─────────────────────────────────────────────────
   IconData _amenityIcon(String amenity) {
     switch (amenity) {
       case 'hospital':      return Icons.local_hospital_rounded;
@@ -377,9 +374,11 @@ class _RouteSearchScreenState extends State<RouteSearchScreen> {
     _suggestions = busProvider.getDestinationSuggestions(query);
     busProvider.searchByDestination(query);
     setState(() {
-      _showSuggestions = _destinationFocus.hasFocus && _suggestions.isNotEmpty;
-      _expandedRouteId = null;
-      _routeBuses = [];
+      _showSuggestions       = _destinationFocus.hasFocus && _suggestions.isNotEmpty;
+      _expandedRouteId       = null;
+      _routeBuses            = [];
+      _routeStops            = [];
+      _selectedAlightingStop = null;
       _busEtas.clear();
     });
   }
@@ -397,22 +396,27 @@ class _RouteSearchScreenState extends State<RouteSearchScreen> {
     if (!mounted) return;
     context.read<BusProvider>().searchByDestination('');
     setState(() {
-      _showSuggestions = false;
-      _suggestions = [];
-      _expandedRouteId = null;
-      _routeBuses = [];
+      _showSuggestions       = false;
+      _suggestions           = [];
+      _expandedRouteId       = null;
+      _routeBuses            = [];
+      _routeStops            = [];
+      _selectedBoardingStop  = null;
+      _selectedAlightingStop = null;
       _busEtas.clear();
     });
   }
 
-  // ── Route tap → load buses ────────────────────────────────────────────────
+  // ── Route tap → load buses + stops ───────────────────────────────────────
 
   Future<void> _onRouteTapped(BusRoute route) async {
     if (_expandedRouteId == route.id) {
       if (!mounted) return;
       setState(() {
-        _expandedRouteId = null;
-        _routeBuses = [];
+        _expandedRouteId       = null;
+        _routeBuses            = [];
+        _routeStops            = [];
+        _selectedAlightingStop = null;
         _busEtas.clear();
       });
       return;
@@ -420,12 +424,16 @@ class _RouteSearchScreenState extends State<RouteSearchScreen> {
 
     if (!mounted) return;
     setState(() {
-      _expandedRouteId = route.id;
-      _routeBuses = [];
-      _loadingBuses = true;
+      _expandedRouteId       = route.id;
+      _routeBuses            = [];
+      _routeStops            = [];
+      _selectedAlightingStop = null;
+      _loadingBuses          = true;
+      _loadingRouteStops     = true;
       _busEtas.clear();
     });
 
+    // Load active buses
     try {
       final res = await Supabase.instance.client
           .from('buses')
@@ -438,7 +446,7 @@ class _RouteSearchScreenState extends State<RouteSearchScreen> {
       if (!mounted) return;
       final buses = (res as List).cast<Map<String, dynamic>>();
       setState(() {
-        _routeBuses = buses;
+        _routeBuses   = buses;
         _loadingBuses = false;
       });
 
@@ -449,6 +457,23 @@ class _RouteSearchScreenState extends State<RouteSearchScreen> {
       debugPrint('[Search] Bus fetch error: $e');
       if (!mounted) return;
       setState(() => _loadingBuses = false);
+    }
+
+    // Load route stops for alighting stop selection
+    if (route.id != null && mounted) {
+      try {
+        final stops = await context.read<BusProvider>()
+            .fetchRouteStops(route.id!);
+        if (mounted) {
+          setState(() {
+            _routeStops        = stops;
+            _loadingRouteStops = false;
+          });
+        }
+      } catch (e) {
+        debugPrint('[Search] Route stops error: $e');
+        if (mounted) setState(() => _loadingRouteStops = false);
+      }
     }
   }
 
@@ -472,13 +497,13 @@ class _RouteSearchScreenState extends State<RouteSearchScreen> {
 
       if (!mounted) return;
       setState(() {
-        _busEtas[busId] = (result?['eta_minutes'] as num?)?.toInt();
+        _busEtas[busId]       = (result?['eta_minutes'] as num?)?.toInt();
         _busEtaLoading[busId] = false;
       });
     } catch (e) {
       if (!mounted) return;
       setState(() {
-        _busEtas[busId] = null;
+        _busEtas[busId]       = null;
         _busEtaLoading[busId] = false;
       });
     }
@@ -499,11 +524,26 @@ class _RouteSearchScreenState extends State<RouteSearchScreen> {
       return;
     }
 
+    // Require alighting stop to be selected
+    if (_selectedAlightingStop == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please select your destination stop first.'),
+          backgroundColor: Colors.orange,
+          duration: Duration(seconds: 2),
+        ),
+      );
+      return;
+    }
+
+    final boardingStop  = _selectedBoardingStop ?? nearestStop;
+    final alightingStop = _selectedAlightingStop!;
+
     setState(() => _trackingBusId = busId);
 
     busProvider.setWatchedStops(
-      startStop: nearestStop,
-      endStop: nearestStop,
+      startStop:   boardingStop,
+      endStop:     alightingStop,
       routeNumber: busNumber,
     );
 
@@ -512,10 +552,12 @@ class _RouteSearchScreenState extends State<RouteSearchScreen> {
         content: Row(children: [
           const Icon(Icons.directions_bus_rounded, color: Colors.white, size: 16),
           const SizedBox(width: 8),
-          Expanded(child: Text('Now tracking Bus $busNumber \u00B7 You will be notified when it arrives')),
+          Expanded(child: Text(
+            'Tracking Bus $busNumber · Board at ${boardingStop.name} · Alight at ${alightingStop.name}',
+          )),
         ]),
         backgroundColor: const Color(0xFF16A34A),
-        duration: const Duration(seconds: 3),
+        duration: const Duration(seconds: 4),
       ),
     );
   }
@@ -577,7 +619,6 @@ class _RouteSearchScreenState extends State<RouteSearchScreen> {
                     if (_showSuggestions) _buildSuggestions(),
                     _buildNearestStopBadge(),
                     const SizedBox(height: 12),
-                    // Show landmarks only when search is empty
                     if (_destinationController.text.isEmpty)
                       _buildNearbyLandmarks(),
                     _buildNearbyStops(),
@@ -594,7 +635,6 @@ class _RouteSearchScreenState extends State<RouteSearchScreen> {
     );
   }
 
-  // ── Nearby landmarks section ──────────────────────────────────────────────
   Widget _buildNearbyLandmarks() {
     if (_loadingLandmarks) {
       return Padding(
@@ -664,8 +704,7 @@ class _RouteSearchScreenState extends State<RouteSearchScreen> {
                         decoration: BoxDecoration(
                           color: AppColors.secondary.withOpacity(0.12),
                           borderRadius: BorderRadius.circular(8)),
-                        child: Icon(icon, size: 16,
-                            color: AppColors.secondary)),
+                        child: Icon(icon, size: 16, color: AppColors.secondary)),
                       const SizedBox(height: 6),
                       Text(name,
                           maxLines: 2,
@@ -1196,11 +1235,15 @@ class _RouteSearchScreenState extends State<RouteSearchScreen> {
         crowdColor = const Color(0xFF16A34A); crowdLabel = 'Available';
     }
 
+    final nearbyStops = context.read<BusProvider>().nearbyStops;
+
     return Container(
       padding: const EdgeInsets.fromLTRB(14, 10, 14, 10),
       decoration: BoxDecoration(
         border: Border(top: BorderSide(color: AppColors.divider.withOpacity(0.4), width: 0.5))),
       child: Column(children: [
+
+        // ── Bus info row ──────────────────────────────────────────────────
         Row(children: [
           Container(
             width: 36, height: 36,
@@ -1246,26 +1289,77 @@ class _RouteSearchScreenState extends State<RouteSearchScreen> {
                   ]),
           ),
         ]),
+
         const SizedBox(height: 10),
+
+        // ── Boarding stop selector ────────────────────────────────────────
+        _StopSelector(
+          label:      'Board from',
+          icon:       Icons.my_location_rounded,
+          selected:   _selectedBoardingStop ?? _nearestStop,
+          stops:      nearbyStops,
+          loading:    false,
+          onSelected: (stop) => setState(() => _selectedBoardingStop = stop),
+        ),
+        const SizedBox(height: 8),
+
+        // ── Alighting stop selector ───────────────────────────────────────
+        _StopSelector(
+          label:       'Alight at',
+          icon:        Icons.location_on_rounded,
+          selected:    _selectedAlightingStop,
+          stops:       _routeStops,
+          loading:     _loadingRouteStops,
+          onSelected:  (stop) => setState(() => _selectedAlightingStop = stop),
+          hint:        'Select destination stop',
+          accentColor: const Color(0xFFEF4444),
+        ),
+
+        const SizedBox(height: 10),
+
+        // ── Board Bus button ──────────────────────────────────────────────
         GestureDetector(
           onTap: () => _onBoardBus(busId, busNumber),
           child: Container(
             width: double.infinity,
             padding: const EdgeInsets.symmetric(vertical: 10),
             decoration: BoxDecoration(
-              color: isTracking ? const Color(0xFF16A34A) : AppColors.secondary.withOpacity(0.15),
+              color: isTracking
+                  ? const Color(0xFF16A34A)
+                  : _selectedAlightingStop != null
+                      ? AppColors.secondary.withOpacity(0.25)
+                      : AppColors.secondary.withOpacity(0.08),
               borderRadius: BorderRadius.circular(10),
               border: Border.all(
-                color: isTracking ? const Color(0xFF16A34A) : AppColors.secondary.withOpacity(0.4))),
+                color: isTracking
+                    ? const Color(0xFF16A34A)
+                    : _selectedAlightingStop != null
+                        ? AppColors.secondary.withOpacity(0.6)
+                        : AppColors.secondary.withOpacity(0.2))),
             child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
               Icon(
-                isTracking ? Icons.check_circle_rounded : Icons.directions_bus_rounded,
-                size: 16, color: isTracking ? Colors.white : AppColors.secondary),
+                isTracking ? Icons.check_circle_rounded : Icons.notifications_active_rounded,
+                size: 16,
+                color: isTracking
+                    ? Colors.white
+                    : _selectedAlightingStop != null
+                        ? AppColors.secondary
+                        : AppColors.secondary.withOpacity(0.4)),
               const SizedBox(width: 8),
-              Text(isTracking ? 'Tracking this bus' : 'Board Bus',
-                  style: TextStyle(
-                      fontSize: 13, fontWeight: FontWeight.w700,
-                      color: isTracking ? Colors.white : AppColors.secondary)),
+              Text(
+                isTracking
+                    ? 'Tracking this bus'
+                    : _selectedAlightingStop != null
+                        ? 'Track & Get Notified'
+                        : 'Select destination stop first',
+                style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                    color: isTracking
+                        ? Colors.white
+                        : _selectedAlightingStop != null
+                            ? AppColors.secondary
+                            : AppColors.secondary.withOpacity(0.4))),
             ]),
           ),
         ),
@@ -1274,8 +1368,141 @@ class _RouteSearchScreenState extends State<RouteSearchScreen> {
   }
 }
 
+// ── Helper classes ────────────────────────────────────────────────────────────
+
 class _StopRouteEntry {
   final StopModel stop;
-  final BusRoute route;
+  final BusRoute  route;
   const _StopRouteEntry({required this.stop, required this.route});
+}
+
+// ── Stop selector widget ──────────────────────────────────────────────────────
+class _StopSelector extends StatelessWidget {
+  final String          label;
+  final IconData        icon;
+  final StopModel?      selected;
+  final List<StopModel> stops;
+  final bool            loading;
+  final ValueChanged<StopModel> onSelected;
+  final String          hint;
+  final Color           accentColor;
+
+  const _StopSelector({
+    required this.label,
+    required this.icon,
+    required this.selected,
+    required this.stops,
+    required this.loading,
+    required this.onSelected,
+    this.hint        = 'Select stop',
+    this.accentColor = const Color(0xFF4ECDC4),
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: loading || stops.isEmpty ? null : () => _showPicker(context),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+        decoration: BoxDecoration(
+          color: const Color(0xFF0A1628),
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(
+            color: selected != null
+                ? accentColor.withOpacity(0.5)
+                : Colors.white.withOpacity(0.12),
+          ),
+        ),
+        child: Row(children: [
+          Icon(icon, size: 14,
+              color: selected != null ? accentColor : Colors.white38),
+          const SizedBox(width: 8),
+          Expanded(child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(label,
+                  style: TextStyle(
+                      fontSize: 9,
+                      fontWeight: FontWeight.w700,
+                      color: Colors.white.withOpacity(0.4),
+                      letterSpacing: 0.6)),
+              const SizedBox(height: 2),
+              loading
+                  ? const SizedBox(
+                      width: 14, height: 14,
+                      child: CircularProgressIndicator(
+                          strokeWidth: 2, color: Colors.white38))
+                  : Text(
+                      selected?.name ??
+                          (stops.isEmpty ? 'No stops found' : hint),
+                      style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: selected != null
+                              ? Colors.white
+                              : Colors.white38),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+            ],
+          )),
+          if (!loading && stops.isNotEmpty)
+            Icon(Icons.keyboard_arrow_down_rounded,
+                size: 16, color: Colors.white38),
+        ]),
+      ),
+    );
+  }
+
+  void _showPicker(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: const Color(0xFF0A1628),
+      shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (_) => Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const SizedBox(height: 12),
+          Container(
+            width: 36, height: 4,
+            decoration: BoxDecoration(
+                color: Colors.white24,
+                borderRadius: BorderRadius.circular(2))),
+          const SizedBox(height: 14),
+          Text(label,
+              style: const TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w700,
+                  color: Colors.white)),
+          const SizedBox(height: 8),
+          Flexible(
+            child: ListView.builder(
+              shrinkWrap: true,
+              itemCount: stops.length,
+              itemBuilder: (_, i) {
+                final stop  = stops[i];
+                final isSel = selected?.id == stop.id;
+                return ListTile(
+                  leading: Icon(Icons.directions_bus_filled,
+                      size: 18,
+                      color: isSel ? accentColor : Colors.white38),
+                  title: Text(stop.name,
+                      style: TextStyle(
+                          fontSize: 13,
+                          fontWeight:
+                              isSel ? FontWeight.w700 : FontWeight.w400,
+                          color: isSel ? accentColor : Colors.white)),
+                  onTap: () {
+                    onSelected(stop);
+                    Navigator.pop(context);
+                  },
+                );
+              },
+            ),
+          ),
+          const SizedBox(height: 16),
+        ],
+      ),
+    );
+  }
 }

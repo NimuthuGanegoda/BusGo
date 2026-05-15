@@ -179,15 +179,20 @@ class TripProvider extends ChangeNotifier {
     if (_etaBusId == null || _etaStopId == null || _etaToken == null) return;
     _etaLoading = true;
     notifyListeners();
-    final result = await ApiService().fetchETA(
-      busId: _etaBusId!, stopId: _etaStopId!, accessToken: _etaToken!,
-    );
-    if (result != null) {
-      _etaMinutes = (result['eta_minutes'] as num?)?.toInt();
-      _etaContext = result['context'] as String?;
+    try {
+      final result = await ApiService().fetchETA(
+        busId: _etaBusId!, stopId: _etaStopId!, accessToken: _etaToken!,
+      );
+      if (result != null) {
+        _etaMinutes = (result['eta_minutes'] as num?)?.toInt();
+        _etaContext  = result['context']?.toString(); // was: as String? — caused CastError
+      }
+    } catch (e) {
+      debugPrint('[ETA] $e');
+    } finally {
+      _etaLoading = false; // always runs now, even if exception thrown
+      notifyListeners();
     }
-    _etaLoading = false;
-    notifyListeners();
   }
 
   Future<void> loadTripHistory() async {

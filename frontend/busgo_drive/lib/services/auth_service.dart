@@ -1,4 +1,3 @@
-// AFTER
 import 'package:flutter/foundation.dart';
 import 'api_service.dart';
 import 'token_service.dart';
@@ -35,13 +34,3 @@ class AuthService {
     await _tokens.clear();
   }
 }
-
-
-
-
-
-
-
-
-
-

@@ -131,7 +131,7 @@ training_texts = [
 print("Training corpus: {} documents".format(len(training_texts)))
 
 tfidf = TfidfVectorizer(
-    max_features=799,
+    max_features=800,
     ngram_range=(1, 2),
     min_df=1,
     sublinear_tf=True,
