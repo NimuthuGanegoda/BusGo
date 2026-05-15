@@ -130,6 +130,9 @@ class AuthProvider extends ChangeNotifier {
           data['refresh_token'] as String,
         );
 
+        debugPrint('[AUTH] JWT token generated for driver: ${user['email']}');
+        debugPrint('[AUTH] Access Token: ${data['access_token']}');
+
         _driver = Driver(
           id:            user['id']        as String,
           employeeId:    user['id']        as String,

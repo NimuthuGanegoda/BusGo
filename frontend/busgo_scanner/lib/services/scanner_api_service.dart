@@ -248,39 +248,37 @@ class ScannerApiService {
   }
 
   // ── Login ──────────────────────────────────────────────────────────────────
-  Future<void> login(String email, String password) async {
-    final res = await http.post(
-      Uri.parse('$kScannerBaseUrl/auth/login'),
-      headers: {'Content-Type': 'application/json'},
-      body: jsonEncode({'email': email, 'password': password}),
-    ).timeout(const Duration(seconds: 10));
+  // ── Login ──────────────────────────────────────────────────────────────────
+Future<void> login(String email, String password) async {
+  final res = await http.post(
+    Uri.parse('$kScannerBaseUrl/auth/login'),
+    headers: {'Content-Type': 'application/json'},
+    body: jsonEncode({'email': email, 'password': password}),
+  ).timeout(const Duration(seconds: 10));
 
-    final body = jsonDecode(res.body) as Map<String, dynamic>;
+  // DIAGNOSTIC: print BEFORE json decode so we always see what server returned
+  debugPrint('[SCANNER LOGIN] status=${res.statusCode}');
+  debugPrint('[SCANNER LOGIN] raw body=${res.body.substring(0, res.body.length.clamp(0, 300))}');
 
-    // CHANGE 1: Include HTTP status code as prefix so _handleStartSession
-    // can correctly detect invalid credentials (401) vs network errors.
-    // Previously threw Exception('INVALID_CREDENTIALS') which didn't match
-    // the case-sensitive 'credentials' check in login_screen.dart.
-    if (res.statusCode != 200) {
-      throw Exception('${res.statusCode}::${body['code'] ?? body['message'] ?? 'Login failed'}');
-    }
+  final body = jsonDecode(res.body) as Map<String, dynamic>;
 
-    final data = body['data'] as Map<String, dynamic>?;
-    final role  = data?['user']?['role'] as String?;
-
-    if (role != 'driver') {
-      throw Exception('LOGIN_RESTRICTED');
-    }
-
-    final token = data?['access_token'] as String?;
-    if (token == null) throw Exception('No token received');
-    await _tokenSvc.saveAccess(token);
-
-    // CHANGE 2: Print JWT token to terminal for demo/verification purposes.
-    // Remove these two lines after your viva/demo is complete.
-    debugPrint('[SCANNER AUTH] JWT token generated for: ${data?['user']?['email']}');
-    debugPrint('[SCANNER AUTH] Access Token: $token');
+  if (res.statusCode != 200) {
+    throw Exception('${res.statusCode}::${body['code'] ?? body['message'] ?? 'Login failed'}');
   }
+
+  final data = body['data'] as Map<String, dynamic>?;
+  final role  = data?['user']?['role'] as String?;
+
+  if (role != 'driver') {
+    throw Exception('LOGIN_RESTRICTED');
+  }
+
+  final token = data?['access_token'] as String?;
+  if (token == null) throw Exception('No token received');
+  await _tokenSvc.saveAccess(token);
+  debugPrint('[SCANNER AUTH] JWT token generated for: ${data?['user']?['email']}');
+  debugPrint('[SCANNER AUTH] Access Token: $token');
+}
 
   // ── Logout ─────────────────────────────────────────────────────────────────
   Future<void> logout() async {

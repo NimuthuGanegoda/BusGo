@@ -97,10 +97,6 @@ class _LoginScreenState extends State<LoginScreen>
               message: 'This account is not authorized to use this app.');
           return;
         }
-        if (msg.contains('401') || msg.contains('Invalid') ||
-            msg.contains('credentials') || msg.contains('password')) {
-
-        // AFTER — add this block above the existing 401 check
         if (msg.contains('422') || msg.contains('VALIDATION_ERROR')) {
           if (!mounted) return;
           setState(() => _loading = false);
@@ -109,8 +105,6 @@ class _LoginScreenState extends State<LoginScreen>
               message: 'Please enter a valid email address.');
           return;
         }
-
-
         if (msg.contains('401') || msg.contains('Invalid') ||
             msg.contains('credentials') || msg.contains('password')) {
           if (!mounted) return;
