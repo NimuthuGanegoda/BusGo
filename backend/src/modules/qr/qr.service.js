@@ -268,18 +268,6 @@ export async function scanIn(scannedToken, driverUserId, context = {}, req = nul
     const e = new Error('Account deactivated'); e.statusCode = 403; e.code = 'ACCOUNT_INACTIVE'; throw e;
   }
   if (new Date(passenger.qr_expires_at) <= new Date()) {
-    // Check for ongoing trip BEFORE recording expired attempt
-    // If passenger is already on board, return 409 so scanner auto-switches to exit
-    const { data: ongoingCheck } = await supabase
-      .from('trips')
-      .select('id')
-      .eq('user_id', passenger.id)
-      .eq('status', 'ongoing')
-      .maybeSingle();
-    if (ongoingCheck) {
-      const e = new Error('Passenger already has an ongoing trip');
-      e.statusCode = 409; e.code = 'TRIP_ALREADY_ONGOING'; throw e;
-    }
     await checkQrScanLock(passenger.id);
     await recordQrExpiredAttempt(passenger.id, passenger.full_name, driverUserId, req);
   }
@@ -409,7 +397,7 @@ export async function scanIn(scannedToken, driverUserId, context = {}, req = nul
   };
 }
 
-export async function scanExit(driverUserId, dto = {}) {
+export async function scanExit(driverUserId, dto = {}, req = null) {
   const { scanned_token, alighting_stop_id, fare_lkr } = dto;
 
   const { data: passenger, error: pErr } = await supabase
@@ -422,7 +410,8 @@ export async function scanExit(driverUserId, dto = {}) {
   }
 
   if (new Date(passenger.qr_expires_at) <= new Date()) {
-    const e = new Error('QR expired'); e.statusCode = 410; e.code = 'QR_EXPIRED'; throw e;
+    await checkQrScanLock(passenger.id);
+    await recordQrExpiredAttempt(passenger.id, passenger.full_name, driverUserId, req);
   }
  
 
