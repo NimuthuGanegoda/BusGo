@@ -360,7 +360,7 @@ class BusProvider extends ChangeNotifier {
   void _checkArrivalNotifications(double busLat, double busLng) {
     final routeNum = _watchRouteNumber ?? '?';
 
-    // ── Start stop ─────────────────────────────────────────────────────────
+    // ── Start stop ────────────────────────────────────────────────────────────
     if (!_startNotified && _watchStartStop != null) {
       final sLat = _watchStartStop!.latitude;
       final sLng = _watchStartStop!.longitude;
@@ -378,8 +378,8 @@ class BusProvider extends ChangeNotifier {
       }
     }
 
-    // ── End stop ───────────────────────────────────────────────────────────
-    if (!_endNotified && _watchEndStop != null) {
+    // ── End stop — only fires AFTER start is notified, with 3s delay ─────────
+    if (_startNotified && !_endNotified && _watchEndStop != null) {
       final eLat = _watchEndStop!.latitude;
       final eLng = _watchEndStop!.longitude;
       if (eLat != null && eLng != null) {
@@ -388,10 +388,12 @@ class BusProvider extends ChangeNotifier {
         debugPrint('[BusProvider] Bus → END stop: ${dist.toStringAsFixed(1)} m');
         if (dist <= _notifyThresholdMetres) {
           _endNotified = true;
-          NotificationService.instance.notifyBusArrivingAtEnd(
-            _watchEndStop!.name,
-            routeNum,
-          );
+          Future.delayed(const Duration(seconds: 3), () {
+            NotificationService.instance.notifyBusArrivingAtEnd(
+              _watchEndStop!.name,
+              routeNum,
+            );
+          });
         }
       }
     }
